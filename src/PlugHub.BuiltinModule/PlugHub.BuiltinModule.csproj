@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="..\..\build\Directory.Build.props" />
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>PlugHub.BuiltinModule</AssemblyName>
+    <RootNamespace>PlugHub.BuiltinModule</RootNamespace>
+    <OutputType>Library</OutputType>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="RevitAPI">
+      <HintPath>$(RevitApiDir)\RevitAPI.dll</HintPath>
+      <Private>false</Private>
+      <EmbedInteropTypes>false</EmbedInteropTypes>
+    </Reference>
+    <Reference Include="RevitAPIUI">
+      <HintPath>$(RevitApiDir)\RevitAPIUI.dll</HintPath>
+      <Private>false</Private>
+      <EmbedInteropTypes>false</EmbedInteropTypes>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PlugHub.Contracts\PlugHub.Contracts.csproj" />
+  </ItemGroup>
+
+  <Target Name="EnsureRevitApiReferences" BeforeTargets="ResolveReferences">
+    <Error Condition="!Exists('$(RevitApiDir)\RevitAPI.dll')" Text="RevitAPI.dll not found. Pass /p:RevitApiDir=&quot;C:\Program Files\Autodesk\Revit 2020&quot; or copy Revit 2020 API DLLs to that folder." />
+    <Error Condition="!Exists('$(RevitApiDir)\RevitAPIUI.dll')" Text="RevitAPIUI.dll not found. Pass /p:RevitApiDir=&quot;C:\Program Files\Autodesk\Revit 2020&quot; or copy Revit 2020 API DLLs to that folder." />
+  </Target>
+</Project>

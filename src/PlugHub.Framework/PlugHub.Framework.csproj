@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="..\..\build\Directory.Build.props" />
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>PlugHub.Framework</AssemblyName>
+    <RootNamespace>PlugHub.Framework</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System.Web.Extensions" />
+    <ProjectReference Include="..\PlugHub.Contracts\PlugHub.Contracts.csproj" />
+  </ItemGroup>
+</Project>

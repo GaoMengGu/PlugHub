@@ -1,0 +1,25 @@
+<Project>
+  <PropertyGroup>
+    <LangVersion>8.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <Deterministic>true</Deterministic>
+    <Company>PlugHub</Company>
+    <Product>PlugHub</Product>
+    <Authors>PlugHub Dev Team</Authors>
+    <Configurations>Debug;Release</Configurations>
+  </PropertyGroup>
+
+  <!--
+    Windows 构建机传入：
+      /p:Revit2020InstallDir="C:\Program Files\Autodesk\Revit 2020"
+    或：
+      /p:RevitApiDir="C:\Program Files\Autodesk\Revit 2020"
+  -->
+  <PropertyGroup>
+    <RevitVersion Condition="'$(RevitVersion)' == ''">2020</RevitVersion>
+    <Revit2020InstallDir Condition="'$(Revit2020InstallDir)' == ''">C:\Program Files\Autodesk\Revit 2020</Revit2020InstallDir>
+    <RevitApiDir Condition="'$(RevitApiDir)' == ''">$(Revit2020InstallDir)</RevitApiDir>
+    <RevitAddinsDir Condition="'$(RevitAddinsDir)' == ''">$(APPDATA)\Autodesk\Revit\Addins\2020</RevitAddinsDir>
+    <PlugHubOutputDir Condition="'$(PlugHubOutputDir)' == ''">$(MSBuildThisFileDirectory)..\dist\Revit2020\</PlugHubOutputDir>
+  </PropertyGroup>
+</Project>

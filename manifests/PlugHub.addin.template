@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>PlugHub Framework</Name>
+    <Assembly>PlugHub.Revit2020.dll</Assembly>
+    <FullClassName>PlugHub.Revit2020.ExternalApplicationEntry</FullClassName>
+    <ClientId>8B1C6D35-B7CE-43E7-95AE-C45B4D02C020</ClientId>
+    <VendorId>PLGH</VendorId>
+    <VendorDescription>PlugHub modular plugin framework</VendorDescription>
+  </AddIn>
+</RevitAddIns>

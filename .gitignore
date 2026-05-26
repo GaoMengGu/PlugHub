@@ -1,0 +1,12 @@
+bin/
+obj/
+dist/
+.vs/
+.superpowers/
+TestResults/
+.pytest_cache/
+__pycache__/
+*.user
+*.suo
+*.nupkg
+*.snupkg

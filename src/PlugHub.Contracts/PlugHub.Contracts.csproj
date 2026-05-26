@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="..\..\build\Directory.Build.props" />
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>PlugHub.Contracts</AssemblyName>
+    <RootNamespace>PlugHub.Contracts</RootNamespace>
+  </PropertyGroup>
+</Project>

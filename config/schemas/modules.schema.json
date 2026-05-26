@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["schemaVersion", "modules"],
+  "properties": {
+    "schemaVersion": {"type": "string"},
+    "moduleDirectories": {"type": "array", "items": {"type": "string"}},
+    "moduleSources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "enabled"],
+        "properties": {
+          "id": {"type": "string"},
+          "type": {"enum": ["localFolder", "github"]},
+          "path": {"type": "string"},
+          "repository": {"type": "string"},
+          "ref": {"type": "string"},
+          "manifestPath": {"type": "string"},
+          "enabled": {"type": "boolean"}
+        }
+      }
+    },
+    "conflictPolicy": {"type": "object"},
+    "modules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "enabled", "visible", "features"],
+        "properties": {
+          "id": {"type": "string"},
+          "assembly": {"type": "string"},
+          "type": {"type": "string"},
+          "name": {"type": "string"},
+          "displayName": {"type": "string"},
+          "description": {"type": "string"},
+          "sourceId": {"type": "string"},
+          "enabled": {"type": "boolean"},
+          "visible": {"type": "boolean"},
+          "order": {"type": "integer"},
+          "tags": {"type": "array", "items": {"type": "string"}},
+          "dependsOn": {"type": "array", "items": {"type": "string"}},
+          "features": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "name", "category", "group", "order", "defaultState"],
+              "properties": {
+                "id": {"type": "string"},
+                "name": {"type": "string"},
+                "displayName": {"type": "string"},
+                "description": {"type": "string"},
+                "category": {"type": "string"},
+                "group": {"type": "string"},
+                "tags": {"type": "array", "items": {"type": "string"}},
+                "order": {"type": "integer"},
+                "defaultState": {"enum": ["Visible", "Disabled", "Hidden"]},
+                "buttonSize": {"enum": ["large", "small"]},
+                "iconPath": {"type": "string"},
+                "commandKey": {"type": "string"},
+                "commandAssembly": {"type": "string"},
+                "commandType": {"type": "string"}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
