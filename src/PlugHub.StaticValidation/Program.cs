@@ -28,6 +28,7 @@ namespace PlugHub.StaticValidation
                 ValidateConfiguredSampleModuleTypes();
                 ValidateConfiguredBuiltinModuleTypes();
                 ValidatePlugHubV2Specification();
+                ValidateRevitDeploymentConfiguration();
 
                 var modules = ReadObject("config/modules.example.json");
                 var views = ReadObject("config/views.example.json");
@@ -285,6 +286,24 @@ namespace PlugHub.StaticValidation
             var revitText = ReadAllCSharp("src/PlugHub.Revit2020");
             Require(revitText.Contains("DockablePaneProviderData"), "settings must use a DockablePane provider.");
             Require(revitText.Contains("FeatureExecutionGate"), "feature execution must be gated by latest runtime configuration.");
+        }
+
+        private static void ValidateRevitDeploymentConfiguration()
+        {
+            var outputDirectory = FullPath("dist/Revit2020");
+            if (!Directory.Exists(outputDirectory)) return;
+
+            var required = new[]
+            {
+                "config/modules.json",
+                "config/views.json",
+                "config/feature-combinations.json"
+            };
+
+            var missing = required
+                .Where(path => !File.Exists(Path.Combine(outputDirectory, path.Replace('/', Path.DirectorySeparatorChar))))
+                .ToList();
+            Require(!missing.Any(), "Revit deployment is missing runtime config files: " + string.Join(", ", missing));
         }
 
         private static List<string> FeatureIdsForView(List<Dictionary<string, object>> features, Dictionary<string, object> view)

@@ -36,11 +36,26 @@ $OutputDir = (Resolve-Path $OutputDir).Path
 dotnet build $Project -c $Configuration `
     /p:RevitApiDir="$RevitApiDir" `
     /p:PlugHubOutputDir="$OutputDir"
+if ($LASTEXITCODE -ne 0) {
+    throw "dotnet build failed with exit code $LASTEXITCODE."
+}
 
 $Addin = Join-Path $OutputDir "PlugHub.addin"
 $Dll = Join-Path $OutputDir "PlugHub.Revit2020.dll"
 if (!(Test-Path $Dll)) { throw "Build finished but $Dll was not found." }
 if (!(Test-Path $Addin)) { throw "Build finished but $Addin was not found." }
+
+$RequiredConfigFiles = @(
+    "config\modules.json",
+    "config\views.json",
+    "config\feature-combinations.json"
+)
+foreach ($RelativeConfigPath in $RequiredConfigFiles) {
+    $ConfigPath = Join-Path $OutputDir $RelativeConfigPath
+    if (!(Test-Path $ConfigPath)) {
+        throw "Build finished but required runtime config was not found: $ConfigPath"
+    }
+}
 
 # Replace relative assembly path with absolute DLL path for Revit addins folder usage.
 $xml = [xml](Get-Content $Addin -Raw)

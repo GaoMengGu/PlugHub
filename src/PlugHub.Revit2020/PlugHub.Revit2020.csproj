@@ -54,6 +54,7 @@
 
   <Target Name="StagePlugHubOutput" AfterTargets="Build">
     <MakeDir Directories="$(PlugHubOutputDir)" />
+    <MakeDir Directories="$(PlugHubOutputDir)\config" />
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(PlugHubOutputDir)" />
     <Copy SourceFiles="@(ReferenceCopyLocalPaths)" DestinationFolder="$(PlugHubOutputDir)" SkipUnchangedFiles="true" />
     <Copy SourceFiles="..\..\manifests\PlugHub.addin.template" DestinationFiles="$(PlugHubOutputDir)\PlugHub.addin" />

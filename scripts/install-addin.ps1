@@ -9,6 +9,18 @@ $Addin = Join-Path $BuiltDir "PlugHub.addin"
 if (!(Test-Path $Dll)) { throw "Missing $Dll. Run scripts\build-revit2020.ps1 first." }
 if (!(Test-Path $Addin)) { throw "Missing $Addin. Run scripts\build-revit2020.ps1 first." }
 
+$RequiredConfigFiles = @(
+    "config\modules.json",
+    "config\views.json",
+    "config\feature-combinations.json"
+)
+foreach ($RelativeConfigPath in $RequiredConfigFiles) {
+    $ConfigPath = Join-Path $BuiltDir $RelativeConfigPath
+    if (!(Test-Path $ConfigPath)) {
+        throw "Missing $ConfigPath. Run scripts\build-revit2020.ps1 first."
+    }
+}
+
 $xml = [xml](Get-Content $Addin -Raw)
 $assemblyNode = $xml.SelectSingleNode('//RevitAddIns/AddIn/Assembly')
 if ($null -eq $assemblyNode) { throw "Missing Assembly node in $Addin." }
