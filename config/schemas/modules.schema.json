@@ -17,7 +17,8 @@
           "repository": {"type": "string"},
           "ref": {"type": "string"},
           "manifestPath": {"type": "string"},
-          "enabled": {"type": "boolean"}
+          "enabled": {"type": "boolean"},
+          "autoUpdate": {"type": "boolean"}
         }
       }
     },

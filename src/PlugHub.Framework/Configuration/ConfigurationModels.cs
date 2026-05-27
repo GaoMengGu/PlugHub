@@ -27,6 +27,7 @@ namespace PlugHub.Framework.Configuration
         public string Ref { get; set; } = string.Empty;
         public string ManifestPath { get; set; } = string.Empty;
         public bool Enabled { get; set; }
+        public bool AutoUpdate { get; set; }
     }
 
     public sealed class ConflictPolicyConfiguration

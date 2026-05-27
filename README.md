@@ -12,7 +12,7 @@
 - 排序/组合：按 workspace、group、tag、category、order 组织功能列表。
 - 诊断：记录模块加载、跳过、冲突、失败原因，并汇总到运行时快照。
 - 单工作台：取消多视图集，使用一个 `workspace` 展示模块和功能。
-- 来源配置：支持本地文件夹和 GitHub 仓库来源的模块声明。
+- 来源配置：支持内置配置、独立模块目录、指定本地文件夹和 GitHub 仓库缓存/拉取。
 - Revit 2020 适配层：读取运行时配置，创建 `PlugHub` Ribbon tab/panel/button，Revit API 依赖隔离在最薄层。
 - 业务命令模块：`PlugHub.BuiltinModule` 已接入两个 Revit API 命令入口，按钮通过 `commandAssembly` 和 `commandType` 路由到实际 `IExternalCommand`。
 
@@ -48,11 +48,11 @@ Ribbon 中固定有一个 `框架设置` panel，点击 `设置` 可打开 Docka
 
 - 模块开关：调整模块是否启用、是否显示、显示名和模块顺序。
 - 功能按钮：调整功能是否显示、显示名、所在面板、图标路径、按钮顺序和按钮大小。
-- 模块来源：通过 `moduleSources` 声明本地文件夹或 GitHub 仓库来源。
+- 模块来源：通过 `moduleDirectories` 自动读取投放目录，通过 `moduleSources` 声明指定本地文件夹或 GitHub 仓库来源。
 
 `buttonSize` 支持 `large` 和 `small`。`large` 会作为普通大按钮渲染；`small` 会在同一 panel 内按 Revit stacked items 堆叠显示。功能位置主要由 `group` 和 `order` 决定，panel 位置由 workspace group 的 `order` 决定。
 
-设置页按模块、功能、来源和诊断分区。模块/功能开关会尽量通过运行时快照即时生效；Ribbon panel、按钮新增/删除、图标和大小调整属于 Revit 结构类变更，保存后标记为待重启生效。GitHub 来源读取本地缓存仓库；未显式配置 `path` 时默认查找 `modules\github\<repository>` 安全化后的目录。
+设置页按模块、功能、来源和诊断分区。模块/功能开关会尽量通过运行时快照即时生效；Ribbon panel、按钮新增/删除、图标和大小调整属于 Revit 结构类变更，保存后标记为待重启生效。`modules\samples` 存放独立样例和占位模块，`modules\dropins` 用于用户投放模块清单；GitHub 来源读取本地缓存仓库，启用 `autoUpdate` 后会尝试通过 git 拉取，未显式配置 `path` 时默认查找 `modules\github\<repository>` 安全化后的目录。
 
 ## 编写和加载功能
 

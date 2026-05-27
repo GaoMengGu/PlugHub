@@ -11,3 +11,6 @@ __pycache__/
 *.suo
 *.nupkg
 *.snupkg
+modules/dropins/*
+!modules/dropins/README.md
+modules/github/

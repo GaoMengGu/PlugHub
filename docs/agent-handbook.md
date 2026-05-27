@@ -53,7 +53,7 @@ Revit 启动时：
 1. `ExternalApplicationEntry.OnStartup` 定位插件目录和 `config` 目录。
 2. `FrameworkRuntime.Load` 加载运行时配置。
 3. `FrameworkConfigurationLoader` 读取 `modules.json`、`views.json`、`feature-combinations.json`。
-4. `ModuleSourceResolver` 合并内置模块、本地文件夹来源和 GitHub 来源诊断。
+4. `ModuleSourceResolver` 合并内置模块、`moduleDirectories` 自动发现清单、指定本地文件夹来源和 GitHub 缓存/拉取来源诊断。
 5. `ModuleDiscoveryService` 根据 manifest 的 `assembly` 和 `type` 做模块发现与诊断。
 6. `FeatureRegistry` 注册 enabled 且 visible 的模块功能，处理重复模块和重复 feature。
 7. `FeatureViewComposer` 按 workspace 的 include/exclude、group 和 sort 组合功能。
@@ -103,7 +103,7 @@ workspace 组合规则：
 
 ### feature-combinations.json
 
-兼容保留，可为空。V2 的主要入口治理通过 modules、moduleSources 和 workspace group 完成。
+兼容保留，可为空。V2 的主要入口治理通过 modules、moduleDirectories、moduleSources 和 workspace group 完成。
 
 ## 6. Revit 中能看到什么
 

@@ -31,13 +31,13 @@ namespace PlugHub.StaticValidation
                 ValidateSettingsPaneV21Specification();
                 ValidateRevitDeploymentConfiguration();
 
-                var modules = ReadObject("config/modules.example.json");
+                var modules = AllModules().ToList();
                 var views = ReadObject("config/views.example.json");
                 var presets = ReadObject("config/feature-combinations.example.json");
-                var featureCount = Modules(modules).SelectMany(Features).Count();
+                var featureCount = modules.SelectMany(Features).Count();
 
                 Console.WriteLine(
-                    $"passed: modules={Modules(modules).Count()}, features={featureCount}, views={Views(views).Count()}, presets={Presets(presets).Count()}");
+                    $"passed: modules={modules.Count}, features={featureCount}, views={Views(views).Count()}, presets={Presets(presets).Count()}");
                 return 0;
             }
             catch (Exception ex)
@@ -79,6 +79,8 @@ namespace PlugHub.StaticValidation
                 "config/feature-combinations.example.json",
                 "config/schemas/modules.schema.json",
                 "config/schemas/views.schema.json",
+                "modules/samples/modules.json",
+                "modules/dropins/README.md",
                 "docs/README.md",
                 "docs/agent-handbook.md",
                 "docs/module-contract.md",
@@ -123,11 +125,13 @@ namespace PlugHub.StaticValidation
             Require(StringValue(modules, "schemaVersion") == "1.0", "modules schemaVersion must be 1.0.");
             Require(StringValue(views, "defaultView") == "workspace", "default view must be workspace.");
             Require(Views(views).Count() == 1, "PlugHub must expose exactly one workspace view.");
+            Require(SequenceValue(modules, "moduleDirectories").Contains("modules/samples"), "sample modules must be loaded from an independent module directory.");
+            Require(SequenceValue(modules, "moduleDirectories").Contains("modules/dropins"), "drop-in modules directory must be configurable.");
             Require(ArrayValue(modules, "moduleSources").Count >= 2, "moduleSources must include localFolder and github examples.");
             Require(StringValue(ObjectValue(modules, "conflictPolicy"), "duplicateFeatureId") == "fail-feature", "duplicate feature policy must be fail-feature.");
 
             var seenFeatureIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var module in Modules(modules))
+            foreach (var module in AllModules())
             {
                 foreach (var requiredKey in new[] { "id", "enabled", "visible", "features" })
                 {
@@ -147,7 +151,7 @@ namespace PlugHub.StaticValidation
             var viewIds = new HashSet<string>(Views(views).Select(view => StringValue(view, "id")), StringComparer.OrdinalIgnoreCase);
             Require(viewIds.Contains(StringValue(views, "defaultView")), "defaultView must exist in views.");
 
-            var allFeatures = Modules(modules).SelectMany(Features).ToList();
+            var allFeatures = AllModules().SelectMany(Features).ToList();
             Require(allFeatures.Any(), "modules config must define at least one feature.");
             foreach (var view in Views(views))
             {
@@ -163,9 +167,8 @@ namespace PlugHub.StaticValidation
 
         private static void ValidateViewCompositionExamples()
         {
-            var modules = ReadObject("config/modules.example.json");
             var views = ReadObject("config/views.example.json");
-            var features = Modules(modules).SelectMany(Features).ToList();
+            var features = AllModules().SelectMany(Features).ToList();
             var byView = Views(views).ToDictionary(view => StringValue(view, "id"), view => FeatureIdsForView(features, view), StringComparer.OrdinalIgnoreCase);
 
             Require(byView.ContainsKey("workspace"), "workspace view is required.");
@@ -217,8 +220,13 @@ namespace PlugHub.StaticValidation
 
         private static void ValidateConfiguredSampleModuleTypes()
         {
-            var modules = ReadObject("config/modules.example.json");
-            var configuredTypes = Modules(modules)
+            var rootModules = ReadObject("config/modules.example.json");
+            Require(!Modules(rootModules).Any(module => StringValue(module, "assembly") == "PlugHub.SampleModule.dll"), "sample and placeholder modules must not live in the root PlugHub config.");
+
+            var sampleModules = ReadObject("modules/samples/modules.json");
+            Require(Modules(sampleModules).Count() == 4, "sample module manifest should expose the independent sample, hidden, and placeholder modules.");
+
+            var configuredTypes = Modules(sampleModules)
                 .Where(module => StringValue(module, "assembly") == "PlugHub.SampleModule.dll")
                 .Select(module => StringValue(module, "type").Split('.').Last())
                 .Distinct(StringComparer.OrdinalIgnoreCase);
@@ -278,11 +286,14 @@ namespace PlugHub.StaticValidation
             Require(StringValue(views, "defaultView") == "workspace", "PlugHub must use the single workspace view.");
             Require(Views(views).Count() == 1, "PlugHub must expose exactly one workspace view.");
             Require(ArrayValue(modules, "moduleSources").Count >= 2, "moduleSources must include localFolder and github examples.");
+            Require(SequenceValue(modules, "moduleDirectories").Contains("modules/samples"), "sample modules must be independent from built-in module config.");
+            Require(SequenceValue(modules, "moduleDirectories").Contains("modules/dropins"), "drop-in folder must be available for automatic module loading.");
 
             var modulesText = ReadText("config/modules.example.json");
             Require(modulesText.Contains("\"displayName\""), "modules config must support displayName.");
             Require(modulesText.Contains("\"iconPath\""), "modules config must support iconPath.");
             Require(modulesText.Contains("\"type\": \"github\""), "modules config must include a github module source example.");
+            Require(modulesText.Contains("\"autoUpdate\""), "github module source example must expose autoUpdate.");
 
             var revitText = ReadAllCSharp("src/PlugHub.Revit2020");
             Require(revitText.Contains("DockablePaneProviderData"), "settings must use a DockablePane provider.");
@@ -292,23 +303,31 @@ namespace PlugHub.StaticValidation
         private static void ValidateSettingsPaneV21Specification()
         {
             var settingsForm = ReadText("src/PlugHub.Revit2020/FrameworkSettingsForm.cs");
-            var settingsPane = ReadText("src/PlugHub.Revit2020/FrameworkSettingsPane.cs");
+            var settingsPane = ReadAllCSharp("src/PlugHub.Revit2020");
             var ribbonBuilder = ReadText("src/PlugHub.Revit2020/FeatureRibbonBuilder.cs");
             var sourceResolver = ReadText("src/PlugHub.Framework/Sources/ModuleSourceResolver.cs");
+            var configurationModels = ReadText("src/PlugHub.Framework/Configuration/ConfigurationModels.cs");
+            var revitProject = ReadText("src/PlugHub.Revit2020/PlugHub.Revit2020.csproj");
 
             Require(settingsForm.Contains("Action closeAction"), "settings form must accept a dockable close action.");
             Require(settingsForm.Contains("HandleClose"), "settings close button must not dispose the dockable pane content.");
             Require(!settingsForm.Contains("closeButton.Click += (sender, args) => Close();"), "settings close button must not directly close the hosted form.");
-            Require(settingsPane.Contains("new DockablePane(PaneId).Hide()"), "settings pane close action must hide the Revit dockable pane.");
+            Require(settingsPane.Contains("IExternalEventHandler") && settingsPane.Contains("ExternalEvent.Create"), "settings pane close action must use a Revit ExternalEvent.");
+            Require(!ReadText("src/PlugHub.Revit2020/FrameworkSettingsPane.cs").Contains("new DockablePane(PaneId).Hide();"), "settings pane must not call DockablePane.Hide directly from WinForms events.");
             Require(ribbonBuilder.Contains("LoadFeatureIcon") && ribbonBuilder.Contains("LargeImage"), "configured feature icons must be applied to Revit ribbon buttons.");
 
-            foreach (var token in new[] { "TabControl", "BuildModulesTab", "BuildFeaturesTab", "BuildSourcesTab", "BuildDiagnosticsTab", "SourceRow", "ReloadFromDisk" })
+            foreach (var token in new[] { "TabControl", "BuildModulesTab", "BuildFeaturesTab", "BuildSourcesTab", "BuildDiagnosticsTab", "SourceRow", "ReloadFromDisk", "AutoUpdate" })
             {
                 Require(settingsForm.Contains(token), "settings V2.1 UI token missing: " + token);
             }
 
+            Require(configurationModels.Contains("bool AutoUpdate"), "module source configuration must expose autoUpdate.");
+            Require(sourceResolver.Contains("AddModuleDirectoryModules"), "module directories must be scanned for drop-in module manifests.");
+            Require(sourceResolver.Contains("FindModuleManifests"), "module directory resolver must discover manifests automatically.");
+            Require(sourceResolver.Contains("UpdateGitHubCache") && sourceResolver.Contains("ProcessStartInfo"), "github module sources must support clone/fetch into a local cache.");
             Require(sourceResolver.Contains("AddGitHubModules"), "github module sources must be resolved from a local cache directory.");
             Require(sourceResolver.Contains("modules/github"), "github source resolver must use a predictable local cache folder.");
+            Require(revitProject.Contains("PlugHubModuleFiles"), "Revit build must copy independent module manifests into the deployment.");
         }
 
         private static void ValidateRevitDeploymentConfiguration()
@@ -320,7 +339,10 @@ namespace PlugHub.StaticValidation
             {
                 "config/modules.json",
                 "config/views.json",
-                "config/feature-combinations.json"
+                "config/feature-combinations.json",
+                "modules/samples/modules.json",
+                "modules/dropins/README.md",
+                "modules/samples/PlugHub.SampleModule.dll"
             };
 
             var missing = required
@@ -375,6 +397,25 @@ namespace PlugHub.StaticValidation
         private static IEnumerable<Dictionary<string, object>> Modules(Dictionary<string, object> root)
         {
             return ArrayValue(root, "modules").Cast<Dictionary<string, object>>();
+        }
+
+        private static IEnumerable<Dictionary<string, object>> AllModules()
+        {
+            foreach (var module in Modules(ReadObject("config/modules.example.json")))
+            {
+                yield return module;
+            }
+
+            var modulesDirectory = FullPath("modules");
+            if (!Directory.Exists(modulesDirectory)) yield break;
+
+            foreach (var file in Directory.GetFiles(modulesDirectory, "modules.json", SearchOption.AllDirectories))
+            {
+                foreach (var module in Modules(Json.Deserialize<Dictionary<string, object>>(File.ReadAllText(file))))
+                {
+                    yield return module;
+                }
+            }
         }
 
         private static IEnumerable<Dictionary<string, object>> Views(Dictionary<string, object> root)

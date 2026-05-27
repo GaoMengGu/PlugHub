@@ -45,6 +45,7 @@
       <Link>config\%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <PlugHubModuleFiles Include="..\..\modules\**\*.*" Exclude="..\..\modules\github\**\*.*" />
   </ItemGroup>
 
   <Target Name="EnsureRevitApiReferences" BeforeTargets="ResolveReferences">
@@ -61,5 +62,7 @@
     <Copy SourceFiles="..\..\config\modules.example.json" DestinationFiles="$(PlugHubOutputDir)\config\modules.json" />
     <Copy SourceFiles="..\..\config\views.example.json" DestinationFiles="$(PlugHubOutputDir)\config\views.json" />
     <Copy SourceFiles="..\..\config\feature-combinations.example.json" DestinationFiles="$(PlugHubOutputDir)\config\feature-combinations.json" />
+    <Copy SourceFiles="@(PlugHubModuleFiles)" DestinationFiles="@(PlugHubModuleFiles->'$(PlugHubOutputDir)\modules\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="..\PlugHub.SampleModule\bin\$(Configuration)\net48\PlugHub.SampleModule.dll" DestinationFolder="$(PlugHubOutputDir)\modules\samples" SkipUnchangedFiles="true" />
   </Target>
 </Project>

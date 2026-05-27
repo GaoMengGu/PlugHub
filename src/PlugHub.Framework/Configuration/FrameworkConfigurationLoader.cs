@@ -130,7 +130,8 @@ namespace PlugHub.Framework.Configuration
                     Repository = source.Repository,
                     Ref = source.Ref,
                     ManifestPath = source.ManifestPath,
-                    Enabled = source.Enabled
+                    Enabled = source.Enabled,
+                    AutoUpdate = source.AutoUpdate
                 }).ToList(),
                 ConflictPolicy = new ConflictPolicyConfiguration
                 {

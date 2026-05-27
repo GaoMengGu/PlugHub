@@ -295,9 +295,10 @@ namespace PlugHub.Revit2020
             _sourcesGrid.Columns.Clear();
             _sourcesGrid.Columns.Add(TextColumn(nameof(SourceRow.Id), "来源 ID", false, 18));
             _sourcesGrid.Columns.Add(CheckColumn(nameof(SourceRow.Enabled), "启用", 8));
+            _sourcesGrid.Columns.Add(CheckColumn(nameof(SourceRow.AutoUpdate), "拉取", 8));
             _sourcesGrid.Columns.Add(SourceTypeColumn());
-            _sourcesGrid.Columns.Add(TextColumn(nameof(SourceRow.Path), "文件夹/缓存", false, 22));
-            _sourcesGrid.Columns.Add(TextColumn(nameof(SourceRow.Repository), "GitHub 仓库", false, 20));
+            _sourcesGrid.Columns.Add(TextColumn(nameof(SourceRow.Path), "文件夹/缓存", false, 20));
+            _sourcesGrid.Columns.Add(TextColumn(nameof(SourceRow.Repository), "GitHub 仓库", false, 18));
             _sourcesGrid.Columns.Add(TextColumn(nameof(SourceRow.Ref), "分支", false, 10));
             _sourcesGrid.Columns.Add(TextColumn(nameof(SourceRow.ManifestPath), "清单", false, 14));
             _sourcesGrid.Columns.Add(TextColumn(nameof(SourceRow.Status), "状态", true, 18));
@@ -308,6 +309,7 @@ namespace PlugHub.Revit2020
                 {
                     Id = source.Id,
                     Enabled = source.Enabled,
+                    AutoUpdate = source.AutoUpdate,
                     Type = NormalizeSourceType(source.Type),
                     Path = source.Path,
                     Repository = source.Repository,
@@ -452,7 +454,8 @@ namespace PlugHub.Revit2020
                     Repository = row.Repository ?? string.Empty,
                     Ref = string.IsNullOrWhiteSpace(row.Ref) ? "main" : row.Ref.Trim(),
                     ManifestPath = string.IsNullOrWhiteSpace(row.ManifestPath) ? "modules.json" : row.ManifestPath.Trim(),
-                    Enabled = row.Enabled
+                    Enabled = row.Enabled,
+                    AutoUpdate = row.AutoUpdate
                 })
                 .ToList();
         }
@@ -628,6 +631,7 @@ namespace PlugHub.Revit2020
             {
                 Id = id,
                 Enabled = true,
+                AutoUpdate = normalizedType == "github",
                 Type = normalizedType,
                 Path = normalizedType == "github" ? "modules/github/" + id : "modules/" + id,
                 Repository = normalizedType == "github" ? "owner/repository" : string.Empty,
@@ -833,6 +837,7 @@ namespace PlugHub.Revit2020
         {
             public string Id { get; set; } = string.Empty;
             public bool Enabled { get; set; }
+            public bool AutoUpdate { get; set; }
             public string Type { get; set; } = "localFolder";
             public string Path { get; set; } = string.Empty;
             public string Repository { get; set; } = string.Empty;

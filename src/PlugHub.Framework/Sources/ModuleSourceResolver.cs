@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Web.Script.Serialization;
@@ -19,6 +20,11 @@ namespace PlugHub.Framework.Sources
 
             var diagnostics = new List<DiagnosticMessage>();
             var resolved = CloneModules(modules);
+
+            foreach (var moduleDirectory in modules.ModuleDirectories ?? new List<string>())
+            {
+                AddModuleDirectoryModules(baseDirectory, moduleDirectory, resolved, diagnostics);
+            }
 
             foreach (var source in modules.ModuleSources ?? new List<ModuleSourceConfiguration>())
             {
@@ -54,9 +60,37 @@ namespace PlugHub.Framework.Sources
             AddModulesFromManifest(source, sourceDirectory, resolved, diagnostics);
         }
 
+        private void AddModuleDirectoryModules(string baseDirectory, string moduleDirectory, ModulesConfiguration resolved, ICollection<DiagnosticMessage> diagnostics)
+        {
+            var sourceDirectory = ResolvePath(baseDirectory, moduleDirectory);
+            if (!Directory.Exists(sourceDirectory))
+            {
+                AddSourceDiagnostic(diagnostics, moduleDirectory, "PH-SOURCE-MISSING", "Module directory was not found: " + sourceDirectory);
+                return;
+            }
+
+            foreach (var manifestPath in FindModuleManifests(sourceDirectory))
+            {
+                var source = new ModuleSourceConfiguration
+                {
+                    Id = "directory:" + Path.GetFileName(Path.GetDirectoryName(manifestPath) ?? sourceDirectory),
+                    Type = "localFolder",
+                    Path = Path.GetDirectoryName(manifestPath) ?? sourceDirectory,
+                    ManifestPath = Path.GetFileName(manifestPath),
+                    Enabled = true
+                };
+                AddModulesFromManifest(source, Path.GetDirectoryName(manifestPath) ?? sourceDirectory, resolved, diagnostics);
+            }
+        }
+
         private void AddGitHubModules(string baseDirectory, ModuleSourceConfiguration source, ModulesConfiguration resolved, ICollection<DiagnosticMessage> diagnostics)
         {
             var sourceDirectory = ResolveGitHubCachePath(baseDirectory, source);
+            if (source.AutoUpdate)
+            {
+                UpdateGitHubCache(source, sourceDirectory, diagnostics);
+            }
+
             if (!Directory.Exists(sourceDirectory))
             {
                 AddSourceDiagnostic(diagnostics, source.Id, "PH-SOURCE-MISSING", "GitHub module source cache was not found: " + sourceDirectory);
@@ -64,6 +98,22 @@ namespace PlugHub.Framework.Sources
             }
 
             AddModulesFromManifest(source, sourceDirectory, resolved, diagnostics);
+        }
+
+        private static IEnumerable<string> FindModuleManifests(string sourceDirectory)
+        {
+            var rootManifest = Path.Combine(sourceDirectory, "modules.json");
+            if (File.Exists(rootManifest))
+            {
+                yield return rootManifest;
+            }
+
+            foreach (var manifest in Directory.GetFiles(sourceDirectory, "modules.json", SearchOption.AllDirectories)
+                         .Where(path => !string.Equals(path, rootManifest, StringComparison.OrdinalIgnoreCase))
+                         .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+            {
+                yield return manifest;
+            }
         }
 
         private void AddModulesFromManifest(ModuleSourceConfiguration source, string sourceDirectory, ModulesConfiguration resolved, ICollection<DiagnosticMessage> diagnostics)
@@ -102,6 +152,78 @@ namespace PlugHub.Framework.Sources
             return Path.Combine(baseDirectory, "modules/github", SafePathSegment(repository));
         }
 
+        private static void UpdateGitHubCache(ModuleSourceConfiguration source, string sourceDirectory, ICollection<DiagnosticMessage> diagnostics)
+        {
+            if (string.IsNullOrWhiteSpace(source.Repository))
+            {
+                AddSourceDiagnostic(diagnostics, source.Id, "PH-SOURCE-GIT", "GitHub module source requires repository when autoUpdate is enabled.");
+                return;
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(sourceDirectory) ?? sourceDirectory);
+            var repositoryUrl = source.Repository.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+                ? source.Repository
+                : "https://github.com/" + source.Repository.Trim().TrimEnd('/') + ".git";
+            var gitRef = string.IsNullOrWhiteSpace(source.Ref) ? "main" : source.Ref.Trim();
+
+            if (!Directory.Exists(Path.Combine(sourceDirectory, ".git")))
+            {
+                RunGit("clone --depth 1 --branch " + Quote(gitRef) + " " + Quote(repositoryUrl) + " " + Quote(sourceDirectory), source.Id, diagnostics);
+                return;
+            }
+
+            RunGit("-C " + Quote(sourceDirectory) + " fetch --all --prune", source.Id, diagnostics);
+            RunGit("-C " + Quote(sourceDirectory) + " checkout " + Quote(gitRef), source.Id, diagnostics);
+            RunGit("-C " + Quote(sourceDirectory) + " pull --ff-only", source.Id, diagnostics);
+        }
+
+        private static void RunGit(string arguments, string sourceId, ICollection<DiagnosticMessage> diagnostics)
+        {
+            try
+            {
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = "git",
+                    Arguments = arguments,
+                    CreateNoWindow = true,
+                    UseShellExecute = false,
+                    RedirectStandardError = true,
+                    RedirectStandardOutput = true
+                };
+
+                using (var process = Process.Start(startInfo))
+                {
+                    if (process == null)
+                    {
+                        AddSourceDiagnostic(diagnostics, sourceId, "PH-SOURCE-GIT", "Could not start git process.");
+                        return;
+                    }
+
+                    if (!process.WaitForExit(30000))
+                    {
+                        try { process.Kill(); } catch (Exception) { }
+                        AddSourceDiagnostic(diagnostics, sourceId, "PH-SOURCE-GIT", "Git operation timed out.");
+                        return;
+                    }
+
+                    if (process.ExitCode != 0)
+                    {
+                        var error = process.StandardError.ReadToEnd();
+                        AddSourceDiagnostic(diagnostics, sourceId, "PH-SOURCE-GIT", string.IsNullOrWhiteSpace(error) ? "Git operation failed." : error.Trim());
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                AddSourceDiagnostic(diagnostics, sourceId, "PH-SOURCE-GIT", ex.Message);
+            }
+        }
+
+        private static string Quote(string value)
+        {
+            return "\"" + (value ?? string.Empty).Replace("\"", "\\\"") + "\"";
+        }
+
         private static string SafePathSegment(string value)
         {
             var chars = (value ?? string.Empty)
@@ -125,7 +247,8 @@ namespace PlugHub.Framework.Sources
                     Repository = source.Repository,
                     Ref = source.Ref,
                     ManifestPath = source.ManifestPath,
-                    Enabled = source.Enabled
+                    Enabled = source.Enabled,
+                    AutoUpdate = source.AutoUpdate
                 }).ToList(),
                 ConflictPolicy = modules.ConflictPolicy ?? new ConflictPolicyConfiguration(),
                 Modules = new List<ModuleConfiguration>(modules.Modules ?? new List<ModuleConfiguration>())
