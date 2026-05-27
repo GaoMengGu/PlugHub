@@ -323,6 +323,8 @@ namespace PlugHub.StaticValidation
             Require(settingsCommand.Contains("FrameworkSettingsWindow") && settingsCommand.Contains("ShowDialog"), "settings ribbon command must open the WPF settings dialog.");
             Require(!settingsCommand.Contains("GetDockablePane") && !settingsCommand.Contains("pane.Hide") && !settingsCommand.Contains("pane.Show"), "settings command must not toggle a DockablePane.");
             Require(refreshCommand.Contains("FrameworkRuntimeState.Refresh") && refreshCommand.Contains("FrameworkStatusWindow"), "runtime refresh must be an explicit Ribbon command with WPF feedback.");
+            Require(refreshCommand.Contains("ShowRefreshResult") && !refreshCommand.Contains("BuildRuntimeSummary"), "refresh command must show a focused refresh result instead of repeating runtime status.");
+            Require(featureCommand.Contains("ShowRuntimeStatus"), "status command must use the focused runtime status view.");
             Require(featureCommand.Contains("FrameworkStatusWindow") && !featureCommand.Contains("TaskDialog.Show"), "framework status and placeholder feature feedback must use WPF.");
             Require(ribbonBuilder.Contains("LoadFeatureIcon") && ribbonBuilder.Contains("LargeImage"), "configured feature icons must be applied to Revit ribbon buttons.");
             Require(ribbonBuilder.Contains("FrameworkSettingsCommand") && ribbonBuilder.Contains("FrameworkRefreshCommand") && ribbonBuilder.Contains("FrameworkFeatureCommand"), "framework Ribbon panel must expose settings, refresh, and status commands.");
@@ -338,6 +340,10 @@ namespace PlugHub.StaticValidation
             }
 
             Require(statusWindow.Contains("class FrameworkStatusWindow") && statusWindow.Contains(": Window"), "status and feature fallback UI must use a WPF status window.");
+            foreach (var token in new[] { "ShowRefreshResult", "ShowRuntimeStatus", "ShowDiagnostics", "showDiagnostics" })
+            {
+                Require(statusWindow.Contains(token), "status window must separate refresh, status, and diagnostics concerns: " + token);
+            }
             Require(configurationModels.Contains("bool AutoUpdate"), "module source configuration must expose autoUpdate.");
             Require(sourceResolver.Contains("AddModuleDirectoryModules"), "module directories must be scanned for drop-in module manifests.");
             Require(sourceResolver.Contains("FindModuleManifests"), "module directory resolver must discover manifests automatically.");

@@ -22,7 +22,7 @@ namespace PlugHub.Revit2020
             }
 
             var snapshot = FrameworkRuntimeState.Current;
-            FrameworkStatusWindow.ShowDialog("PlugHub 框架状态", FrameworkStatusWindow.BuildRuntimeSummary(snapshot), snapshot?.Diagnostics ?? Array.Empty<DiagnosticMessage>());
+            FrameworkStatusWindow.ShowRuntimeStatus(snapshot);
             return Result.Succeeded;
         }
 
@@ -32,7 +32,7 @@ namespace PlugHub.Revit2020
             if (!decision.Allowed)
             {
                 message = decision.Message;
-                FrameworkStatusWindow.ShowDialog(
+                FrameworkStatusWindow.ShowDiagnostics(
                     "PlugHub 功能已禁用",
                     decision.Message,
                     new[]
@@ -53,7 +53,7 @@ namespace PlugHub.Revit2020
                 string.Equals(item.Id, decision.FeatureId, StringComparison.OrdinalIgnoreCase));
             if (feature == null || string.IsNullOrWhiteSpace(feature.CommandType))
             {
-                FrameworkStatusWindow.ShowDialog("PlugHub 功能状态", FrameworkStatusWindow.BuildRuntimeSummary(snapshot), snapshot?.Diagnostics ?? Array.Empty<DiagnosticMessage>());
+                FrameworkStatusWindow.ShowRuntimeStatus(snapshot);
                 return Result.Succeeded;
             }
 
@@ -61,7 +61,7 @@ namespace PlugHub.Revit2020
             if (!File.Exists(assemblyPath))
             {
                 message = "Command assembly was not found: " + assemblyPath;
-                FrameworkStatusWindow.ShowDialog(
+                FrameworkStatusWindow.ShowDiagnostics(
                     "PlugHub 功能执行失败",
                     message,
                     new[]
@@ -81,7 +81,7 @@ namespace PlugHub.Revit2020
             if (commandType == null || !typeof(IExternalCommand).IsAssignableFrom(commandType))
             {
                 message = "Command type was not found or does not implement IExternalCommand: " + feature.CommandType;
-                FrameworkStatusWindow.ShowDialog(
+                FrameworkStatusWindow.ShowDiagnostics(
                     "PlugHub 功能执行失败",
                     message,
                     new[]

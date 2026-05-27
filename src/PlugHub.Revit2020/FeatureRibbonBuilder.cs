@@ -67,8 +67,8 @@ namespace PlugHub.Revit2020
                 "PlugHub_Framework_Status",
                 "状态",
                 typeof(FrameworkFeatureCommand),
-                "查看 PlugHub 框架状态和诊断。",
-                "以 WPF 窗口显示当前工作台、模块、功能和诊断信息。");
+                "查看 PlugHub 框架运行状态。",
+                "以 WPF 窗口显示当前工作台、模块、功能和诊断数量。诊断明细请在设置窗口的诊断页查看。");
         }
 
         private void AddFrameworkButton(RibbonPanel panel, string buttonName, string text, Type commandType, string tooltip, string longDescription)
@@ -175,18 +175,6 @@ namespace PlugHub.Revit2020
             }
 
             panel.AddStackedItems(filtered[0], filtered[1], filtered[2]);
-        }
-
-        private void AddStatusButton(RibbonPanel panel, string tooltip)
-        {
-            var data = new PushButtonData(
-                "PlugHub_Framework_Status",
-                "PlugHub",
-                _assemblyPath,
-                typeof(FrameworkFeatureCommand).FullName);
-
-            data.ToolTip = tooltip;
-            panel.AddItem(data);
         }
 
         private static void EnsureRibbonTab(UIControlledApplication application, string tabName)

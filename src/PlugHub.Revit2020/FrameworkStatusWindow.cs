@@ -12,19 +12,23 @@ namespace PlugHub.Revit2020
 {
     internal sealed class FrameworkStatusWindow : Window
     {
-        public FrameworkStatusWindow(string title, string summary, IEnumerable<DiagnosticMessage> diagnostics)
+        public FrameworkStatusWindow(string title, string summary, IEnumerable<DiagnosticMessage> diagnostics, bool showDiagnostics)
         {
             Title = string.IsNullOrWhiteSpace(title) ? "PlugHub 状态" : title;
             Width = 760;
-            Height = 560;
+            Height = showDiagnostics ? 560 : 340;
             MinWidth = 620;
-            MinHeight = 420;
+            MinHeight = showDiagnostics ? 420 : 260;
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
             Background = new SolidColorBrush(Color.FromRgb(247, 249, 252));
 
             var root = new Grid { Margin = new Thickness(16) };
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            if (showDiagnostics)
+            {
+                root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            }
+
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
             var header = new StackPanel { Margin = new Thickness(0, 0, 0, 12) };
@@ -46,26 +50,31 @@ namespace PlugHub.Revit2020
             Grid.SetRow(header, 0);
             root.Children.Add(header);
 
-            var diagnosticsGrid = new DataGrid
+            var buttonRow = 1;
+            if (showDiagnostics)
             {
-                AutoGenerateColumns = false,
-                CanUserAddRows = false,
-                CanUserDeleteRows = false,
-                IsReadOnly = true,
-                HeadersVisibility = DataGridHeadersVisibility.Column,
-                GridLinesVisibility = DataGridGridLinesVisibility.Horizontal,
-                Background = Brushes.White,
-                BorderBrush = new SolidColorBrush(Color.FromRgb(220, 226, 234)),
-                RowHeight = 30,
-                AlternatingRowBackground = new SolidColorBrush(Color.FromRgb(250, 252, 255)),
-                ItemsSource = BuildDiagnosticRows(diagnostics)
-            };
-            diagnosticsGrid.Columns.Add(TextColumn(nameof(DiagnosticRow.Severity), "级别", 90));
-            diagnosticsGrid.Columns.Add(TextColumn(nameof(DiagnosticRow.Code), "代码", 130));
-            diagnosticsGrid.Columns.Add(TextColumn(nameof(DiagnosticRow.Scope), "对象", 170));
-            diagnosticsGrid.Columns.Add(TextColumn(nameof(DiagnosticRow.Message), "消息", 1, true));
-            Grid.SetRow(diagnosticsGrid, 1);
-            root.Children.Add(diagnosticsGrid);
+                var diagnosticsGrid = new DataGrid
+                {
+                    AutoGenerateColumns = false,
+                    CanUserAddRows = false,
+                    CanUserDeleteRows = false,
+                    IsReadOnly = true,
+                    HeadersVisibility = DataGridHeadersVisibility.Column,
+                    GridLinesVisibility = DataGridGridLinesVisibility.Horizontal,
+                    Background = Brushes.White,
+                    BorderBrush = new SolidColorBrush(Color.FromRgb(220, 226, 234)),
+                    RowHeight = 30,
+                    AlternatingRowBackground = new SolidColorBrush(Color.FromRgb(250, 252, 255)),
+                    ItemsSource = BuildDiagnosticRows(diagnostics)
+                };
+                diagnosticsGrid.Columns.Add(TextColumn(nameof(DiagnosticRow.Severity), "级别", 90));
+                diagnosticsGrid.Columns.Add(TextColumn(nameof(DiagnosticRow.Code), "代码", 130));
+                diagnosticsGrid.Columns.Add(TextColumn(nameof(DiagnosticRow.Scope), "对象", 170));
+                diagnosticsGrid.Columns.Add(TextColumn(nameof(DiagnosticRow.Message), "消息", 1, true));
+                Grid.SetRow(diagnosticsGrid, 1);
+                root.Children.Add(diagnosticsGrid);
+                buttonRow = 2;
+            }
 
             var closeButton = new Button
             {
@@ -76,7 +85,7 @@ namespace PlugHub.Revit2020
                 Margin = new Thickness(0, 12, 0, 0)
             };
             closeButton.Click += (sender, args) => Close();
-            Grid.SetRow(closeButton, 2);
+            Grid.SetRow(closeButton, buttonRow);
             root.Children.Add(closeButton);
 
             Content = root;
@@ -84,10 +93,36 @@ namespace PlugHub.Revit2020
 
         public static void ShowDialog(string title, string summary, IEnumerable<DiagnosticMessage> diagnostics)
         {
-            RevitWindowOwner.ShowDialog(new FrameworkStatusWindow(title, summary, diagnostics));
+            ShowDiagnostics(title, summary, diagnostics);
         }
 
-        public static string BuildRuntimeSummary(FrameworkRuntimeSnapshot? snapshot)
+        public static void ShowRefreshResult(FrameworkRuntimeSnapshot snapshot)
+        {
+            if (snapshot == null) throw new ArgumentNullException(nameof(snapshot));
+
+            var diagnostics = snapshot.Diagnostics ?? Array.Empty<DiagnosticMessage>();
+            var summary =
+                "刷新完成。\n\n" +
+                "已重新读取配置、模块来源和执行拦截状态。\n" +
+                "模块数: " + snapshot.Configuration.EffectiveModules.Modules.Count + "\n" +
+                "工作台功能数: " + snapshot.Composition.Features.Count + "\n" +
+                "诊断消息: " + diagnostics.Count + "\n\n" +
+                "Ribbon 布局、图标和按钮大小仍需重启 Revit 重绘。";
+
+            RevitWindowOwner.ShowDialog(new FrameworkStatusWindow("PlugHub 刷新配置", summary, diagnostics, diagnostics.Any()));
+        }
+
+        public static void ShowRuntimeStatus(FrameworkRuntimeSnapshot? snapshot)
+        {
+            RevitWindowOwner.ShowDialog(new FrameworkStatusWindow("PlugHub 状态", BuildRuntimeStatus(snapshot), Array.Empty<DiagnosticMessage>(), false));
+        }
+
+        public static void ShowDiagnostics(string title, string summary, IEnumerable<DiagnosticMessage> diagnostics)
+        {
+            RevitWindowOwner.ShowDialog(new FrameworkStatusWindow(title, summary, diagnostics, true));
+        }
+
+        public static string BuildRuntimeStatus(FrameworkRuntimeSnapshot? snapshot)
         {
             if (snapshot == null)
             {
@@ -104,7 +139,7 @@ namespace PlugHub.Revit2020
                 "Modules: " + snapshot.Configuration.EffectiveModules.Modules.Count + "\n" +
                 "Features in workspace: " + snapshot.Composition.Features.Count + "\n" +
                 "Diagnostics: " + snapshot.Diagnostics.Count + "\n\n" +
-                "模块/功能开关可通过 Ribbon 的「刷新配置」热重载到运行时；Ribbon 结构、图标和按钮大小变更仍需重启 Revit 重绘。";
+                "需要查看明细时，请打开设置窗口的「诊断」页。";
         }
 
         private static DataGridTextColumn TextColumn(string propertyName, string header, double width, bool star = false)

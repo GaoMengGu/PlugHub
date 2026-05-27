@@ -16,7 +16,7 @@ namespace PlugHub.Revit2020
             var configDirectory = FrameworkRuntimeState.ConfigDirectory;
             if (string.IsNullOrWhiteSpace(configDirectory))
             {
-                FrameworkStatusWindow.ShowDialog(
+                FrameworkStatusWindow.ShowDiagnostics(
                     "PlugHub 设置",
                     "未找到运行时配置目录，请确认框架已正常启动。",
                     new[]
@@ -41,7 +41,7 @@ namespace PlugHub.Revit2020
             catch (Exception ex)
             {
                 message = ex.Message;
-                FrameworkStatusWindow.ShowDialog(
+                FrameworkStatusWindow.ShowDiagnostics(
                     "PlugHub 设置",
                     "打开设置失败：" + ex.Message,
                     new[]
