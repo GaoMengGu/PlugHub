@@ -3,6 +3,7 @@ obj/
 dist/
 .vs/
 .superpowers/
+docs/superpowers/
 TestResults/
 .pytest_cache/
 __pycache__/
