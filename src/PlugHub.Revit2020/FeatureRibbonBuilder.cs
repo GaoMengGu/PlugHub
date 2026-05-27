@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using Autodesk.Revit.UI;
 using PlugHub.Framework.Composition;
 using PlugHub.Framework.Configuration;
@@ -110,6 +112,13 @@ namespace PlugHub.Revit2020
 
             data.ToolTip = BuildToolTip(feature);
             data.LongDescription = feature.Description;
+            var icon = LoadFeatureIcon(feature.IconPath);
+            if (icon != null)
+            {
+                data.Image = icon;
+                data.LargeImage = icon;
+            }
+
             return data;
         }
 
@@ -257,6 +266,31 @@ namespace PlugHub.Revit2020
             return Path.IsPathRooted(configuredAssembly)
                 ? configuredAssembly
                 : Path.GetFullPath(Path.Combine(_baseDirectory, configuredAssembly));
+        }
+
+        private ImageSource? LoadFeatureIcon(string iconPath)
+        {
+            if (string.IsNullOrWhiteSpace(iconPath)) return null;
+
+            var resolvedPath = Path.IsPathRooted(iconPath)
+                ? iconPath
+                : Path.GetFullPath(Path.Combine(_baseDirectory, iconPath));
+            if (!File.Exists(resolvedPath)) return null;
+
+            try
+            {
+                var image = new BitmapImage();
+                image.BeginInit();
+                image.CacheOption = BitmapCacheOption.OnLoad;
+                image.UriSource = new Uri(resolvedPath, UriKind.Absolute);
+                image.EndInit();
+                image.Freeze();
+                return image;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
         }
 
         private sealed class CommandTarget

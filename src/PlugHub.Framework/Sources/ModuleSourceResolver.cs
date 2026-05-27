@@ -32,7 +32,7 @@ namespace PlugHub.Framework.Sources
 
                 if (string.Equals(source.Type, "github", StringComparison.OrdinalIgnoreCase))
                 {
-                    AddSourceDiagnostic(diagnostics, source.Id, "PH-SOURCE-MISSING", "GitHub module source requires a local cache/update step before modules can be loaded.");
+                    AddGitHubModules(baseDirectory, source, resolved, diagnostics);
                     continue;
                 }
 
@@ -51,6 +51,23 @@ namespace PlugHub.Framework.Sources
                 return;
             }
 
+            AddModulesFromManifest(source, sourceDirectory, resolved, diagnostics);
+        }
+
+        private void AddGitHubModules(string baseDirectory, ModuleSourceConfiguration source, ModulesConfiguration resolved, ICollection<DiagnosticMessage> diagnostics)
+        {
+            var sourceDirectory = ResolveGitHubCachePath(baseDirectory, source);
+            if (!Directory.Exists(sourceDirectory))
+            {
+                AddSourceDiagnostic(diagnostics, source.Id, "PH-SOURCE-MISSING", "GitHub module source cache was not found: " + sourceDirectory);
+                return;
+            }
+
+            AddModulesFromManifest(source, sourceDirectory, resolved, diagnostics);
+        }
+
+        private void AddModulesFromManifest(ModuleSourceConfiguration source, string sourceDirectory, ModulesConfiguration resolved, ICollection<DiagnosticMessage> diagnostics)
+        {
             var manifestPath = Path.Combine(sourceDirectory, string.IsNullOrWhiteSpace(source.ManifestPath) ? "modules.json" : source.ManifestPath);
             if (!File.Exists(manifestPath))
             {
@@ -72,6 +89,26 @@ namespace PlugHub.Framework.Sources
             {
                 AddSourceDiagnostic(diagnostics, source.Id, "PH-SOURCE-MANIFEST", ex.Message);
             }
+        }
+
+        private static string ResolveGitHubCachePath(string baseDirectory, ModuleSourceConfiguration source)
+        {
+            if (!string.IsNullOrWhiteSpace(source.Path))
+            {
+                return ResolvePath(baseDirectory, source.Path);
+            }
+
+            var repository = string.IsNullOrWhiteSpace(source.Repository) ? source.Id : source.Repository;
+            return Path.Combine(baseDirectory, "modules/github", SafePathSegment(repository));
+        }
+
+        private static string SafePathSegment(string value)
+        {
+            var chars = (value ?? string.Empty)
+                .Select(ch => char.IsLetterOrDigit(ch) || ch == '-' || ch == '_' || ch == '.' ? ch : '_')
+                .ToArray();
+            var segment = new string(chars).Trim('_');
+            return string.IsNullOrWhiteSpace(segment) ? "github-source" : segment;
         }
 
         private static ModulesConfiguration CloneModules(ModulesConfiguration modules)

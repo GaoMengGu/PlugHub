@@ -18,7 +18,21 @@ namespace PlugHub.Revit2020
         public void SetupDockablePane(DockablePaneProviderData data)
         {
             var configuration = FrameworkConfigurationLoader.LoadFromDirectory(_configDirectory);
-            var form = new FrameworkSettingsForm(_configDirectory, configuration)
+            FrameworkSettingsForm? form = null;
+
+            void HideSettingsPane()
+            {
+                try
+                {
+                    new DockablePane(PaneId).Hide();
+                }
+                catch (Exception)
+                {
+                    form?.Hide();
+                }
+            }
+
+            form = new FrameworkSettingsForm(_configDirectory, configuration, HideSettingsPane)
             {
                 TopLevel = false,
                 FormBorderStyle = System.Windows.Forms.FormBorderStyle.None,

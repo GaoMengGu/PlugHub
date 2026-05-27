@@ -14,6 +14,7 @@
       "type": "github",
       "repository": "GaoMengGu/PlugHubModules",
       "ref": "main",
+      "path": "modules/github/GaoMengGu_PlugHubModules",
       "manifestPath": "plughub.modules.json",
       "enabled": false
     }

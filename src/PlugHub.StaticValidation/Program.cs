@@ -28,6 +28,7 @@ namespace PlugHub.StaticValidation
                 ValidateConfiguredSampleModuleTypes();
                 ValidateConfiguredBuiltinModuleTypes();
                 ValidatePlugHubV2Specification();
+                ValidateSettingsPaneV21Specification();
                 ValidateRevitDeploymentConfiguration();
 
                 var modules = ReadObject("config/modules.example.json");
@@ -286,6 +287,28 @@ namespace PlugHub.StaticValidation
             var revitText = ReadAllCSharp("src/PlugHub.Revit2020");
             Require(revitText.Contains("DockablePaneProviderData"), "settings must use a DockablePane provider.");
             Require(revitText.Contains("FeatureExecutionGate"), "feature execution must be gated by latest runtime configuration.");
+        }
+
+        private static void ValidateSettingsPaneV21Specification()
+        {
+            var settingsForm = ReadText("src/PlugHub.Revit2020/FrameworkSettingsForm.cs");
+            var settingsPane = ReadText("src/PlugHub.Revit2020/FrameworkSettingsPane.cs");
+            var ribbonBuilder = ReadText("src/PlugHub.Revit2020/FeatureRibbonBuilder.cs");
+            var sourceResolver = ReadText("src/PlugHub.Framework/Sources/ModuleSourceResolver.cs");
+
+            Require(settingsForm.Contains("Action closeAction"), "settings form must accept a dockable close action.");
+            Require(settingsForm.Contains("HandleClose"), "settings close button must not dispose the dockable pane content.");
+            Require(!settingsForm.Contains("closeButton.Click += (sender, args) => Close();"), "settings close button must not directly close the hosted form.");
+            Require(settingsPane.Contains("new DockablePane(PaneId).Hide()"), "settings pane close action must hide the Revit dockable pane.");
+            Require(ribbonBuilder.Contains("LoadFeatureIcon") && ribbonBuilder.Contains("LargeImage"), "configured feature icons must be applied to Revit ribbon buttons.");
+
+            foreach (var token in new[] { "TabControl", "BuildModulesTab", "BuildFeaturesTab", "BuildSourcesTab", "BuildDiagnosticsTab", "SourceRow", "ReloadFromDisk" })
+            {
+                Require(settingsForm.Contains(token), "settings V2.1 UI token missing: " + token);
+            }
+
+            Require(sourceResolver.Contains("AddGitHubModules"), "github module sources must be resolved from a local cache directory.");
+            Require(sourceResolver.Contains("modules/github"), "github source resolver must use a predictable local cache folder.");
         }
 
         private static void ValidateRevitDeploymentConfiguration()

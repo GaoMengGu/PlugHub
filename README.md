@@ -52,7 +52,7 @@ Ribbon 中固定有一个 `框架设置` panel，点击 `设置` 可打开 Docka
 
 `buttonSize` 支持 `large` 和 `small`。`large` 会作为普通大按钮渲染；`small` 会在同一 panel 内按 Revit stacked items 堆叠显示。功能位置主要由 `group` 和 `order` 决定，panel 位置由 workspace group 的 `order` 决定。
 
-模块/功能开关会尽量通过运行时快照即时生效；Ribbon panel、按钮新增/删除、图标和大小调整属于 Revit 结构类变更，保存后标记为待重启生效。
+设置页按模块、功能、来源和诊断分区。模块/功能开关会尽量通过运行时快照即时生效；Ribbon panel、按钮新增/删除、图标和大小调整属于 Revit 结构类变更，保存后标记为待重启生效。GitHub 来源读取本地缓存仓库；未显式配置 `path` 时默认查找 `modules\github\<repository>` 安全化后的目录。
 
 ## 编写和加载功能
 
