@@ -115,7 +115,7 @@ workspace 组合规则：
 
 ## 7. 可视化设置能力
 
-`PlugHub.Revit2020` 中的 `FrameworkSettingsCommand` 打开 DockablePane 设置页。设计人员可以调整：
+`PlugHub.Revit2020` 中的 `FrameworkSettingsCommand` 负责显示/收起 DockablePane 设置页。设置页内部不关闭宿主 Pane，避免 modeless UI 事件里触碰 Revit Pane 生命周期。设计人员可以调整：
 
 - 模块开关：调整模块是否启用、是否显示、显示名和模块顺序。
 - 功能按钮：调整功能是否显示、显示名、所在面板、图标路径、按钮顺序和按钮大小。

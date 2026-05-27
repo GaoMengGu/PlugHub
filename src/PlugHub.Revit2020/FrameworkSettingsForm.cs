@@ -13,7 +13,6 @@ namespace PlugHub.Revit2020
     internal sealed class FrameworkSettingsForm : Form
     {
         private readonly string _configDirectory;
-        private readonly Action? _closeAction;
         private FrameworkConfiguration _configuration;
         private readonly DataGridView _modulesGrid = new DataGridView();
         private readonly DataGridView _featuresGrid = new DataGridView();
@@ -24,11 +23,10 @@ namespace PlugHub.Revit2020
         private readonly JavaScriptSerializer _serializer = new JavaScriptSerializer { MaxJsonLength = int.MaxValue, RecursionLimit = 128 };
         private int _dragSourceRowIndex = -1;
 
-        public FrameworkSettingsForm(string configDirectory, FrameworkConfiguration configuration, Action closeAction = null!)
+        public FrameworkSettingsForm(string configDirectory, FrameworkConfiguration configuration)
         {
             _configDirectory = configDirectory ?? throw new ArgumentNullException(nameof(configDirectory));
             _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
-            _closeAction = closeAction;
 
             Text = "PlugHub 设置";
             Width = 980;
@@ -40,18 +38,6 @@ namespace PlugHub.Revit2020
 
             BuildLayout();
             LoadRows();
-        }
-
-        protected override void OnFormClosing(FormClosingEventArgs e)
-        {
-            if (_closeAction != null && e.CloseReason == CloseReason.UserClosing)
-            {
-                e.Cancel = true;
-                HandleClose();
-                return;
-            }
-
-            base.OnFormClosing(e);
         }
 
         private void BuildLayout()
@@ -170,9 +156,6 @@ namespace PlugHub.Revit2020
                 BackColor = BackColor
             };
 
-            var closeButton = CreateButton("关闭");
-            closeButton.Click += (sender, args) => HandleClose();
-
             var saveButton = CreateButton("保存并刷新");
             saveButton.Width = 112;
             saveButton.Click += (sender, args) => Save();
@@ -181,7 +164,6 @@ namespace PlugHub.Revit2020
             reloadButton.Width = 104;
             reloadButton.Click += (sender, args) => ReloadFromDisk();
 
-            buttons.Controls.Add(closeButton);
             buttons.Controls.Add(saveButton);
             buttons.Controls.Add(reloadButton);
             return buttons;
@@ -229,7 +211,7 @@ namespace PlugHub.Revit2020
             LoadFeatureRows();
             LoadSourceRows();
             LoadDiagnosticRows(FrameworkRuntimeState.Current);
-            RefreshStatus("已加载配置。开关保存后即时刷新；Ribbon 外观变更需重启 Revit 重绘。");
+            RefreshStatus("已加载配置。再次点击 Ribbon 设置或使用 Revit 面板标题栏可收起此面板。");
         }
 
         private void LoadModuleRows()
@@ -397,17 +379,6 @@ namespace PlugHub.Revit2020
                 RefreshStatus("重新加载失败：" + ex.Message);
                 MessageBox.Show(this, ex.Message, "PlugHub 设置", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
-        }
-
-        private void HandleClose()
-        {
-            if (_closeAction != null)
-            {
-                _closeAction();
-                return;
-            }
-
-            Close();
         }
 
         private void ApplyModuleRows()

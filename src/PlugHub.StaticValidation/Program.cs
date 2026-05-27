@@ -309,11 +309,12 @@ namespace PlugHub.StaticValidation
             var configurationModels = ReadText("src/PlugHub.Framework/Configuration/ConfigurationModels.cs");
             var revitProject = ReadText("src/PlugHub.Revit2020/PlugHub.Revit2020.csproj");
 
-            Require(settingsForm.Contains("Action closeAction"), "settings form must accept a dockable close action.");
-            Require(settingsForm.Contains("HandleClose"), "settings close button must not dispose the dockable pane content.");
+            Require(!settingsForm.Contains("Action closeAction"), "settings form must not own dockable pane close actions.");
+            Require(!settingsForm.Contains("HandleClose"), "settings form must not close or hide its host dockable pane.");
+            Require(!settingsForm.Contains("Text = \"关闭\""), "settings form must not expose an in-pane close button.");
             Require(!settingsForm.Contains("closeButton.Click += (sender, args) => Close();"), "settings close button must not directly close the hosted form.");
-            Require(settingsPane.Contains("IExternalEventHandler") && settingsPane.Contains("ExternalEvent.Create"), "settings pane close action must use a Revit ExternalEvent.");
-            Require(!ReadText("src/PlugHub.Revit2020/FrameworkSettingsPane.cs").Contains("new DockablePane(PaneId).Hide();"), "settings pane must not call DockablePane.Hide directly from WinForms events.");
+            Require(!settingsPane.Contains("IExternalEventHandler") && !settingsPane.Contains("ExternalEvent.Create"), "settings pane must not hide itself through in-pane external events.");
+            Require(ReadText("src/PlugHub.Revit2020/FrameworkSettingsCommand.cs").Contains("pane.IsShown()") && ReadText("src/PlugHub.Revit2020/FrameworkSettingsCommand.cs").Contains("pane.Hide()"), "settings ribbon command must toggle the dockable pane from a Revit command context.");
             Require(ribbonBuilder.Contains("LoadFeatureIcon") && ribbonBuilder.Contains("LargeImage"), "configured feature icons must be applied to Revit ribbon buttons.");
 
             foreach (var token in new[] { "TabControl", "BuildModulesTab", "BuildFeaturesTab", "BuildSourcesTab", "BuildDiagnosticsTab", "SourceRow", "ReloadFromDisk", "AutoUpdate" })

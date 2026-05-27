@@ -28,7 +28,15 @@ namespace PlugHub.Revit2020
                     var pane = commandData.Application.GetDockablePane(FrameworkSettingsPane.PaneId);
                     if (pane != null)
                     {
-                        pane.Show();
+                        if (pane.IsShown())
+                        {
+                            pane.Hide();
+                        }
+                        else
+                        {
+                            pane.Show();
+                        }
+
                         return Result.Succeeded;
                     }
                 }

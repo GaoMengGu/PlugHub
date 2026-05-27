@@ -18,21 +18,8 @@ namespace PlugHub.Revit2020
         public void SetupDockablePane(DockablePaneProviderData data)
         {
             var configuration = FrameworkConfigurationLoader.LoadFromDirectory(_configDirectory);
-            var closeEvent = ExternalEvent.Create(new FrameworkSettingsPaneCloseHandler(PaneId));
 
-            void RequestHideSettingsPane()
-            {
-                try
-                {
-                    closeEvent.Raise();
-                }
-                catch (Exception)
-                {
-                    // Revit will still allow the pane to be closed through its native chrome.
-                }
-            }
-
-            var form = new FrameworkSettingsForm(_configDirectory, configuration, RequestHideSettingsPane)
+            var form = new FrameworkSettingsForm(_configDirectory, configuration)
             {
                 TopLevel = false,
                 FormBorderStyle = System.Windows.Forms.FormBorderStyle.None,
