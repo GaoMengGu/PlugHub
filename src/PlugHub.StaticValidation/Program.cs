@@ -18,19 +18,20 @@ namespace PlugHub.StaticValidation
             {
                 ValidateRequiredFiles();
                 ValidateLayering();
-                ValidateSampleModuleReferences();
                 ValidateConfiguration();
                 ValidateViewCompositionExamples();
                 ValidateComposerShape();
                 ValidateCoreContracts();
-            ValidateRevitRibbonAdapter();
-            ValidateRuntimeConfigurationLoader();
-            ValidateConfiguredSampleModuleTypes();
-            ValidateConfiguredBuiltinModuleTypes();
-            ValidatePlugHubV2Specification();
-            ValidateSettingsPaneV21Specification();
-            ValidateSettingsRibbonCleanupSpecification();
-            ValidateRevitDeploymentConfiguration();
+                ValidateRevitRibbonAdapter();
+                ValidateRuntimeConfigurationLoader();
+                ValidateConfiguredBuiltinModuleTypes();
+                ValidatePlugHubV2Specification();
+                ValidateSettingsPaneV21Specification();
+                ValidateSettingsRibbonCleanupSpecification();
+                ValidateBuiltinOnlySpecification();
+                ValidateSettingsCreationAndSortingSpecification();
+                ValidateDefaultIconSpecification();
+                ValidateRevitDeploymentConfiguration();
 
                 var modules = AllModules().ToList();
                 var views = ReadObject("config/views.example.json");
@@ -59,7 +60,6 @@ namespace PlugHub.StaticValidation
                 "src/PlugHub.Contracts/PlugHub.Contracts.csproj",
                 "src/PlugHub.Framework/PlugHub.Framework.csproj",
                 "src/PlugHub.Revit2020/PlugHub.Revit2020.csproj",
-                "src/PlugHub.SampleModule/PlugHub.SampleModule.csproj",
                 "src/PlugHub.StaticValidation/PlugHub.StaticValidation.csproj",
                 "src/PlugHub.Contracts/Modules/IPlugHubModule.cs",
                 "src/PlugHub.Framework/Composition/FeatureViewComposer.cs",
@@ -73,18 +73,17 @@ namespace PlugHub.StaticValidation
                 "src/PlugHub.Revit2020/FrameworkRefreshCommand.cs",
                 "src/PlugHub.Revit2020/FrameworkSettingsWindow.cs",
                 "src/PlugHub.Revit2020/FrameworkStatusWindow.cs",
+                "src/PlugHub.Revit2020/DefaultRibbonIconProvider.cs",
                 "src/PlugHub.Revit2020/RevitWindowOwner.cs",
                 "src/PlugHub.BuiltinModule/PlugHub.BuiltinModule.csproj",
                 "src/PlugHub.BuiltinModule/BuiltinModule.cs",
                 "src/PlugHub.BuiltinModule/Commands/BatchAddMaterialParameterCommand.cs",
                 "src/PlugHub.BuiltinModule/Commands/DuctPreferredJunctionSwitcherCommand.cs",
-                "src/PlugHub.SampleModule/SampleModule.cs",
                 "config/modules.example.json",
                 "config/views.example.json",
                 "config/feature-combinations.example.json",
                 "config/schemas/modules.schema.json",
                 "config/schemas/views.schema.json",
-                "modules/samples/modules.json",
                 "modules/dropins/README.md",
                 "docs/README.md",
                 "docs/agent-handbook.md",
@@ -100,7 +99,7 @@ namespace PlugHub.StaticValidation
         private static void ValidateLayering()
         {
             var forbidden = new List<string>();
-            foreach (var directory in new[] { "src/PlugHub.Contracts", "src/PlugHub.Framework", "src/PlugHub.SampleModule" })
+            foreach (var directory in new[] { "src/PlugHub.Contracts", "src/PlugHub.Framework" })
             {
                 foreach (var file in Directory.GetFiles(FullPath(directory), "*.cs", SearchOption.AllDirectories))
                 {
@@ -114,13 +113,6 @@ namespace PlugHub.StaticValidation
             Require(!forbidden.Any(), "Revit API reference leaked outside adapter: " + string.Join(", ", forbidden));
         }
 
-        private static void ValidateSampleModuleReferences()
-        {
-            var csproj = ReadText("src/PlugHub.SampleModule/PlugHub.SampleModule.csproj");
-            Require(csproj.Contains("PlugHub.Contracts"), "SampleModule must reference Contracts.");
-            Require(!csproj.Contains("PlugHub.Framework"), "SampleModule must not reference Framework.");
-        }
-
         private static void ValidateConfiguration()
         {
             var modules = ReadObject("config/modules.example.json");
@@ -130,7 +122,7 @@ namespace PlugHub.StaticValidation
             Require(StringValue(modules, "schemaVersion") == "1.0", "modules schemaVersion must be 1.0.");
             Require(StringValue(views, "defaultView") == "workspace", "default view must be workspace.");
             Require(Views(views).Count() == 1, "PlugHub must expose exactly one workspace view.");
-            Require(SequenceValue(modules, "moduleDirectories").Contains("modules/samples"), "sample modules must be loaded from an independent module directory.");
+            Require(!SequenceValue(modules, "moduleDirectories").Contains(RemovedSamplesDirectory()), "sample modules must be removed from moduleDirectories.");
             Require(SequenceValue(modules, "moduleDirectories").Contains("modules/dropins"), "drop-in modules directory must be configurable.");
             Require(ArrayValue(modules, "moduleSources").Count >= 2, "moduleSources must include localFolder and github examples.");
             Require(StringValue(ObjectValue(modules, "conflictPolicy"), "duplicateFeatureId") == "fail-feature", "duplicate feature policy must be fail-feature.");
@@ -178,9 +170,7 @@ namespace PlugHub.StaticValidation
 
             Require(byView.ContainsKey("workspace"), "workspace view is required.");
             var workspace = byView["workspace"];
-            Require(workspace.Contains("plughub.sample.navigation.open-panel"), "workspace should include open-panel.");
-            Require(!workspace.Contains("plughub.sample.navigation.show-diagnostics"), "workspace should not include diagnostics summary.");
-            Require(workspace.Contains("plughub.sample.project-template.overview"), "workspace should include project overview.");
+            Require(workspace.Count == 2, "workspace should expose only the two built-in features.");
             Require(workspace.Contains("plughub.builtin.duct-tools.switch-preferred-junction"), "workspace should include duct tool.");
             Require(workspace.Contains("plughub.builtin.family-tools.batch-add-material-parameter"), "workspace should include family tool.");
         }
@@ -221,23 +211,6 @@ namespace PlugHub.StaticValidation
             {
                 Require(frameworkText.Contains(token), "missing runtime configuration loader token: " + token);
             }
-        }
-
-        private static void ValidateConfiguredSampleModuleTypes()
-        {
-            var rootModules = ReadObject("config/modules.example.json");
-            Require(!Modules(rootModules).Any(module => StringValue(module, "assembly") == "PlugHub.SampleModule.dll"), "sample and placeholder modules must not live in the root PlugHub config.");
-
-            var sampleModules = ReadObject("modules/samples/modules.json");
-            Require(Modules(sampleModules).Count() == 4, "sample module manifest should expose the independent sample, hidden, and placeholder modules.");
-
-            var configuredTypes = Modules(sampleModules)
-                .Where(module => StringValue(module, "assembly") == "PlugHub.SampleModule.dll")
-                .Select(module => StringValue(module, "type").Split('.').Last())
-                .Distinct(StringComparer.OrdinalIgnoreCase);
-            var sampleText = ReadAllCSharp("src/PlugHub.SampleModule");
-            var missing = configuredTypes.Where(type => !sampleText.Contains("class " + type)).ToList();
-            Require(!missing.Any(), "configured sample module types are missing: " + string.Join(", ", missing));
         }
 
         private static void ValidateConfiguredBuiltinModuleTypes()
@@ -291,7 +264,7 @@ namespace PlugHub.StaticValidation
             Require(StringValue(views, "defaultView") == "workspace", "PlugHub must use the single workspace view.");
             Require(Views(views).Count() == 1, "PlugHub must expose exactly one workspace view.");
             Require(ArrayValue(modules, "moduleSources").Count >= 2, "moduleSources must include localFolder and github examples.");
-            Require(SequenceValue(modules, "moduleDirectories").Contains("modules/samples"), "sample modules must be independent from built-in module config.");
+            Require(!SequenceValue(modules, "moduleDirectories").Contains(RemovedSamplesDirectory()), "sample modules must be removed from built-in runtime config.");
             Require(SequenceValue(modules, "moduleDirectories").Contains("modules/dropins"), "drop-in folder must be available for automatic module loading.");
 
             var modulesText = ReadText("config/modules.example.json");
@@ -326,7 +299,7 @@ namespace PlugHub.StaticValidation
             Require(refreshCommand.Contains("FrameworkRuntimeState.Refresh") && refreshCommand.Contains("FrameworkStatusWindow"), "runtime refresh must be an explicit Ribbon command with WPF feedback.");
             Require(refreshCommand.Contains("ShowRefreshResult") && !refreshCommand.Contains("BuildRuntimeSummary"), "refresh command must show a focused refresh result instead of repeating runtime status.");
             Require(featureCommand.Contains("ShowRuntimeStatus"), "status command must use the focused runtime status view.");
-            Require(featureCommand.Contains("FrameworkStatusWindow") && !featureCommand.Contains("TaskDialog.Show"), "framework status and placeholder feature feedback must use WPF.");
+            Require(featureCommand.Contains("FrameworkStatusWindow") && !featureCommand.Contains("TaskDialog.Show"), "framework fallback feature feedback must use WPF.");
             Require(ribbonBuilder.Contains("LoadFeatureIcon") && ribbonBuilder.Contains("LargeImage"), "configured feature icons must be applied to Revit ribbon buttons.");
             Require(ribbonBuilder.Contains("FrameworkSettingsCommand"), "framework Ribbon panel must expose settings command.");
 
@@ -362,10 +335,9 @@ namespace PlugHub.StaticValidation
             var addinTemplate = ReadText("manifests/PlugHub.addin.template");
             var buildProps = ReadText("build/Directory.Build.props");
             var views = ReadObject("config/views.example.json");
-            var sampleModules = ReadObject("modules/samples/modules.json");
             var rootModules = ReadObject("config/modules.example.json");
 
-            Require(settingsWindow.Contains("LoadModuleDocuments") && settingsWindow.Contains("modules/samples"), "settings must load editable independent module manifests such as modules/samples.");
+            Require(settingsWindow.Contains("LoadModuleDocuments") && !settingsWindow.Contains(RemovedSamplesDirectory()), "settings must not reference removed sample module manifests.");
             Require(settingsWindow.Contains("SaveModuleDocuments"), "settings must save edits back to their owning module manifest.");
             Require(!settingsWindow.Contains("nameof(FeatureRow.Panel)") && !settingsWindow.Contains("feature.Group = row.Panel"), "feature settings must not expose user-editable panel ownership.");
             Require(!settingsWindow.Contains("点击 Ribbon 的「刷新配置」"), "settings UI must not point users to the removed refresh Ribbon button.");
@@ -381,21 +353,57 @@ namespace PlugHub.StaticValidation
                 .SelectMany(view => ArrayValue(view, "groups").Cast<Dictionary<string, object>>())
                 .Select(group => StringValue(group, "name"))
                 .ToList();
-            foreach (var expected in new[] { "入门", "项目流程", "机电风管", "族批处理" })
+            foreach (var expected in new[] { "机电风管", "族批处理" })
             {
                 Require(groupNames.Contains(expected), "workspace group name must match module display name: " + expected);
             }
 
-            foreach (var removed in new[] { "诊断", "机电工具", "族工具" })
+            foreach (var removed in RemovedWorkspaceGroupNames())
             {
                 Require(!groupNames.Contains(removed), "workspace group should be removed or renamed: " + removed);
             }
 
-            Require(Modules(sampleModules).Any(module => StringValue(module, "displayName") == "入门"), "sample entry module displayName must be 入门.");
-            Require(Modules(sampleModules).Any(module => StringValue(module, "displayName") == "项目流程"), "sample project workflow module displayName must be 项目流程.");
             Require(Modules(rootModules).Any(module => StringValue(module, "displayName") == "机电风管"), "duct module displayName must remain 机电风管.");
             Require(Modules(rootModules).Any(module => StringValue(module, "displayName") == "族批处理"), "family module displayName must remain 族批处理.");
-            Require(!ReadText("modules/samples/modules.json").Contains("诊断摘要"), "diagnostics summary sample feature must be removed from the workspace.");
+        }
+
+        private static void ValidateBuiltinOnlySpecification()
+        {
+            var modules = AllModules().ToList();
+            var allText = ReadProductionCSharp() + "\n" + ReadText("PlugHub.sln") + "\n" + ReadText("PlugHub.slnx") + "\n" + ReadText("config/modules.example.json") + "\n" + ReadText("config/views.example.json");
+
+            Require(modules.Count == 2, "runtime configuration must expose only two built-in modules.");
+            Require(modules.SelectMany(Features).Count() == 2, "runtime configuration must expose only two built-in features.");
+            Require(!Directory.Exists(FullPath("src/" + RemovedSampleProject())), "sample module project must be removed.");
+            Require(!Directory.Exists(FullPath(RemovedSamplesDirectory())), "sample module manifests must be removed.");
+            foreach (var forbidden in RemovedContentTokens())
+            {
+                Require(!allText.Contains(forbidden), "removed module content must be absent: " + forbidden);
+            }
+        }
+
+        private static void ValidateSettingsCreationAndSortingSpecification()
+        {
+            var settingsWindow = ReadText("src/PlugHub.Revit2020/FrameworkSettingsWindow.cs");
+
+            foreach (var token in new[] { "AddModule", "AddFeature", "CreateModule", "CreateFeature", "所属模块", "ModuleIdsForFeatureRows" })
+            {
+                Require(settingsWindow.Contains(token), "settings must support creating modules/features and choosing the owning module: " + token);
+            }
+
+            Require(!settingsWindow.Contains("TextColumn(nameof(ModuleRow.Order)") && !settingsWindow.Contains("TextColumn(nameof(FeatureRow.Order)"), "settings must not expose raw numeric order columns.");
+            Require(settingsWindow.Contains("PositionText") && settingsWindow.Contains("RefreshModulePositions") && settingsWindow.Contains("RefreshFeaturePositions"), "settings must show human-readable position text and maintain drag/up-down sorting.");
+        }
+
+        private static void ValidateDefaultIconSpecification()
+        {
+            var ribbonBuilder = ReadText("src/PlugHub.Revit2020/FeatureRibbonBuilder.cs");
+            var iconProvider = ReadText("src/PlugHub.Revit2020/DefaultRibbonIconProvider.cs");
+            var modulesText = ReadText("config/modules.example.json");
+
+            Require(ribbonBuilder.Contains("DefaultRibbonIconProvider") && ribbonBuilder.Contains("CreateSmallIcon") && ribbonBuilder.Contains("CreateLargeIcon"), "Ribbon builder must apply built-in default small/large icons.");
+            Require(iconProvider.Contains("CreateSmallIcon") && iconProvider.Contains("CreateLargeIcon"), "default icon provider must expose small and large icon factories.");
+            Require(modulesText.Contains("\"iconPath\": \"\""), "builtin feature config can rely on built-in default icons when iconPath is empty.");
         }
 
         private static void ValidateRevitDeploymentConfiguration()
@@ -408,15 +416,25 @@ namespace PlugHub.StaticValidation
                 "config/modules.json",
                 "config/views.json",
                 "config/feature-combinations.json",
-                "modules/samples/modules.json",
-                "modules/dropins/README.md",
-                "modules/samples/PlugHub.SampleModule.dll"
+                "modules/dropins/README.md"
             };
 
             var missing = required
                 .Where(path => !File.Exists(Path.Combine(outputDirectory, path.Replace('/', Path.DirectorySeparatorChar))))
                 .ToList();
             Require(!missing.Any(), "Revit deployment is missing runtime config files: " + string.Join(", ", missing));
+
+            var staleProject = RemovedSampleProject();
+            var stalePaths = new[]
+            {
+                staleProject + ".dll",
+                staleProject + ".pdb",
+                ("modules/" + "samples").Replace('/', Path.DirectorySeparatorChar)
+            };
+            var existingStalePaths = stalePaths
+                .Where(path => File.Exists(Path.Combine(outputDirectory, path)) || Directory.Exists(Path.Combine(outputDirectory, path)))
+                .ToList();
+            Require(!existingStalePaths.Any(), "Revit deployment still contains removed module artifacts: " + string.Join(", ", existingStalePaths));
         }
 
         private static List<string> FeatureIdsForView(List<Dictionary<string, object>> features, Dictionary<string, object> view)
@@ -460,6 +478,35 @@ namespace PlugHub.StaticValidation
         private static string ReadAllCSharp(string relativeDirectory)
         {
             return string.Join("\n", Directory.GetFiles(FullPath(relativeDirectory), "*.cs", SearchOption.AllDirectories).Select(File.ReadAllText));
+        }
+
+        private static string ReadProductionCSharp()
+        {
+            return string.Join(
+                "\n",
+                Directory.GetFiles(FullPath("src"), "*.cs", SearchOption.AllDirectories)
+                    .Where(path => !RelativePath(path).StartsWith("src" + Path.DirectorySeparatorChar + "PlugHub.StaticValidation", StringComparison.OrdinalIgnoreCase))
+                    .Select(File.ReadAllText));
+        }
+
+        private static string RemovedSamplesDirectory()
+        {
+            return "modules/" + "samples";
+        }
+
+        private static string RemovedSampleProject()
+        {
+            return "PlugHub." + "Sample" + "Module";
+        }
+
+        private static IEnumerable<string> RemovedWorkspaceGroupNames()
+        {
+            return new[] { "诊断", "机电工具", "族工具", "入" + "门", "项目" + "流程", "实验", "隐藏" };
+        }
+
+        private static IEnumerable<string> RemovedContentTokens()
+        {
+            return new[] { RemovedSampleProject(), "plughub." + "sample", "place" + "holder", "占" + "位", "入" + "门", "项目" + "流程" };
         }
 
         private static IEnumerable<Dictionary<string, object>> Modules(Dictionary<string, object> root)

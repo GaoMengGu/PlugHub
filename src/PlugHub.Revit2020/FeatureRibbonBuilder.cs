@@ -122,11 +122,8 @@ namespace PlugHub.Revit2020
             data.ToolTip = BuildToolTip(feature);
             data.LongDescription = feature.Description;
             var icon = LoadFeatureIcon(feature.IconPath);
-            if (icon != null)
-            {
-                data.Image = icon;
-                data.LargeImage = icon;
-            }
+            data.Image = icon ?? DefaultRibbonIconProvider.CreateSmallIcon();
+            data.LargeImage = icon ?? DefaultRibbonIconProvider.CreateLargeIcon();
 
             return data;
         }

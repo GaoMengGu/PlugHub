@@ -104,14 +104,14 @@ namespace PlugHub.Revit2020
         {
             _modulesGrid.ContextMenu = BuildModuleMenu();
             AttachGridBehaviors(_modulesGrid);
-            return BuildTab("模块", _modulesGrid);
+            return BuildTab("模块", BuildGridWithActions(_modulesGrid, CreateButton("新建模块", (sender, args) => AddModule())));
         }
 
         private TabItem BuildFeaturesTab()
         {
             _featuresGrid.ContextMenu = BuildFeatureMenu();
             AttachGridBehaviors(_featuresGrid);
-            return BuildTab("功能", _featuresGrid);
+            return BuildTab("功能", BuildGridWithActions(_featuresGrid, CreateButton("新建功能", (sender, args) => AddFeature())));
         }
 
         private TabItem BuildSourcesTab()
@@ -141,6 +141,30 @@ namespace PlugHub.Revit2020
                     Child = content
                 }
             };
+        }
+
+        private static UIElement BuildGridWithActions(DataGrid grid, params Button[] actions)
+        {
+            var root = new DockPanel();
+            if (actions.Length > 0)
+            {
+                var bar = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                    Margin = new Thickness(0, 0, 0, 8)
+                };
+                foreach (var action in actions)
+                {
+                    bar.Children.Add(action);
+                }
+
+                DockPanel.SetDock(bar, Dock.Top);
+                root.Children.Add(bar);
+            }
+
+            root.Children.Add(grid);
+            return root;
         }
 
         private static Button CreateButton(string text, RoutedEventHandler handler)
@@ -186,12 +210,12 @@ namespace PlugHub.Revit2020
         private void LoadModuleRows()
         {
             _modulesGrid.Columns.Clear();
+            _modulesGrid.Columns.Add(TextColumn(nameof(ModuleRow.PositionText), "位置", true, 0.7));
             _modulesGrid.Columns.Add(TextColumn(nameof(ModuleRow.Name), "模块", true, 2.1));
             _modulesGrid.Columns.Add(TextColumn(nameof(ModuleRow.DisplayName), "显示名", false, 2.2));
             _modulesGrid.Columns.Add(CheckColumn(nameof(ModuleRow.Enabled), "启用"));
             _modulesGrid.Columns.Add(CheckColumn(nameof(ModuleRow.Visible), "显示"));
             _modulesGrid.Columns.Add(TextColumn(nameof(ModuleRow.SourceId), "来源", false, 1.2));
-            _modulesGrid.Columns.Add(TextColumn(nameof(ModuleRow.Order), "排序", false, 0.7));
 
             _moduleRows = new ObservableCollection<ModuleRow>(EditableModules()
                 .OrderBy(module => module.Order)
@@ -206,36 +230,47 @@ namespace PlugHub.Revit2020
                     SourceId = string.IsNullOrWhiteSpace(module.SourceId) ? "builtin" : module.SourceId,
                     Order = module.Order
                 }));
+            RefreshModulePositions();
             _modulesGrid.ItemsSource = _moduleRows;
         }
 
         private void LoadFeatureRows()
         {
             _featuresGrid.Columns.Clear();
+            _featuresGrid.Columns.Add(TextColumn(nameof(FeatureRow.PositionText), "位置", true, 0.7));
             _featuresGrid.Columns.Add(TextColumn(nameof(FeatureRow.Name), "功能", true, 2.0));
             _featuresGrid.Columns.Add(TextColumn(nameof(FeatureRow.DisplayName), "显示名", false, 1.8));
             _featuresGrid.Columns.Add(CheckColumn(nameof(FeatureRow.Visible), "显示"));
-            _featuresGrid.Columns.Add(TextColumn(nameof(FeatureRow.ModuleName), "模块", true, 1.3));
+            _featuresGrid.Columns.Add(ComboColumn(nameof(FeatureRow.ModuleId), "所属模块", ModuleIdsForFeatureRows(), 1.6, nameof(ModuleOption.DisplayText), nameof(ModuleOption.Id)));
             _featuresGrid.Columns.Add(ComboColumn(nameof(FeatureRow.ButtonSize), "大小", new[] { "large", "small" }, 0.8));
             _featuresGrid.Columns.Add(TextColumn(nameof(FeatureRow.IconPath), "图标", false, 1.5));
-            _featuresGrid.Columns.Add(TextColumn(nameof(FeatureRow.Order), "排序", false, 0.7));
 
             _featureRows = new ObservableCollection<FeatureRow>(EditableModules()
                 .SelectMany(module => (module.Features ?? new List<FeatureConfiguration>()).Select(feature => new FeatureRow
                 {
                     ModuleId = module.Id,
+                    OriginalModuleId = module.Id,
                     FeatureId = feature.Id,
                     ModuleName = DisplayName(module.DisplayName, module.Name, module.Id),
                     Name = DisplayName(feature.DisplayName, feature.Name, feature.Id),
+                    ConfigName = feature.Name,
                     DisplayName = feature.DisplayName,
+                    Description = feature.Description,
+                    Category = feature.Category,
+                    Group = feature.Group,
+                    Tags = new List<string>(feature.Tags ?? new List<string>()),
                     Visible = string.Equals(feature.DefaultState, "Visible", StringComparison.OrdinalIgnoreCase),
                     IconPath = feature.IconPath,
                     Order = feature.Order,
-                    ButtonSize = NormalizeButtonSize(feature.ButtonSize)
+                    ButtonSize = NormalizeButtonSize(feature.ButtonSize),
+                    CommandKey = feature.CommandKey,
+                    CommandAssembly = feature.CommandAssembly,
+                    CommandType = feature.CommandType
                 }))
                 .OrderBy(row => row.ModuleName, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(row => row.Order)
                 .ThenBy(row => row.Name, StringComparer.OrdinalIgnoreCase));
+            RefreshFeaturePositions();
             _featuresGrid.ItemsSource = _featureRows;
         }
 
@@ -354,22 +389,39 @@ namespace PlugHub.Revit2020
                 module.SourceId = row.SourceId ?? string.Empty;
                 module.Order = row.Order;
             }
+
+            foreach (var module in EditableModules())
+            {
+                EnsureViewGroupForModule(module);
+            }
         }
 
         private void ApplyFeatureRows()
         {
-            var rows = _featureRows.ToDictionary(row => row.ModuleId + "|" + row.FeatureId, StringComparer.OrdinalIgnoreCase);
-            foreach (var module in EditableModules())
+            var modulesById = EditableModules()
+                .GroupBy(module => module.Id, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+            foreach (var module in modulesById.Values)
             {
-                foreach (var feature in module.Features ?? new List<FeatureConfiguration>())
+                module.Features = new List<FeatureConfiguration>();
+            }
+
+            foreach (var row in _featureRows)
+            {
+                if (!modulesById.TryGetValue(row.ModuleId, out var module))
                 {
-                    if (!rows.TryGetValue(module.Id + "|" + feature.Id, out var row)) continue;
-                    feature.DisplayName = row.DisplayName ?? string.Empty;
-                    feature.DefaultState = row.Visible ? "Visible" : "Hidden";
-                    feature.IconPath = row.IconPath ?? string.Empty;
-                    feature.Order = row.Order;
-                    feature.ButtonSize = NormalizeButtonSize(row.ButtonSize);
+                    continue;
                 }
+
+                var feature = row.ToConfiguration();
+                if (!string.Equals(row.OriginalModuleId, row.ModuleId, StringComparison.OrdinalIgnoreCase))
+                {
+                    ApplyFeatureModuleDefaults(feature, module);
+                }
+
+                EnsureViewGroupForFeature(module, feature);
+                module.Features.Add(feature);
+                row.OriginalModuleId = row.ModuleId;
             }
         }
 
@@ -405,7 +457,7 @@ namespace PlugHub.Revit2020
             var baseDirectory = Directory.GetParent(_configDirectory)?.FullName ?? _configDirectory;
             foreach (var moduleDirectory in configuration.Modules.ModuleDirectories ?? new List<string>())
             {
-                // moduleDirectories such as modules/samples are editable manifests too.
+                // Configured moduleDirectories are editable manifests too.
                 foreach (var manifestPath in FindModuleManifests(ResolvePath(baseDirectory, moduleDirectory)))
                 {
                     AddModuleDocument(documents, seenPaths, manifestPath, ReadModulesConfiguration(manifestPath));
@@ -497,20 +549,32 @@ namespace PlugHub.Revit2020
             };
         }
 
-        private static DataGridComboBoxColumn ComboColumn(string propertyName, string header, IEnumerable<string> values, double starWidth)
+        private static DataGridComboBoxColumn ComboColumn<T>(string propertyName, string header, IEnumerable<T> values, double starWidth, string displayMemberPath = "", string selectedValuePath = "")
         {
-            return new DataGridComboBoxColumn
+            var column = new DataGridComboBoxColumn
             {
                 Header = header,
                 ItemsSource = values,
-                SelectedItemBinding = new Binding(propertyName) { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged },
                 Width = new DataGridLength(starWidth, DataGridLengthUnitType.Star)
             };
+
+            if (!string.IsNullOrWhiteSpace(displayMemberPath) && !string.IsNullOrWhiteSpace(selectedValuePath))
+            {
+                column.DisplayMemberPath = displayMemberPath;
+                column.SelectedValuePath = selectedValuePath;
+                column.SelectedValueBinding = new Binding(propertyName) { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged };
+                return column;
+            }
+
+            column.SelectedItemBinding = new Binding(propertyName) { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged };
+            return column;
         }
 
         private ContextMenu BuildModuleMenu()
         {
             var menu = new ContextMenu();
+            menu.Items.Add(MenuItem("新建模块", (sender, args) => AddModule()));
+            menu.Items.Add(new Separator());
             menu.Items.Add(MenuItem("启用并显示", (sender, args) => SetSelectedModuleState(true, true)));
             menu.Items.Add(MenuItem("禁用", (sender, args) => SetSelectedModuleState(false, false)));
             menu.Items.Add(MenuItem("仅隐藏", (sender, args) => SetSelectedModuleState(true, false)));
@@ -523,6 +587,8 @@ namespace PlugHub.Revit2020
         private ContextMenu BuildFeatureMenu()
         {
             var menu = new ContextMenu();
+            menu.Items.Add(MenuItem("新建功能", (sender, args) => AddFeature()));
+            menu.Items.Add(new Separator());
             menu.Items.Add(MenuItem("显示", (sender, args) => SetSelectedFeatureVisible(true)));
             menu.Items.Add(MenuItem("隐藏", (sender, args) => SetSelectedFeatureVisible(false)));
             menu.Items.Add(new Separator());
@@ -630,6 +696,377 @@ namespace PlugHub.Revit2020
             });
         }
 
+        private void AddModule()
+        {
+            var module = CreateModule();
+            RootModuleDocument().Modules.Modules.Add(module);
+            EnsureViewGroupForModule(module);
+            _moduleRows.Add(new ModuleRow
+            {
+                Id = module.Id,
+                Name = DisplayName(module.DisplayName, module.Name, module.Id),
+                DisplayName = module.DisplayName,
+                Enabled = module.Enabled,
+                Visible = module.Visible,
+                SourceId = module.SourceId,
+                Order = module.Order
+            });
+            RefreshModulePositions();
+            UpdateFeatureModuleColumnItems();
+            _modulesGrid.SelectedItem = _moduleRows.LastOrDefault();
+            RefreshStatus("已新建模块。请补充模块 DLL、类型或在来源页配置外部模块清单。");
+        }
+
+        private void AddFeature()
+        {
+            var moduleId = SelectedModuleIdForNewFeature();
+            if (string.IsNullOrWhiteSpace(moduleId))
+            {
+                RefreshStatus("请先新建或选择一个模块。");
+                return;
+            }
+
+            var feature = CreateFeature(moduleId);
+            _featureRows.Add(feature);
+            RefreshFeaturePositions();
+            _featuresGrid.SelectedItem = feature;
+            RefreshStatus("已新建功能。可在“所属模块”中调整归属模块。");
+        }
+
+        private ModuleManifestDocument RootModuleDocument()
+        {
+            var rootPath = Path.GetFullPath(Path.Combine(_configDirectory, "modules.json"));
+            var document = _moduleDocuments.FirstOrDefault(item => string.Equals(Path.GetFullPath(item.Path), rootPath, StringComparison.OrdinalIgnoreCase));
+            if (document == null)
+            {
+                document = new ModuleManifestDocument(rootPath, _configuration.Modules);
+                _moduleDocuments.Insert(0, document);
+            }
+
+            if (document.Modules.Modules == null)
+            {
+                document.Modules.Modules = new List<ModuleConfiguration>();
+            }
+
+            return document;
+        }
+
+        private ModuleConfiguration CreateModule()
+        {
+            var id = UniqueModuleId();
+            var displayName = UniqueDisplayName("新建模块", _moduleRows.Select(row => row.DisplayName));
+            return new ModuleConfiguration
+            {
+                Id = id,
+                Assembly = string.Empty,
+                Type = string.Empty,
+                Name = displayName,
+                DisplayName = displayName,
+                Description = string.Empty,
+                SourceId = "custom",
+                Enabled = true,
+                Visible = true,
+                Order = (_moduleRows.Count + 1) * 100,
+                Tags = new List<string> { "custom" },
+                DependsOn = new List<string>(),
+                Features = new List<FeatureConfiguration>()
+            };
+        }
+
+        private FeatureRow CreateFeature(string moduleId)
+        {
+            var module = FindModule(moduleId) ?? new ModuleConfiguration
+            {
+                Id = moduleId,
+                Name = moduleId,
+                DisplayName = moduleId,
+                Tags = new List<string> { "custom" },
+                Features = new List<FeatureConfiguration>()
+            };
+            var groupId = EnsureViewGroupForModule(module);
+            var category = CategoryForModule(module);
+            var tags = TagsForModule(module);
+            var id = UniqueFeatureId(moduleId);
+            var displayName = UniqueDisplayName("新建功能", _featureRows.Select(row => row.DisplayName));
+
+            return new FeatureRow
+            {
+                ModuleId = moduleId,
+                OriginalModuleId = moduleId,
+                FeatureId = id,
+                ModuleName = DisplayName(module.DisplayName, module.Name, module.Id),
+                Name = displayName,
+                ConfigName = displayName,
+                DisplayName = displayName,
+                Description = string.Empty,
+                Category = category,
+                Group = groupId,
+                Tags = tags,
+                Visible = true,
+                IconPath = string.Empty,
+                Order = (_featureRows.Count + 1) * 10,
+                ButtonSize = "large",
+                CommandKey = id,
+                CommandAssembly = string.Empty,
+                CommandType = string.Empty
+            };
+        }
+
+        private string SelectedModuleIdForNewFeature()
+        {
+            if (_modulesGrid.SelectedItem is ModuleRow selectedModule && !string.IsNullOrWhiteSpace(selectedModule.Id))
+            {
+                return selectedModule.Id;
+            }
+
+            if (_featuresGrid.SelectedItem is FeatureRow selectedFeature && !string.IsNullOrWhiteSpace(selectedFeature.ModuleId))
+            {
+                return selectedFeature.ModuleId;
+            }
+
+            return _moduleRows.FirstOrDefault()?.Id ?? string.Empty;
+        }
+
+        private List<ModuleOption> ModuleIdsForFeatureRows()
+        {
+            var rows = _moduleRows.Any()
+                ? _moduleRows
+                : new ObservableCollection<ModuleRow>(EditableModules().Select(module => new ModuleRow
+                {
+                    Id = module.Id,
+                    Name = DisplayName(module.DisplayName, module.Name, module.Id),
+                    DisplayName = module.DisplayName
+                }));
+            var options = rows
+                .Where(row => !string.IsNullOrWhiteSpace(row.Id))
+                .Select(row => new ModuleOption
+                {
+                    Id = row.Id,
+                    DisplayText = DisplayName(row.DisplayName, row.Name, row.Id)
+                })
+                .ToList();
+
+            var duplicatedNames = new HashSet<string>(
+                options
+                    .GroupBy(option => option.DisplayText, StringComparer.OrdinalIgnoreCase)
+                    .Where(group => group.Count() > 1)
+                    .Select(group => group.Key),
+                StringComparer.OrdinalIgnoreCase);
+            foreach (var option in options.Where(option => duplicatedNames.Contains(option.DisplayText)))
+            {
+                option.DisplayText = option.DisplayText + " (" + option.Id + ")";
+            }
+
+            return options;
+        }
+
+        private ModuleConfiguration? FindModule(string moduleId)
+        {
+            return EditableModules().FirstOrDefault(module => string.Equals(module.Id, moduleId, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private string UniqueModuleId()
+        {
+            var existing = new HashSet<string>(EditableModules().Select(module => module.Id).Concat(_moduleRows.Select(row => row.Id)), StringComparer.OrdinalIgnoreCase);
+            var index = 1;
+            string candidate;
+            do
+            {
+                candidate = "plughub.custom.module-" + index++;
+            }
+            while (existing.Contains(candidate));
+
+            return candidate;
+        }
+
+        private string UniqueFeatureId(string moduleId)
+        {
+            var existing = new HashSet<string>(_featureRows.Select(row => row.FeatureId)
+                .Concat(EditableModules().SelectMany(module => module.Features ?? new List<FeatureConfiguration>()).Select(feature => feature.Id)), StringComparer.OrdinalIgnoreCase);
+            var prefix = string.IsNullOrWhiteSpace(moduleId) ? "plughub.custom.feature" : moduleId.Trim() + ".feature";
+            var index = 1;
+            string candidate;
+            do
+            {
+                candidate = prefix + "-" + index++;
+            }
+            while (existing.Contains(candidate));
+
+            return candidate;
+        }
+
+        private static string UniqueDisplayName(string prefix, IEnumerable<string> existingNames)
+        {
+            var existing = new HashSet<string>((existingNames ?? Enumerable.Empty<string>()).Where(name => !string.IsNullOrWhiteSpace(name)), StringComparer.OrdinalIgnoreCase);
+            var index = 1;
+            string candidate;
+            do
+            {
+                candidate = prefix + " " + index++;
+            }
+            while (existing.Contains(candidate));
+
+            return candidate;
+        }
+
+        private void ApplyFeatureModuleDefaults(FeatureConfiguration feature, ModuleConfiguration module)
+        {
+            feature.Category = CategoryForModule(module);
+            feature.Group = GroupIdForModule(module);
+            feature.Tags = TagsForModule(module);
+        }
+
+        private void EnsureViewGroupForFeature(ModuleConfiguration module, FeatureConfiguration feature)
+        {
+            if (string.IsNullOrWhiteSpace(feature.Group))
+            {
+                feature.Group = GroupIdForModule(module);
+            }
+
+            EnsureViewGroup(module, feature.Group, feature.Category, feature.Tags);
+        }
+
+        private string EnsureViewGroupForModule(ModuleConfiguration module)
+        {
+            var groupId = GroupIdForModule(module);
+            EnsureViewGroup(module, groupId, CategoryForModule(module), TagsForModule(module));
+            return groupId;
+        }
+
+        private void EnsureViewGroup(ModuleConfiguration module, string groupId, string category, IEnumerable<string> tags)
+        {
+            var view = WorkspaceView();
+            if (view.Groups == null)
+            {
+                view.Groups = new List<ViewGroupConfiguration>();
+            }
+
+            groupId = string.IsNullOrWhiteSpace(groupId) ? GroupIdForModule(module) : groupId.Trim();
+            var displayName = DisplayName(module.DisplayName, module.Name, module.Id);
+            var group = view.Groups.FirstOrDefault(item => string.Equals(item.Id, groupId, StringComparison.OrdinalIgnoreCase));
+            if (group == null)
+            {
+                group = new ViewGroupConfiguration
+                {
+                    Id = groupId,
+                    Name = displayName,
+                    Description = module.Description ?? string.Empty,
+                    IncludeCategories = new List<string>(),
+                    IncludeTags = new List<string>(),
+                    Order = module.Order > 0 ? module.Order : (view.Groups.Count + 1) * 100,
+                    Presentation = "panel"
+                };
+                view.Groups.Add(group);
+            }
+
+            group.Name = displayName;
+            if (group.IncludeCategories == null)
+            {
+                group.IncludeCategories = new List<string>();
+            }
+
+            if (group.IncludeTags == null)
+            {
+                group.IncludeTags = new List<string>();
+            }
+
+            if (!string.IsNullOrWhiteSpace(category) && !group.IncludeCategories.Any(item => string.Equals(item, category, StringComparison.OrdinalIgnoreCase)))
+            {
+                group.IncludeCategories.Add(category);
+            }
+
+            foreach (var tag in tags.Where(tag => !string.IsNullOrWhiteSpace(tag)))
+            {
+                if (!group.IncludeTags.Any(item => string.Equals(item, tag, StringComparison.OrdinalIgnoreCase)))
+                {
+                    group.IncludeTags.Add(tag);
+                }
+            }
+        }
+
+        private ViewConfiguration WorkspaceView()
+        {
+            if (_configuration.Views == null)
+            {
+                _configuration.Views = new ViewsConfiguration();
+            }
+
+            if (_configuration.Views.Views == null)
+            {
+                _configuration.Views.Views = new List<ViewConfiguration>();
+            }
+
+            var viewId = string.IsNullOrWhiteSpace(_configuration.Views.DefaultView) ? "workspace" : _configuration.Views.DefaultView.Trim();
+            var view = _configuration.Views.Views.FirstOrDefault(item => string.Equals(item.Id, viewId, StringComparison.OrdinalIgnoreCase));
+            if (view == null)
+            {
+                view = new ViewConfiguration
+                {
+                    Id = viewId,
+                    Name = "PlugHub 工作台",
+                    Description = string.Empty,
+                    Ribbon = new RibbonConfiguration { TabName = "PlugHub", FallbackPanelName = "其他工具" },
+                    Groups = new List<ViewGroupConfiguration>(),
+                    Sort = new List<string> { "group.order", "feature.order", "feature.name", "feature.id" },
+                    EmptyStateText = "PlugHub 工作台没有可用功能。"
+                };
+                _configuration.Views.Views.Add(view);
+            }
+
+            if (view.Ribbon == null)
+            {
+                view.Ribbon = new RibbonConfiguration { TabName = "PlugHub", FallbackPanelName = "其他工具" };
+            }
+
+            if (view.Groups == null)
+            {
+                view.Groups = new List<ViewGroupConfiguration>();
+            }
+
+            if (view.Sort == null || view.Sort.Count == 0)
+            {
+                view.Sort = new List<string> { "group.order", "feature.order", "feature.name", "feature.id" };
+            }
+
+            _configuration.Views.DefaultView = viewId;
+            return view;
+        }
+
+        private static string GroupIdForModule(ModuleConfiguration module)
+        {
+            var featureGroup = (module.Features ?? new List<FeatureConfiguration>())
+                .Select(feature => feature.Group)
+                .FirstOrDefault(group => !string.IsNullOrWhiteSpace(group));
+            return string.IsNullOrWhiteSpace(featureGroup) ? module.Id : featureGroup;
+        }
+
+        private static string CategoryForModule(ModuleConfiguration module)
+        {
+            var featureCategory = (module.Features ?? new List<FeatureConfiguration>())
+                .Select(feature => feature.Category)
+                .FirstOrDefault(category => !string.IsNullOrWhiteSpace(category));
+            if (!string.IsNullOrWhiteSpace(featureCategory))
+            {
+                return featureCategory;
+            }
+
+            return TagsForModule(module).FirstOrDefault(tag => !string.Equals(tag, "revit-api", StringComparison.OrdinalIgnoreCase)) ?? "custom";
+        }
+
+        private static List<string> TagsForModule(ModuleConfiguration module)
+        {
+            var tags = (module.Tags ?? new List<string>())
+                .Where(tag => !string.IsNullOrWhiteSpace(tag))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (tags.Count == 0)
+            {
+                tags.Add("custom");
+            }
+
+            return tags;
+        }
+
         private void RemoveSelectedSource()
         {
             if (_sourcesGrid.SelectedItem is SourceRow row)
@@ -648,6 +1085,7 @@ namespace PlugHub.Revit2020
             {
                 MoveRow(_moduleRows, sourceIndex, targetIndex);
                 RecalculateModuleOrders();
+                UpdateFeatureModuleColumnItems();
                 _modulesGrid.SelectedIndex = targetIndex;
                 return;
             }
@@ -668,22 +1106,45 @@ namespace PlugHub.Revit2020
 
         private void RecalculateModuleOrders()
         {
+            RefreshModulePositions();
+        }
+
+        private void RecalculateFeatureOrders()
+        {
+            RefreshFeaturePositions();
+        }
+
+        private void RefreshModulePositions()
+        {
             for (var index = 0; index < _moduleRows.Count; index++)
             {
                 _moduleRows[index].Order = (index + 1) * 100;
+                _moduleRows[index].PositionText = "第 " + (index + 1) + " 项";
             }
 
             _modulesGrid.Items.Refresh();
         }
 
-        private void RecalculateFeatureOrders()
+        private void RefreshFeaturePositions()
         {
             for (var index = 0; index < _featureRows.Count; index++)
             {
                 _featureRows[index].Order = (index + 1) * 10;
+                _featureRows[index].PositionText = "第 " + (index + 1) + " 项";
             }
 
             _featuresGrid.Items.Refresh();
+        }
+
+        private void UpdateFeatureModuleColumnItems()
+        {
+            foreach (var column in _featuresGrid.Columns.OfType<DataGridComboBoxColumn>())
+            {
+                if (string.Equals(Convert.ToString(column.Header), "所属模块", StringComparison.OrdinalIgnoreCase))
+                {
+                    column.ItemsSource = ModuleIdsForFeatureRows();
+                }
+            }
         }
 
         private void AttachGridBehaviors(DataGrid grid)
@@ -837,6 +1298,7 @@ namespace PlugHub.Revit2020
         private sealed class ModuleRow
         {
             public string Id { get; set; } = string.Empty;
+            public string PositionText { get; set; } = string.Empty;
             public string Name { get; set; } = string.Empty;
             public string DisplayName { get; set; } = string.Empty;
             public bool Enabled { get; set; }
@@ -848,14 +1310,51 @@ namespace PlugHub.Revit2020
         private sealed class FeatureRow
         {
             public string ModuleId { get; set; } = string.Empty;
+            public string OriginalModuleId { get; set; } = string.Empty;
             public string FeatureId { get; set; } = string.Empty;
+            public string PositionText { get; set; } = string.Empty;
             public string ModuleName { get; set; } = string.Empty;
             public string Name { get; set; } = string.Empty;
+            public string ConfigName { get; set; } = string.Empty;
             public string DisplayName { get; set; } = string.Empty;
+            public string Description { get; set; } = string.Empty;
+            public string Category { get; set; } = string.Empty;
+            public string Group { get; set; } = string.Empty;
+            public List<string> Tags { get; set; } = new List<string>();
             public bool Visible { get; set; }
             public string IconPath { get; set; } = string.Empty;
             public int Order { get; set; }
             public string ButtonSize { get; set; } = "large";
+            public string CommandKey { get; set; } = string.Empty;
+            public string CommandAssembly { get; set; } = string.Empty;
+            public string CommandType { get; set; } = string.Empty;
+
+            public FeatureConfiguration ToConfiguration()
+            {
+                return new FeatureConfiguration
+                {
+                    Id = FeatureId ?? string.Empty,
+                    Name = string.IsNullOrWhiteSpace(ConfigName) ? Name ?? string.Empty : ConfigName,
+                    DisplayName = DisplayName ?? string.Empty,
+                    Description = Description ?? string.Empty,
+                    Category = Category ?? string.Empty,
+                    Group = Group ?? string.Empty,
+                    Tags = new List<string>(Tags ?? new List<string>()),
+                    Order = Order,
+                    DefaultState = Visible ? "Visible" : "Hidden",
+                    CommandKey = CommandKey ?? string.Empty,
+                    CommandAssembly = CommandAssembly ?? string.Empty,
+                    CommandType = CommandType ?? string.Empty,
+                    ButtonSize = FrameworkSettingsWindow.NormalizeButtonSize(ButtonSize),
+                    IconPath = IconPath ?? string.Empty
+                };
+            }
+        }
+
+        private sealed class ModuleOption
+        {
+            public string Id { get; set; } = string.Empty;
+            public string DisplayText { get; set; } = string.Empty;
         }
 
         private sealed class SourceRow

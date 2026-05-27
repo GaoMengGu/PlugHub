@@ -33,6 +33,18 @@ $RevitApiDir = (Resolve-Path $resolvedApiDir).Path
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 $OutputDir = (Resolve-Path $OutputDir).Path
 
+$RemovedModuleName = "PlugHub." + "Sample" + "Module"
+$StaleOutputPaths = @(
+    (Join-Path $OutputDir ($RemovedModuleName + ".dll")),
+    (Join-Path $OutputDir ($RemovedModuleName + ".pdb")),
+    (Join-Path $OutputDir ("modules\" + "samples"))
+)
+foreach ($StaleOutputPath in $StaleOutputPaths) {
+    if (Test-Path $StaleOutputPath) {
+        Remove-Item -LiteralPath $StaleOutputPath -Recurse -Force
+    }
+}
+
 dotnet build $Project -c $Configuration `
     /p:RevitApiDir="$RevitApiDir" `
     /p:PlugHubOutputDir="$OutputDir"

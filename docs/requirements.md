@@ -2,12 +2,12 @@
 
 ## 1. 目标
 
-交付一个 Revit 2020 插件框架底座：支持后续功能模块以独立方式接入、启用、禁用、隐藏、排序和组合。V1 不实现具体 Revit 建模、出图、族管理、参数写入等业务操作命令。
+交付一个 Revit 2020 插件框架底座：支持后续功能模块以独立方式接入、启用、禁用、隐藏、排序和组合。框架层不实现具体 Revit 建模、出图、族管理、参数写入等业务操作命令。
 
 ## 2. 必须达成
 
 1. 所有成果集中在 `/home/yilan/plughub`。
-2. 提供 Contracts / Framework / Revit2020 Adapter / SampleModule 分层源码骨架。
+2. 提供 Contracts / Framework / Revit2020 Adapter / BuiltinModule 分层源码骨架。
 3. 模块可通过配置启用、禁用、隐藏或移除。
 4. 功能列表支持 view、group、tag、category、order 的排序与组合。
 5. 提供配置样例、JSON schema、验证脚本和静态测试。
@@ -23,6 +23,6 @@
 
 - devpm：需求与验收标准。
 - architect：分层架构、模块治理、验证边界。
-- backend：契约、框架核心、Revit 入口占位、样例模块、测试。
+- backend：契约、框架核心、Revit 入口适配、内置命令模块、测试。
 - frontend：功能列表组织、视图/预设配置、配置 UX 文档。
 - reviewer：静态验收与风险审查。

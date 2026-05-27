@@ -31,7 +31,6 @@
     <ProjectReference Include="..\PlugHub.Contracts\PlugHub.Contracts.csproj" />
     <ProjectReference Include="..\PlugHub.Framework\PlugHub.Framework.csproj" />
     <ProjectReference Include="..\PlugHub.BuiltinModule\PlugHub.BuiltinModule.csproj" />
-    <ProjectReference Include="..\PlugHub.SampleModule\PlugHub.SampleModule.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -61,6 +60,5 @@
     <Copy SourceFiles="..\..\config\views.example.json" DestinationFiles="$(PlugHubOutputDir)\config\views.json" />
     <Copy SourceFiles="..\..\config\feature-combinations.example.json" DestinationFiles="$(PlugHubOutputDir)\config\feature-combinations.json" />
     <Copy SourceFiles="@(PlugHubModuleFiles)" DestinationFiles="@(PlugHubModuleFiles->'$(PlugHubOutputDir)\modules\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="..\PlugHub.SampleModule\bin\$(Configuration)\net48\PlugHub.SampleModule.dll" DestinationFolder="$(PlugHubOutputDir)\modules\samples" SkipUnchangedFiles="true" />
   </Target>
 </Project>

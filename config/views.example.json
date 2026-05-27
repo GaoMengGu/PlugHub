@@ -16,24 +16,6 @@
       "excludeCategories": [],
       "groups": [
         {
-          "id": "getting-started",
-          "name": "入门",
-          "description": "上手与帮助类入口。",
-          "includeCategories": ["basic"],
-          "includeTags": ["basic"],
-          "order": 100,
-          "presentation": "panel"
-        },
-        {
-          "id": "project-workflow",
-          "name": "项目流程",
-          "description": "项目流程入口。",
-          "includeCategories": ["project"],
-          "includeTags": ["frequent"],
-          "order": 200,
-          "presentation": "panel"
-        },
-        {
           "id": "mep-tools",
           "name": "机电风管",
           "description": "机电建模辅助入口。",
@@ -49,24 +31,6 @@
           "includeCategories": ["family"],
           "includeTags": ["family", "material"],
           "order": 400,
-          "presentation": "panel"
-        },
-        {
-          "id": "experimental",
-          "name": "实验",
-          "description": "实验入口。",
-          "includeCategories": ["experimental"],
-          "includeTags": ["experimental"],
-          "order": 900,
-          "presentation": "panel"
-        },
-        {
-          "id": "hidden",
-          "name": "隐藏",
-          "description": "隐藏入口。",
-          "includeCategories": ["hidden"],
-          "includeTags": ["hidden"],
-          "order": 950,
           "presentation": "panel"
         }
       ],

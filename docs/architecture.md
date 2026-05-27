@@ -8,11 +8,10 @@ Revit 2020
   -> PlugHub.Framework        # 配置、发现、注册、组合、诊断
   -> PlugHub.Contracts        # 稳定模块契约
 
-PlugHub.SampleModule -> PlugHub.Contracts
 PlugHub.BuiltinModule   -> PlugHub.Contracts + Revit API
 ```
 
-依赖方向固定：SampleModule 只依赖 Contracts；Framework 不依赖 Revit API；Revit2020 Adapter 引用 Revit API 并负责 UI 适配。承载真实 Revit 业务命令的模块可以引用 Contracts 和 Revit API，但不能依赖 Framework。
+依赖方向固定：Framework 不依赖 Revit API；Revit2020 Adapter 引用 Revit API 并负责 UI 适配。承载真实 Revit 业务命令的模块可以引用 Contracts 和 Revit API，但不能依赖 Framework。
 
 ## 2. 模块治理
 

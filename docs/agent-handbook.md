@@ -12,7 +12,7 @@ src/
   PlugHub.Contracts/         # 稳定模块契约，不引用 Framework 或 Revit API
   PlugHub.Framework/         # 配置、发现、注册、组合、诊断、运行时快照
   PlugHub.Revit2020/         # Revit 2020 IExternalApplication 入口和 Ribbon/UI 适配
-  PlugHub.SampleModule/      # 样例模块，只依赖 Contracts
+  PlugHub.BuiltinModule/     # 当前保留的两个内置 Revit API 功能
   PlugHub.StaticValidation/  # 静态验证入口
 config/
   modules.example.json
@@ -35,7 +35,7 @@ Revit 2020
   -> PlugHub.Framework
   -> PlugHub.Contracts
 
-PlugHub.SampleModule -> PlugHub.Contracts
+PlugHub.BuiltinModule -> PlugHub.Contracts + Revit API
 ```
 
 硬性边界：
@@ -43,7 +43,7 @@ PlugHub.SampleModule -> PlugHub.Contracts
 - `Contracts` 只定义稳定契约。
 - `Framework` 不引用 Revit API，只处理配置、发现、组合、诊断和运行时状态。
 - `Revit2020` 是唯一允许引用 `Autodesk.Revit` 的层。
-- `SampleModule` 只用于验证契约和配置组合，不做真实业务。
+- `BuiltinModule` 承载当前保留的两个已迁入 Revit API 命令；框架层不实现具体业务。
 - 不要把静态验证说成 Revit 实机测试。
 
 ## 4. 核心运行链路
@@ -110,15 +110,16 @@ workspace 组合规则：
 默认 workspace 是 `workspace`，所以 Ribbon 里会看到：
 
 - 固定的 `框架` panel 和 `设置` 按钮。
-- `workspace` 下匹配出的 `入门`、`项目流程` 等 panel。
-- 样例模块里的多个空白占位功能，用于测试加载、排序和按钮大小。
+- `机电风管` 和 `族批处理` 两个内置模块 panel。
+- `config\modules.json` 或外部来源中启用且匹配 workspace group 的功能按钮。
 
 ## 7. 可视化设置能力
 
 `PlugHub.Revit2020` 中的 `FrameworkSettingsCommand` 负责打开 WPF 设置窗口。设计人员可以调整：
 
 - 模块开关：调整模块是否启用、是否显示、显示名和模块顺序。
-- 功能按钮：调整功能是否显示、显示名、图标路径、按钮顺序和按钮大小。
+- 新建入口：在根配置中新建模块，并新建功能、选择所属模块。
+- 功能按钮：调整功能是否显示、显示名、所属模块、图标路径、按钮顺序和按钮大小。
 - 右键菜单：启用、禁用、显示、隐藏、设置大小和上下移动。
 - 拖拽排序：模块和功能表格支持拖拽排序。
 
@@ -208,12 +209,12 @@ Revit 实机必验：
 - Revit 能识别 `IExternalApplication`。
 - 能看到 `PlugHub` Ribbon tab。
 - 能看到 `框架` panel 和 workspace 组合出的功能 panel。
-- 点击占位按钮只显示框架状态或占位提示，不执行真实业务。
+- 点击 `切换风管首选连接` 和 `批量添加材质参数` 分别进入对应 Revit API 命令，并在测试模型副本/族文件副本中验证结果。
 
 ## 10. 提交前检查清单
 
 - 代码是否仍保持分层边界。
-- 是否不在 Framework/Contracts/SampleModule 引入 `Autodesk.Revit`。
+- 是否只在 Revit 适配层和明确的业务命令模块中引用 `Autodesk.Revit`。
 - 是否没有把 `bin/`、`obj/`、`dist/` 等构建产物纳入提交。
 - 配置 schema 是否跟新字段同步。
 - 是否运行：
@@ -230,7 +231,7 @@ dotnet run --project src\PlugHub.StaticValidation\PlugHub.StaticValidation.cspro
 
 ## 12. 适合后续 agent 继续做的方向
 
-- 给设置窗口增加新增/删除模块和 feature 的能力。
+- 给设置窗口增加删除模块和 feature 的能力。
 - 给配置编辑增加 JSON schema 校验、错误定位和恢复默认值。
 - 增加单元测试项目，覆盖 composer、loader、registry、discovery。
 - 增加 Revit 实机测试记录模板，区分静态验证和人工验收。

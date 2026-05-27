@@ -6,7 +6,7 @@ using PlugHub.Framework.Runtime;
 namespace PlugHub.Revit2020
 {
     /// <summary>
-    /// Revit 2020 外部应用入口。这里只做框架启动/关闭占位，不实现具体 Revit 业务操作。
+    /// Revit 2020 外部应用入口。这里只做框架启动、关闭和 Ribbon 渲染，不实现具体 Revit 业务操作。
     /// </summary>
     public sealed class ExternalApplicationEntry : IExternalApplication
     {

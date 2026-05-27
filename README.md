@@ -52,7 +52,7 @@ Ribbon 中固定有一个 `框架` panel，点击 `设置` 会打开 WPF 配置�
 
 `buttonSize` 支持 `large` 和 `small`。`large` 会作为普通大按钮渲染；`small` 会在同一 Ribbon 分组内按 Revit stacked items 堆叠显示。用户在设置页调整顺序和显示名；高级分组规则仍由 `config\views.json` 维护。
 
-设置页按模块、功能、来源和诊断分区，模块页会合并显示根配置和 `moduleDirectories` 中的独立模块清单。保存会写回各自所属的 `modules.json`。Ribbon 分组、按钮新增/删除、图标和大小调整属于 Revit 结构类变更，保存后需重启 Revit 生效。`modules\samples` 存放独立样例和占位模块，`modules\dropins` 用于用户投放模块清单；GitHub 来源读取本地缓存仓库，启用 `autoUpdate` 后会尝试通过 git 拉取，未显式配置 `path` 时默认查找 `modules\github\<repository>` 安全化后的目录。
+设置页按模块、功能、来源和诊断分区，模块页会合并显示根配置和 `moduleDirectories` 中的独立模块清单。保存会写回各自所属的 `modules.json`。Ribbon 分组、按钮新增/删除、图标和大小调整属于 Revit 结构类变更，保存后需重启 Revit 生效。`modules\dropins` 用于用户投放模块清单；GitHub 来源读取本地缓存仓库，启用 `autoUpdate` 后会尝试通过 git 拉取，未显式配置 `path` 时默认查找 `modules\github\<repository>` 安全化后的目录。
 
 ## 编写和加载功能
 
@@ -96,7 +96,7 @@ Ribbon 中固定有一个 `框架` panel，点击 `设置` 会打开 WPF 配置�
 }
 ```
 
-6. 如果功能只是占位或诊断入口，可以省略 `commandAssembly`/`commandType`，按钮会回落到框架状态命令；如果要执行 Revit API 业务，请让 `commandType` 指向一个 `IExternalCommand`。
+6. 如果功能暂未接入命令，可以先省略 `commandAssembly`/`commandType`，按钮会回落到框架状态命令；如果要执行 Revit API 业务，请让 `commandType` 指向一个 `IExternalCommand`。
 7. 确认该功能的 `category`、`group` 或 `tags` 能匹配 `workspace` 的分组规则，否则模块已加载但按钮不会进入工作台。
 
 ## 已迁入的 Revit API 插件

@@ -3,8 +3,8 @@
 ## 关注点
 
 - 框架层不得引用 `Autodesk.Revit` 命名空间。
-- Revit API 只能出现在 `PlugHub.Revit2020` 适配层。
-- 样例模块用于验证模块契约和配置组合，不实现真实业务操作。
+- Revit API 只能出现在 `PlugHub.Revit2020` 适配层和明确的业务命令模块。
+- 默认运行配置只保留 `PlugHub.BuiltinModule` 中两个已迁入的业务命令入口。
 - 配置变更后必须运行 C# 静态验证器。
 
 ## 当前结论
