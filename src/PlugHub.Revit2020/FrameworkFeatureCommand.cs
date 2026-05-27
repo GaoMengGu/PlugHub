@@ -5,6 +5,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using PlugHub.Contracts.Modules;
 using PlugHub.Framework.Runtime;
 
 namespace PlugHub.Revit2020
@@ -21,12 +22,7 @@ namespace PlugHub.Revit2020
             }
 
             var snapshot = FrameworkRuntimeState.Current;
-            var text = snapshot == null
-                ? "PlugHub framework is loaded, but runtime state is not available yet."
-                : BuildRuntimeSummary(snapshot);
-
-            TaskDialog.Show("PlugHub 框架状态", text);
-
+            FrameworkStatusWindow.ShowDialog("PlugHub 框架状态", FrameworkStatusWindow.BuildRuntimeSummary(snapshot), snapshot?.Diagnostics ?? Array.Empty<DiagnosticMessage>());
             return Result.Succeeded;
         }
 
@@ -36,7 +32,19 @@ namespace PlugHub.Revit2020
             if (!decision.Allowed)
             {
                 message = decision.Message;
-                TaskDialog.Show("PlugHub 功能已禁用", decision.Message);
+                FrameworkStatusWindow.ShowDialog(
+                    "PlugHub 功能已禁用",
+                    decision.Message,
+                    new[]
+                    {
+                        new DiagnosticMessage
+                        {
+                            Severity = DiagnosticSeverity.Warning,
+                            Code = "PH-FEATURE-GATE",
+                            ModuleId = decision.FeatureId,
+                            Message = decision.Message
+                        }
+                    });
                 return Result.Cancelled;
             }
 
@@ -45,7 +53,7 @@ namespace PlugHub.Revit2020
                 string.Equals(item.Id, decision.FeatureId, StringComparison.OrdinalIgnoreCase));
             if (feature == null || string.IsNullOrWhiteSpace(feature.CommandType))
             {
-                TaskDialog.Show("PlugHub 功能状态", BuildRuntimeSummary(snapshot!));
+                FrameworkStatusWindow.ShowDialog("PlugHub 功能状态", FrameworkStatusWindow.BuildRuntimeSummary(snapshot), snapshot?.Diagnostics ?? Array.Empty<DiagnosticMessage>());
                 return Result.Succeeded;
             }
 
@@ -53,6 +61,19 @@ namespace PlugHub.Revit2020
             if (!File.Exists(assemblyPath))
             {
                 message = "Command assembly was not found: " + assemblyPath;
+                FrameworkStatusWindow.ShowDialog(
+                    "PlugHub 功能执行失败",
+                    message,
+                    new[]
+                    {
+                        new DiagnosticMessage
+                        {
+                            Severity = DiagnosticSeverity.Error,
+                            Code = "PH-COMMAND-ASSEMBLY",
+                            ModuleId = feature.ModuleId,
+                            Message = message
+                        }
+                    });
                 return Result.Failed;
             }
 
@@ -60,6 +81,19 @@ namespace PlugHub.Revit2020
             if (commandType == null || !typeof(IExternalCommand).IsAssignableFrom(commandType))
             {
                 message = "Command type was not found or does not implement IExternalCommand: " + feature.CommandType;
+                FrameworkStatusWindow.ShowDialog(
+                    "PlugHub 功能执行失败",
+                    message,
+                    new[]
+                    {
+                        new DiagnosticMessage
+                        {
+                            Severity = DiagnosticSeverity.Error,
+                            Code = "PH-COMMAND-TYPE",
+                            ModuleId = feature.ModuleId,
+                            Message = message
+                        }
+                    });
                 return Result.Failed;
             }
 
@@ -92,22 +126,5 @@ namespace PlugHub.Revit2020
                 : Path.GetFullPath(Path.Combine(FrameworkRuntimeState.BaseDirectory, commandAssembly));
         }
 
-        private static string BuildRuntimeSummary(FrameworkRuntimeSnapshot snapshot)
-        {
-            var activeView = snapshot.Configuration.ActiveView;
-            var activePreset = snapshot.Configuration.ActivePreset;
-
-            return
-                "当前加载的是 PlugHub 单工作台。\n\n" +
-                $"Workspace: {activeView.Id} / {activeView.Name}\n" +
-                $"Active preset: {(activePreset == null ? "(none)" : activePreset.Id)}\n" +
-                $"Config: {FrameworkRuntimeState.ConfigDirectory}\n" +
-                $"Modules: {snapshot.Configuration.EffectiveModules.Modules.Count}\n" +
-                $"Features in workspace: {snapshot.Composition.Features.Count}\n" +
-                $"Diagnostics: {snapshot.Diagnostics.Count}\n\n" +
-                "模块/功能开关会在执行前读取最新配置；Ribbon 结构、图标和按钮大小变更需要重启 Revit。\n\n" +
-                "编写功能：创建一个 DLL，引用 PlugHub.Contracts，实现 IPlugHubModule，并在 Describe() 返回 ModuleDescriptor/FeatureDescriptor。\n\n" +
-                "加载功能：把 DLL 放到 PlugHub.Revit2020.dll 同目录、配置的模块目录，或在 moduleSources 中声明来源。";
-        }
     }
 }

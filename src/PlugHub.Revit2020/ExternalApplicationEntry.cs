@@ -19,11 +19,6 @@ namespace PlugHub.Revit2020
             var configDirectory = Path.Combine(assemblyDirectory, "config");
             var runtimeSnapshot = new FrameworkRuntime().Load(assemblyDirectory, configDirectory);
 
-            application.RegisterDockablePane(
-                FrameworkSettingsPane.PaneId,
-                "PlugHub 设置",
-                new FrameworkSettingsPane(configDirectory));
-
             new FeatureRibbonBuilder(assemblyPath, assemblyDirectory).Build(
                 application,
                 runtimeSnapshot.Configuration.ActiveView,

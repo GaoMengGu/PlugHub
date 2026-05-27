@@ -69,6 +69,10 @@ namespace PlugHub.StaticValidation
                 "src/PlugHub.Revit2020/ExternalApplicationEntry.cs",
                 "src/PlugHub.Revit2020/FeatureRibbonBuilder.cs",
                 "src/PlugHub.Revit2020/FrameworkFeatureCommand.cs",
+                "src/PlugHub.Revit2020/FrameworkRefreshCommand.cs",
+                "src/PlugHub.Revit2020/FrameworkSettingsWindow.cs",
+                "src/PlugHub.Revit2020/FrameworkStatusWindow.cs",
+                "src/PlugHub.Revit2020/RevitWindowOwner.cs",
                 "src/PlugHub.BuiltinModule/PlugHub.BuiltinModule.csproj",
                 "src/PlugHub.BuiltinModule/BuiltinModule.cs",
                 "src/PlugHub.BuiltinModule/Commands/BatchAddMaterialParameterCommand.cs",
@@ -296,38 +300,51 @@ namespace PlugHub.StaticValidation
             Require(modulesText.Contains("\"autoUpdate\""), "github module source example must expose autoUpdate.");
 
             var revitText = ReadAllCSharp("src/PlugHub.Revit2020");
-            Require(revitText.Contains("DockablePaneProviderData"), "settings must use a DockablePane provider.");
+            Require(!revitText.Contains("RegisterDockablePane") && !revitText.Contains("DockablePaneProviderData") && !revitText.Contains("IDockablePaneProvider"), "settings and feature UI must not use Revit DockablePane for this architecture.");
+            Require(revitText.Contains("FrameworkSettingsWindow") && revitText.Contains("System.Windows.Window"), "settings UI must use a WPF window.");
             Require(revitText.Contains("FeatureExecutionGate"), "feature execution must be gated by latest runtime configuration.");
         }
 
         private static void ValidateSettingsPaneV21Specification()
         {
-            var settingsForm = ReadText("src/PlugHub.Revit2020/FrameworkSettingsForm.cs");
-            var settingsPane = ReadAllCSharp("src/PlugHub.Revit2020");
+            var settingsWindow = ReadText("src/PlugHub.Revit2020/FrameworkSettingsWindow.cs");
+            var settingsCommand = ReadText("src/PlugHub.Revit2020/FrameworkSettingsCommand.cs");
+            var refreshCommand = ReadText("src/PlugHub.Revit2020/FrameworkRefreshCommand.cs");
+            var statusWindow = ReadText("src/PlugHub.Revit2020/FrameworkStatusWindow.cs");
+            var featureCommand = ReadText("src/PlugHub.Revit2020/FrameworkFeatureCommand.cs");
             var ribbonBuilder = ReadText("src/PlugHub.Revit2020/FeatureRibbonBuilder.cs");
             var sourceResolver = ReadText("src/PlugHub.Framework/Sources/ModuleSourceResolver.cs");
             var configurationModels = ReadText("src/PlugHub.Framework/Configuration/ConfigurationModels.cs");
             var revitProject = ReadText("src/PlugHub.Revit2020/PlugHub.Revit2020.csproj");
 
-            Require(!settingsForm.Contains("Action closeAction"), "settings form must not own dockable pane close actions.");
-            Require(!settingsForm.Contains("HandleClose"), "settings form must not close or hide its host dockable pane.");
-            Require(!settingsForm.Contains("Text = \"关闭\""), "settings form must not expose an in-pane close button.");
-            Require(!settingsForm.Contains("closeButton.Click += (sender, args) => Close();"), "settings close button must not directly close the hosted form.");
-            Require(!settingsPane.Contains("IExternalEventHandler") && !settingsPane.Contains("ExternalEvent.Create"), "settings pane must not hide itself through in-pane external events.");
-            Require(ReadText("src/PlugHub.Revit2020/FrameworkSettingsCommand.cs").Contains("pane.IsShown()") && ReadText("src/PlugHub.Revit2020/FrameworkSettingsCommand.cs").Contains("pane.Hide()"), "settings ribbon command must toggle the dockable pane from a Revit command context.");
+            Require(!File.Exists(FullPath("src/PlugHub.Revit2020/FrameworkSettingsForm.cs")), "legacy WinForms settings form must be removed.");
+            Require(!File.Exists(FullPath("src/PlugHub.Revit2020/FrameworkSettingsPane.cs")), "legacy DockablePane settings provider must be removed.");
+            Require(!ReadAllCSharp("src/PlugHub.Revit2020").Contains("System.Windows.Forms") && !ReadAllCSharp("src/PlugHub.Revit2020").Contains("WindowsFormsHost"), "Revit settings/feature UI must not reference WinForms hosting.");
+            Require(settingsCommand.Contains("FrameworkSettingsWindow") && settingsCommand.Contains("ShowDialog"), "settings ribbon command must open the WPF settings dialog.");
+            Require(!settingsCommand.Contains("GetDockablePane") && !settingsCommand.Contains("pane.Hide") && !settingsCommand.Contains("pane.Show"), "settings command must not toggle a DockablePane.");
+            Require(refreshCommand.Contains("FrameworkRuntimeState.Refresh") && refreshCommand.Contains("FrameworkStatusWindow"), "runtime refresh must be an explicit Ribbon command with WPF feedback.");
+            Require(featureCommand.Contains("FrameworkStatusWindow") && !featureCommand.Contains("TaskDialog.Show"), "framework status and placeholder feature feedback must use WPF.");
             Require(ribbonBuilder.Contains("LoadFeatureIcon") && ribbonBuilder.Contains("LargeImage"), "configured feature icons must be applied to Revit ribbon buttons.");
+            Require(ribbonBuilder.Contains("FrameworkSettingsCommand") && ribbonBuilder.Contains("FrameworkRefreshCommand") && ribbonBuilder.Contains("FrameworkFeatureCommand"), "framework Ribbon panel must expose settings, refresh, and status commands.");
 
-            foreach (var token in new[] { "TabControl", "BuildModulesTab", "BuildFeaturesTab", "BuildSourcesTab", "BuildDiagnosticsTab", "SourceRow", "ReloadFromDisk", "AutoUpdate" })
+            foreach (var token in new[] { "class FrameworkSettingsWindow", ": Window", "TabControl", "DataGrid", "BuildModulesTab", "BuildFeaturesTab", "BuildSourcesTab", "BuildDiagnosticsTab", "SourceRow", "ReloadFromDisk", "AutoUpdate", "ContextMenu", "DragDrop", "Microsoft.Win32.OpenFileDialog" })
             {
-                Require(settingsForm.Contains(token), "settings V2.1 UI token missing: " + token);
+                Require(settingsWindow.Contains(token), "WPF settings UI token missing: " + token);
             }
 
+            foreach (var forbidden in new[] { "FrameworkRuntimeState.Refresh", "UpdateGitHubCache", "ProcessStartInfo", "Assembly.LoadFrom" })
+            {
+                Require(!settingsWindow.Contains(forbidden), "settings window must only save configuration and must not run runtime work: " + forbidden);
+            }
+
+            Require(statusWindow.Contains("class FrameworkStatusWindow") && statusWindow.Contains(": Window"), "status and feature fallback UI must use a WPF status window.");
             Require(configurationModels.Contains("bool AutoUpdate"), "module source configuration must expose autoUpdate.");
             Require(sourceResolver.Contains("AddModuleDirectoryModules"), "module directories must be scanned for drop-in module manifests.");
             Require(sourceResolver.Contains("FindModuleManifests"), "module directory resolver must discover manifests automatically.");
             Require(sourceResolver.Contains("UpdateGitHubCache") && sourceResolver.Contains("ProcessStartInfo"), "github module sources must support clone/fetch into a local cache.");
             Require(sourceResolver.Contains("AddGitHubModules"), "github module sources must be resolved from a local cache directory.");
             Require(sourceResolver.Contains("modules/github"), "github source resolver must use a predictable local cache folder.");
+            Require(!revitProject.Contains("System.Windows.Forms") && !revitProject.Contains("WindowsFormsIntegration"), "Revit adapter should not reference WinForms after moving settings and feature UI to WPF.");
             Require(revitProject.Contains("PlugHubModuleFiles"), "Revit build must copy independent module manifests into the deployment.");
         }
 

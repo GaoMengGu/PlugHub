@@ -31,11 +31,10 @@ namespace PlugHub.Revit2020
             var tabName = SafeDisplayName(view.Ribbon?.TabName, "PlugHub");
             var fallbackPanelName = SafeDisplayName(view.Ribbon?.FallbackPanelName, "Framework");
             EnsureRibbonTab(application, tabName);
-            AddSettingsButton(GetOrCreatePanel(application, tabName, "框架设置"));
+            AddFrameworkButtons(GetOrCreatePanel(application, tabName, "框架"));
 
             if (!composition.Features.Any())
             {
-                AddStatusButton(GetOrCreatePanel(application, tabName, fallbackPanelName), SafeDisplayName(composition.EmptyStateText, "当前视图没有可用功能。"));
                 return;
             }
 
@@ -47,19 +46,43 @@ namespace PlugHub.Revit2020
             }
         }
 
-        private void AddSettingsButton(RibbonPanel panel)
+        private void AddFrameworkButtons(RibbonPanel panel)
         {
-            const string buttonName = "PlugHub_Framework_Settings";
+            AddFrameworkButton(
+                panel,
+                "PlugHub_Framework_Settings",
+                "设置",
+                typeof(FrameworkSettingsCommand),
+                "打开 PlugHub WPF 设置窗口。",
+                "用于开关模块、重命名模块和功能，以及调整功能按钮的显示、面板、顺序、图标和大小。保存只写入配置文件；运行时更新请点击「刷新配置」。");
+            AddFrameworkButton(
+                panel,
+                "PlugHub_Framework_Refresh",
+                "刷新配置",
+                typeof(FrameworkRefreshCommand),
+                "重新读取 PlugHub 配置和模块来源。",
+                "在 Revit 命令上下文中刷新模块/功能开关、模块来源和执行拦截。Ribbon 结构、图标和按钮大小变更仍需重启 Revit 重绘。");
+            AddFrameworkButton(
+                panel,
+                "PlugHub_Framework_Status",
+                "状态",
+                typeof(FrameworkFeatureCommand),
+                "查看 PlugHub 框架状态和诊断。",
+                "以 WPF 窗口显示当前工作台、模块、功能和诊断信息。");
+        }
+
+        private void AddFrameworkButton(RibbonPanel panel, string buttonName, string text, Type commandType, string tooltip, string longDescription)
+        {
             if (panel.GetItems().Any(item => string.Equals(item.Name, buttonName, StringComparison.OrdinalIgnoreCase))) return;
 
             var data = new PushButtonData(
                 buttonName,
-                "设置",
+                text,
                 _assemblyPath,
-                typeof(FrameworkSettingsCommand).FullName);
+                commandType.FullName);
 
-            data.ToolTip = "打开 PlugHub DockablePane 设置。";
-            data.LongDescription = "用于开关模块、重命名模块和功能，以及调整功能按钮的显示、面板、顺序、图标和大小。Ribbon 结构变更保存后需重启 Revit 生效。";
+            data.ToolTip = tooltip;
+            data.LongDescription = longDescription;
             panel.AddItem(data);
         }
 
