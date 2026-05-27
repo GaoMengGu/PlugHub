@@ -5,7 +5,7 @@
     <Assembly>PlugHub.Revit2020.dll</Assembly>
     <FullClassName>PlugHub.Revit2020.ExternalApplicationEntry</FullClassName>
     <ClientId>8B1C6D35-B7CE-43E7-95AE-C45B4D02C020</ClientId>
-    <VendorId>PLGH</VendorId>
-    <VendorDescription>PlugHub modular plugin framework</VendorDescription>
+    <VendorId>GMG</VendorId>
+    <VendorDescription>GAOMENGGU</VendorDescription>
   </AddIn>
 </RevitAddIns>

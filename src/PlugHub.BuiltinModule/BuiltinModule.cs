@@ -9,7 +9,7 @@ namespace PlugHub.BuiltinModule
         public override ModuleDescriptor Describe() => new ModuleDescriptor
         {
             Id = ModuleIds.DuctTools,
-            Name = "风管工具",
+            Name = "机电风管",
             Description = "风管连接偏好等机电建模辅助入口。",
             State = ModuleState.Enabled,
             Order = 300,
@@ -36,7 +36,7 @@ namespace PlugHub.BuiltinModule
         public override ModuleDescriptor Describe() => new ModuleDescriptor
         {
             Id = ModuleIds.FamilyTools,
-            Name = "族工具",
+            Name = "族批处理",
             Description = "族文件批处理和族参数维护入口。",
             State = ModuleState.Enabled,
             Order = 320,

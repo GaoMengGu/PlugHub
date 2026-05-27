@@ -35,7 +35,7 @@
         },
         {
           "id": "mep-tools",
-          "name": "机电工具",
+          "name": "机电风管",
           "description": "机电建模辅助入口。",
           "includeCategories": ["mep"],
           "includeTags": ["mep", "duct"],
@@ -44,20 +44,11 @@
         },
         {
           "id": "family-tools",
-          "name": "族工具",
+          "name": "族批处理",
           "description": "族文件批处理入口。",
           "includeCategories": ["family"],
           "includeTags": ["family", "material"],
           "order": 400,
-          "presentation": "panel"
-        },
-        {
-          "id": "diagnostics",
-          "name": "诊断",
-          "description": "诊断和支持入口。",
-          "includeCategories": ["admin"],
-          "includeTags": ["admin", "support"],
-          "order": 500,
           "presentation": "panel"
         },
         {

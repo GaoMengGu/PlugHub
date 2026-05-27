@@ -54,21 +54,7 @@ namespace PlugHub.Revit2020
                 "设置",
                 typeof(FrameworkSettingsCommand),
                 "打开 PlugHub WPF 设置窗口。",
-                "用于开关模块、重命名模块和功能，以及调整功能按钮的显示、面板、顺序、图标和大小。保存只写入配置文件；运行时更新请点击「刷新配置」。");
-            AddFrameworkButton(
-                panel,
-                "PlugHub_Framework_Refresh",
-                "刷新配置",
-                typeof(FrameworkRefreshCommand),
-                "重新读取 PlugHub 配置和模块来源。",
-                "在 Revit 命令上下文中刷新模块/功能开关、模块来源和执行拦截。Ribbon 结构、图标和按钮大小变更仍需重启 Revit 重绘。");
-            AddFrameworkButton(
-                panel,
-                "PlugHub_Framework_Status",
-                "状态",
-                typeof(FrameworkFeatureCommand),
-                "查看 PlugHub 框架运行状态。",
-                "以 WPF 窗口显示当前工作台、模块、功能和诊断数量。诊断明细请在设置窗口的诊断页查看。");
+                "用于开关模块、重命名模块和功能，以及调整功能按钮的显示、顺序、图标和大小。");
         }
 
         private void AddFrameworkButton(RibbonPanel panel, string buttonName, string text, Type commandType, string tooltip, string longDescription)

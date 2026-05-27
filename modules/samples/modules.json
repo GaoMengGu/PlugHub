@@ -6,7 +6,7 @@
       "assembly": "PlugHub.SampleModule.dll",
       "type": "PlugHub.SampleModule.NavigationModule",
       "name": "示例导航模块",
-      "displayName": "入门导航",
+      "displayName": "入门",
       "description": "仅用于演示模块元数据和功能入口组织，不执行真实 Revit 业务操作。",
       "sourceId": "samples",
       "enabled": true,
@@ -103,23 +103,6 @@
           "buttonSize": "large",
           "iconPath": "",
           "commandKey": "sample.navigation.placeholder-four"
-        },
-        {
-          "id": "plughub.sample.navigation.show-diagnostics",
-          "name": "查看诊断摘要",
-          "displayName": "诊断摘要",
-          "description": "展示框架诊断信息入口。",
-          "category": "admin",
-          "group": "diagnostics",
-          "tags": [
-            "admin",
-            "support"
-          ],
-          "order": 160,
-          "defaultState": "Visible",
-          "buttonSize": "large",
-          "iconPath": "",
-          "commandKey": "sample.navigation.show-diagnostics"
         }
       ]
     },
@@ -128,7 +111,7 @@
       "assembly": "PlugHub.SampleModule.dll",
       "type": "PlugHub.SampleModule.ProjectTemplateModule",
       "name": "项目模板入口示例",
-      "displayName": "项目模板",
+      "displayName": "项目流程",
       "description": "演示按项目组织功能入口。",
       "sourceId": "samples",
       "enabled": true,

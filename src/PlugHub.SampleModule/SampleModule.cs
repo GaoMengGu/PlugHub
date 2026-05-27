@@ -24,8 +24,7 @@ namespace PlugHub.SampleModule
                 Feature("plughub.sample.navigation.placeholder-one", "空白占位 A", "用于测试按钮排序和大图标。", "basic", "getting-started", 120, "sample.navigation.placeholder-one", "basic"),
                 Feature("plughub.sample.navigation.placeholder-two", "空白占位 B", "用于测试小图标堆叠。", "basic", "getting-started", 130, "sample.navigation.placeholder-two", "basic"),
                 Feature("plughub.sample.navigation.placeholder-three", "空白占位 C", "用于测试小图标堆叠。", "basic", "getting-started", 140, "sample.navigation.placeholder-three", "basic"),
-                Feature("plughub.sample.navigation.placeholder-four", "空白占位 D", "用于测试按钮排序尾部位置。", "basic", "getting-started", 150, "sample.navigation.placeholder-four", "basic"),
-                Feature("plughub.sample.navigation.show-diagnostics", "查看诊断摘要", "展示框架诊断信息入口。", "admin", "diagnostics", 160, "sample.navigation.show-diagnostics", "admin", "support")
+                Feature("plughub.sample.navigation.placeholder-four", "空白占位 D", "用于测试按钮排序尾部位置。", "basic", "getting-started", 150, "sample.navigation.placeholder-four", "basic")
             }
         };
     }

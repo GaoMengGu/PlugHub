@@ -58,7 +58,7 @@ Revit 启动时：
 6. `FeatureRegistry` 注册 enabled 且 visible 的模块功能，处理重复模块和重复 feature。
 7. `FeatureViewComposer` 按 workspace 的 include/exclude、group 和 sort 组合功能。
 8. `FeatureRibbonBuilder` 把组合结果渲染为 Ribbon tab、panel 和按钮。
-9. `FrameworkRuntimeState` 保存当前快照，供按钮命令和 DockablePane 设置页读取。
+9. `FrameworkRuntimeState` 保存当前快照，供按钮命令和 WPF 设置页读取。
 
 ## 5. 配置模型速览
 
@@ -109,16 +109,16 @@ workspace 组合规则：
 
 默认 workspace 是 `workspace`，所以 Ribbon 里会看到：
 
-- 固定的 `框架设置` panel 和 `设置` 按钮。
+- 固定的 `框架` panel 和 `设置` 按钮。
 - `workspace` 下匹配出的 `入门`、`项目流程` 等 panel。
 - 样例模块里的多个空白占位功能，用于测试加载、排序和按钮大小。
 
 ## 7. 可视化设置能力
 
-`PlugHub.Revit2020` 中的 `FrameworkSettingsCommand` 负责显示/收起 DockablePane 设置页。设置页内部不关闭宿主 Pane，避免 modeless UI 事件里触碰 Revit Pane 生命周期。设计人员可以调整：
+`PlugHub.Revit2020` 中的 `FrameworkSettingsCommand` 负责打开 WPF 设置窗口。设计人员可以调整：
 
 - 模块开关：调整模块是否启用、是否显示、显示名和模块顺序。
-- 功能按钮：调整功能是否显示、显示名、所在面板、图标路径、按钮顺序和按钮大小。
+- 功能按钮：调整功能是否显示、显示名、图标路径、按钮顺序和按钮大小。
 - 右键菜单：启用、禁用、显示、隐藏、设置大小和上下移动。
 - 拖拽排序：模块和功能表格支持拖拽排序。
 
@@ -127,10 +127,11 @@ workspace 组合规则：
 保存会写回运行目录下的：
 
 - `config\modules.json`
+- `moduleDirectories` / 本地来源下各自的 `modules.json`
 - `config\views.json`
 - `config\feature-combinations.json`
 
-模块/功能开关保存后会刷新运行时快照并尽量即时生效；Ribbon 结构、图标和按钮大小变更需要重启 Revit 2020 才能重新渲染。
+模块/功能开关保存后写回清单；Ribbon 结构、图标和按钮大小变更需要重启 Revit 2020 才能重新渲染。
 
 ## 8. 新模块接入方式
 
@@ -206,7 +207,7 @@ Revit 实机必验：
 
 - Revit 能识别 `IExternalApplication`。
 - 能看到 `PlugHub` Ribbon tab。
-- 能看到 `框架设置` panel 和 workspace 组合出的功能 panel。
+- 能看到 `框架` panel 和 workspace 组合出的功能 panel。
 - 点击占位按钮只显示框架状态或占位提示，不执行真实业务。
 
 ## 10. 提交前检查清单

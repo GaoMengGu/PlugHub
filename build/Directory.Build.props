@@ -3,9 +3,9 @@
     <LangVersion>8.0</LangVersion>
     <Nullable>enable</Nullable>
     <Deterministic>true</Deterministic>
-    <Company>PlugHub</Company>
+    <Company>GAOMENGGU</Company>
     <Product>PlugHub</Product>
-    <Authors>PlugHub Dev Team</Authors>
+    <Authors>GAOMENGGU</Authors>
     <Configurations>Debug;Release</Configurations>
   </PropertyGroup>
 

@@ -26,6 +26,7 @@ namespace PlugHub.Revit2020
         private readonly DataGrid _sourcesGrid = CreateGrid();
         private readonly DataGrid _diagnosticsGrid = CreateGrid();
         private readonly TextBlock _statusText = new TextBlock();
+        private List<ModuleManifestDocument> _moduleDocuments = new List<ModuleManifestDocument>();
         private ObservableCollection<ModuleRow> _moduleRows = new ObservableCollection<ModuleRow>();
         private ObservableCollection<FeatureRow> _featureRows = new ObservableCollection<FeatureRow>();
         private ObservableCollection<SourceRow> _sourceRows = new ObservableCollection<SourceRow>();
@@ -36,6 +37,7 @@ namespace PlugHub.Revit2020
         {
             _configDirectory = configDirectory ?? throw new ArgumentNullException(nameof(configDirectory));
             _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+            _moduleDocuments = LoadModuleDocuments(_configuration);
 
             Title = "PlugHub 设置";
             Width = 1060;
@@ -178,7 +180,7 @@ namespace PlugHub.Revit2020
             LoadFeatureRows();
             LoadSourceRows();
             LoadDiagnosticRows(FrameworkRuntimeState.Current);
-            RefreshStatus("已加载配置。设置窗口只保存 JSON；需要热重载时请点击 Ribbon 的「刷新配置」。");
+            RefreshStatus("已加载配置。设置窗口会保存根配置和独立模块清单；Ribbon 布局、图标和按钮大小需重启 Revit 重绘。");
         }
 
         private void LoadModuleRows()
@@ -191,7 +193,7 @@ namespace PlugHub.Revit2020
             _modulesGrid.Columns.Add(TextColumn(nameof(ModuleRow.SourceId), "来源", false, 1.2));
             _modulesGrid.Columns.Add(TextColumn(nameof(ModuleRow.Order), "排序", false, 0.7));
 
-            _moduleRows = new ObservableCollection<ModuleRow>((_configuration.Modules.Modules ?? new List<ModuleConfiguration>())
+            _moduleRows = new ObservableCollection<ModuleRow>(EditableModules()
                 .OrderBy(module => module.Order)
                 .ThenBy(module => DisplayName(module.DisplayName, module.Name, module.Id), StringComparer.OrdinalIgnoreCase)
                 .Select(module => new ModuleRow
@@ -214,12 +216,11 @@ namespace PlugHub.Revit2020
             _featuresGrid.Columns.Add(TextColumn(nameof(FeatureRow.DisplayName), "显示名", false, 1.8));
             _featuresGrid.Columns.Add(CheckColumn(nameof(FeatureRow.Visible), "显示"));
             _featuresGrid.Columns.Add(TextColumn(nameof(FeatureRow.ModuleName), "模块", true, 1.3));
-            _featuresGrid.Columns.Add(TextColumn(nameof(FeatureRow.Panel), "面板", false, 1.1));
             _featuresGrid.Columns.Add(ComboColumn(nameof(FeatureRow.ButtonSize), "大小", new[] { "large", "small" }, 0.8));
             _featuresGrid.Columns.Add(TextColumn(nameof(FeatureRow.IconPath), "图标", false, 1.5));
             _featuresGrid.Columns.Add(TextColumn(nameof(FeatureRow.Order), "排序", false, 0.7));
 
-            _featureRows = new ObservableCollection<FeatureRow>((_configuration.Modules.Modules ?? new List<ModuleConfiguration>())
+            _featureRows = new ObservableCollection<FeatureRow>(EditableModules()
                 .SelectMany(module => (module.Features ?? new List<FeatureConfiguration>()).Select(feature => new FeatureRow
                 {
                     ModuleId = module.Id,
@@ -228,7 +229,6 @@ namespace PlugHub.Revit2020
                     Name = DisplayName(feature.DisplayName, feature.Name, feature.Id),
                     DisplayName = feature.DisplayName,
                     Visible = string.Equals(feature.DefaultState, "Visible", StringComparison.OrdinalIgnoreCase),
-                    Panel = feature.Group,
                     IconPath = feature.IconPath,
                     Order = feature.Order,
                     ButtonSize = NormalizeButtonSize(feature.ButtonSize)
@@ -311,16 +311,16 @@ namespace PlugHub.Revit2020
             ApplySourceRows();
 
             Directory.CreateDirectory(_configDirectory);
-            SaveJson(Path.Combine(_configDirectory, "modules.json"), _configuration.Modules);
+            SaveModuleDocuments();
             SaveJson(Path.Combine(_configDirectory, "views.json"), _configuration.Views);
             SaveJson(Path.Combine(_configDirectory, "feature-combinations.json"), _configuration.FeatureCombinations);
 
             LoadDiagnosticRows(FrameworkRuntimeState.Current);
             LoadSourceRows();
-            RefreshStatus("已保存配置。点击 Ribbon 的「刷新配置」可热重载模块/功能开关和模块来源；Ribbon 布局、图标、按钮大小需重启 Revit 重绘。");
+            RefreshStatus("已保存配置。模块、功能和来源设置已写回对应清单；Ribbon 布局、图标、按钮大小需重启 Revit 重绘。");
             MessageBox.Show(
                 this,
-                "配置已保存。\n\n如需让运行时立即读取模块/功能开关和模块来源，请点击 Ribbon 的「刷新配置」。Ribbon 布局、图标、按钮大小仍需重启 Revit 重绘。",
+                "配置已保存。\n\n模块、功能和来源设置已写回对应清单。Ribbon 布局、图标、按钮大小仍需重启 Revit 重绘。",
                 "PlugHub 设置",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
@@ -331,6 +331,7 @@ namespace PlugHub.Revit2020
             try
             {
                 _configuration = FrameworkConfigurationLoader.LoadFromDirectory(_configDirectory);
+                _moduleDocuments = LoadModuleDocuments(_configuration);
                 LoadRows();
                 RefreshStatus("已从配置文件重新加载。");
             }
@@ -344,7 +345,7 @@ namespace PlugHub.Revit2020
         private void ApplyModuleRows()
         {
             var rows = _moduleRows.ToDictionary(row => row.Id, StringComparer.OrdinalIgnoreCase);
-            foreach (var module in _configuration.Modules.Modules ?? new List<ModuleConfiguration>())
+            foreach (var module in EditableModules())
             {
                 if (!rows.TryGetValue(module.Id, out var row)) continue;
                 module.DisplayName = row.DisplayName ?? string.Empty;
@@ -358,14 +359,13 @@ namespace PlugHub.Revit2020
         private void ApplyFeatureRows()
         {
             var rows = _featureRows.ToDictionary(row => row.ModuleId + "|" + row.FeatureId, StringComparer.OrdinalIgnoreCase);
-            foreach (var module in _configuration.Modules.Modules ?? new List<ModuleConfiguration>())
+            foreach (var module in EditableModules())
             {
                 foreach (var feature in module.Features ?? new List<FeatureConfiguration>())
                 {
                     if (!rows.TryGetValue(module.Id + "|" + feature.Id, out var row)) continue;
                     feature.DisplayName = row.DisplayName ?? string.Empty;
                     feature.DefaultState = row.Visible ? "Visible" : "Hidden";
-                    feature.Group = row.Panel ?? string.Empty;
                     feature.IconPath = row.IconPath ?? string.Empty;
                     feature.Order = row.Order;
                     feature.ButtonSize = NormalizeButtonSize(row.ButtonSize);
@@ -394,6 +394,86 @@ namespace PlugHub.Revit2020
         private void SaveJson(string path, object value)
         {
             File.WriteAllText(path, _serializer.Serialize(value));
+        }
+
+        private List<ModuleManifestDocument> LoadModuleDocuments(FrameworkConfiguration configuration)
+        {
+            var documents = new List<ModuleManifestDocument>();
+            var seenPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            AddModuleDocument(documents, seenPaths, Path.Combine(_configDirectory, "modules.json"), configuration.Modules);
+
+            var baseDirectory = Directory.GetParent(_configDirectory)?.FullName ?? _configDirectory;
+            foreach (var moduleDirectory in configuration.Modules.ModuleDirectories ?? new List<string>())
+            {
+                // moduleDirectories such as modules/samples are editable manifests too.
+                foreach (var manifestPath in FindModuleManifests(ResolvePath(baseDirectory, moduleDirectory)))
+                {
+                    AddModuleDocument(documents, seenPaths, manifestPath, ReadModulesConfiguration(manifestPath));
+                }
+            }
+
+            foreach (var source in configuration.Modules.ModuleSources ?? new List<ModuleSourceConfiguration>())
+            {
+                var sourceDirectory = ResolvePath(baseDirectory, source.Path);
+                var manifestPath = Path.Combine(sourceDirectory, string.IsNullOrWhiteSpace(source.ManifestPath) ? "modules.json" : source.ManifestPath);
+                if (File.Exists(manifestPath))
+                {
+                    AddModuleDocument(documents, seenPaths, manifestPath, ReadModulesConfiguration(manifestPath));
+                }
+            }
+
+            return documents;
+        }
+
+        private void SaveModuleDocuments()
+        {
+            foreach (var document in _moduleDocuments)
+            {
+                SaveJson(document.Path, document.Modules);
+            }
+        }
+
+        private IEnumerable<ModuleConfiguration> EditableModules()
+        {
+            return _moduleDocuments.SelectMany(document => document.Modules.Modules ?? new List<ModuleConfiguration>());
+        }
+
+        private ModulesConfiguration ReadModulesConfiguration(string path)
+        {
+            return _serializer.Deserialize<ModulesConfiguration>(File.ReadAllText(path));
+        }
+
+        private static void AddModuleDocument(ICollection<ModuleManifestDocument> documents, ISet<string> seenPaths, string path, ModulesConfiguration modules)
+        {
+            if (string.IsNullOrWhiteSpace(path) || modules == null) return;
+            var fullPath = Path.GetFullPath(path);
+            if (!File.Exists(fullPath) && !string.Equals(Path.GetFileName(fullPath), "modules.json", StringComparison.OrdinalIgnoreCase)) return;
+            if (!seenPaths.Add(fullPath)) return;
+            documents.Add(new ModuleManifestDocument(fullPath, modules));
+        }
+
+        private static IEnumerable<string> FindModuleManifests(string sourceDirectory)
+        {
+            if (!Directory.Exists(sourceDirectory)) yield break;
+
+            var rootManifest = Path.Combine(sourceDirectory, "modules.json");
+            if (File.Exists(rootManifest))
+            {
+                yield return rootManifest;
+            }
+
+            foreach (var manifest in Directory.GetFiles(sourceDirectory, "modules.json", SearchOption.AllDirectories)
+                         .Where(path => !string.Equals(path, rootManifest, StringComparison.OrdinalIgnoreCase))
+                         .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+            {
+                yield return manifest;
+            }
+        }
+
+        private static string ResolvePath(string baseDirectory, string path)
+        {
+            if (string.IsNullOrWhiteSpace(path)) return baseDirectory;
+            return Path.IsPathRooted(path) ? path : Path.GetFullPath(Path.Combine(baseDirectory, path));
         }
 
         private static DataGridTextColumn TextColumn(string propertyName, string header, bool readOnly, double starWidth)
@@ -773,7 +853,6 @@ namespace PlugHub.Revit2020
             public string Name { get; set; } = string.Empty;
             public string DisplayName { get; set; } = string.Empty;
             public bool Visible { get; set; }
-            public string Panel { get; set; } = string.Empty;
             public string IconPath { get; set; } = string.Empty;
             public int Order { get; set; }
             public string ButtonSize { get; set; } = "large";
@@ -798,6 +877,18 @@ namespace PlugHub.Revit2020
             public string Code { get; set; } = string.Empty;
             public string Scope { get; set; } = string.Empty;
             public string Message { get; set; } = string.Empty;
+        }
+
+        private sealed class ModuleManifestDocument
+        {
+            public ModuleManifestDocument(string path, ModulesConfiguration modules)
+            {
+                Path = path ?? string.Empty;
+                Modules = modules ?? new ModulesConfiguration();
+            }
+
+            public string Path { get; }
+            public ModulesConfiguration Modules { get; }
         }
     }
 }

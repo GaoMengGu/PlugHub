@@ -44,15 +44,15 @@ PlugHub 只暴露一个 `workspace` 工作台视图。Revit 启动时会创建�
 }
 ```
 
-Ribbon 中固定有一个 `框架设置` panel，点击 `设置` 可显示或收起 DockablePane 配置页。设计人员可以在里面调整：
+Ribbon 中固定有一个 `框架` panel，点击 `设置` 会打开 WPF 配置窗口。设计人员可以在里面调整：
 
 - 模块开关：调整模块是否启用、是否显示、显示名和模块顺序。
-- 功能按钮：调整功能是否显示、显示名、所在面板、图标路径、按钮顺序和按钮大小。
+- 功能按钮：调整功能是否显示、显示名、图标路径、按钮顺序和按钮大小。
 - 模块来源：通过 `moduleDirectories` 自动读取投放目录，通过 `moduleSources` 声明指定本地文件夹或 GitHub 仓库来源。
 
-`buttonSize` 支持 `large` 和 `small`。`large` 会作为普通大按钮渲染；`small` 会在同一 panel 内按 Revit stacked items 堆叠显示。功能位置主要由 `group` 和 `order` 决定，panel 位置由 workspace group 的 `order` 决定。
+`buttonSize` 支持 `large` 和 `small`。`large` 会作为普通大按钮渲染；`small` 会在同一 Ribbon 分组内按 Revit stacked items 堆叠显示。用户在设置页调整顺序和显示名；高级分组规则仍由 `config\views.json` 维护。
 
-设置页按模块、功能、来源和诊断分区。设置页内部不再提供关闭按钮；收起设置页请再次点击 Ribbon 的 `设置`，或使用 Revit DockablePane 标题栏。模块/功能开关会尽量通过运行时快照即时生效；Ribbon panel、按钮新增/删除、图标和大小调整属于 Revit 结构类变更，保存后标记为待重启生效。`modules\samples` 存放独立样例和占位模块，`modules\dropins` 用于用户投放模块清单；GitHub 来源读取本地缓存仓库，启用 `autoUpdate` 后会尝试通过 git 拉取，未显式配置 `path` 时默认查找 `modules\github\<repository>` 安全化后的目录。
+设置页按模块、功能、来源和诊断分区，模块页会合并显示根配置和 `moduleDirectories` 中的独立模块清单。保存会写回各自所属的 `modules.json`。Ribbon 分组、按钮新增/删除、图标和大小调整属于 Revit 结构类变更，保存后需重启 Revit 生效。`modules\samples` 存放独立样例和占位模块，`modules\dropins` 用于用户投放模块清单；GitHub 来源读取本地缓存仓库，启用 `autoUpdate` 后会尝试通过 git 拉取，未显式配置 `path` 时默认查找 `modules\github\<repository>` 安全化后的目录。
 
 ## 编写和加载功能
 

@@ -23,13 +23,14 @@ namespace PlugHub.StaticValidation
                 ValidateViewCompositionExamples();
                 ValidateComposerShape();
                 ValidateCoreContracts();
-                ValidateRevitRibbonAdapter();
-                ValidateRuntimeConfigurationLoader();
-                ValidateConfiguredSampleModuleTypes();
-                ValidateConfiguredBuiltinModuleTypes();
-                ValidatePlugHubV2Specification();
-                ValidateSettingsPaneV21Specification();
-                ValidateRevitDeploymentConfiguration();
+            ValidateRevitRibbonAdapter();
+            ValidateRuntimeConfigurationLoader();
+            ValidateConfiguredSampleModuleTypes();
+            ValidateConfiguredBuiltinModuleTypes();
+            ValidatePlugHubV2Specification();
+            ValidateSettingsPaneV21Specification();
+            ValidateSettingsRibbonCleanupSpecification();
+            ValidateRevitDeploymentConfiguration();
 
                 var modules = AllModules().ToList();
                 var views = ReadObject("config/views.example.json");
@@ -178,7 +179,7 @@ namespace PlugHub.StaticValidation
             Require(byView.ContainsKey("workspace"), "workspace view is required.");
             var workspace = byView["workspace"];
             Require(workspace.Contains("plughub.sample.navigation.open-panel"), "workspace should include open-panel.");
-            Require(workspace.Contains("plughub.sample.navigation.show-diagnostics"), "workspace should include diagnostics.");
+            Require(!workspace.Contains("plughub.sample.navigation.show-diagnostics"), "workspace should not include diagnostics summary.");
             Require(workspace.Contains("plughub.sample.project-template.overview"), "workspace should include project overview.");
             Require(workspace.Contains("plughub.builtin.duct-tools.switch-preferred-junction"), "workspace should include duct tool.");
             Require(workspace.Contains("plughub.builtin.family-tools.batch-add-material-parameter"), "workspace should include family tool.");
@@ -327,7 +328,7 @@ namespace PlugHub.StaticValidation
             Require(featureCommand.Contains("ShowRuntimeStatus"), "status command must use the focused runtime status view.");
             Require(featureCommand.Contains("FrameworkStatusWindow") && !featureCommand.Contains("TaskDialog.Show"), "framework status and placeholder feature feedback must use WPF.");
             Require(ribbonBuilder.Contains("LoadFeatureIcon") && ribbonBuilder.Contains("LargeImage"), "configured feature icons must be applied to Revit ribbon buttons.");
-            Require(ribbonBuilder.Contains("FrameworkSettingsCommand") && ribbonBuilder.Contains("FrameworkRefreshCommand") && ribbonBuilder.Contains("FrameworkFeatureCommand"), "framework Ribbon panel must expose settings, refresh, and status commands.");
+            Require(ribbonBuilder.Contains("FrameworkSettingsCommand"), "framework Ribbon panel must expose settings command.");
 
             foreach (var token in new[] { "class FrameworkSettingsWindow", ": Window", "TabControl", "DataGrid", "BuildModulesTab", "BuildFeaturesTab", "BuildSourcesTab", "BuildDiagnosticsTab", "SourceRow", "ReloadFromDisk", "AutoUpdate", "ContextMenu", "DragDrop", "Microsoft.Win32.OpenFileDialog" })
             {
@@ -352,6 +353,49 @@ namespace PlugHub.StaticValidation
             Require(sourceResolver.Contains("modules/github"), "github source resolver must use a predictable local cache folder.");
             Require(!revitProject.Contains("System.Windows.Forms") && !revitProject.Contains("WindowsFormsIntegration"), "Revit adapter should not reference WinForms after moving settings and feature UI to WPF.");
             Require(revitProject.Contains("PlugHubModuleFiles"), "Revit build must copy independent module manifests into the deployment.");
+        }
+
+        private static void ValidateSettingsRibbonCleanupSpecification()
+        {
+            var settingsWindow = ReadText("src/PlugHub.Revit2020/FrameworkSettingsWindow.cs");
+            var ribbonBuilder = ReadText("src/PlugHub.Revit2020/FeatureRibbonBuilder.cs");
+            var addinTemplate = ReadText("manifests/PlugHub.addin.template");
+            var buildProps = ReadText("build/Directory.Build.props");
+            var views = ReadObject("config/views.example.json");
+            var sampleModules = ReadObject("modules/samples/modules.json");
+            var rootModules = ReadObject("config/modules.example.json");
+
+            Require(settingsWindow.Contains("LoadModuleDocuments") && settingsWindow.Contains("modules/samples"), "settings must load editable independent module manifests such as modules/samples.");
+            Require(settingsWindow.Contains("SaveModuleDocuments"), "settings must save edits back to their owning module manifest.");
+            Require(!settingsWindow.Contains("nameof(FeatureRow.Panel)") && !settingsWindow.Contains("feature.Group = row.Panel"), "feature settings must not expose user-editable panel ownership.");
+            Require(!settingsWindow.Contains("点击 Ribbon 的「刷新配置」"), "settings UI must not point users to the removed refresh Ribbon button.");
+
+            Require(ribbonBuilder.Contains("\"PlugHub_Framework_Settings\""), "Ribbon must keep the settings entry.");
+            Require(!ribbonBuilder.Contains("\"PlugHub_Framework_Refresh\"") && !ribbonBuilder.Contains("\"刷新配置\""), "Ribbon must not expose refresh configuration.");
+            Require(!ribbonBuilder.Contains("\"PlugHub_Framework_Status\"") && !ribbonBuilder.Contains("\"状态\""), "Ribbon must not expose status.");
+
+            Require(addinTemplate.Contains("<VendorDescription>GAOMENGGU</VendorDescription>"), "addin publisher description must be GAOMENGGU.");
+            Require(buildProps.Contains("<Company>GAOMENGGU</Company>") && buildProps.Contains("<Authors>GAOMENGGU</Authors>"), "assembly metadata publisher must be GAOMENGGU.");
+
+            var groupNames = Views(views)
+                .SelectMany(view => ArrayValue(view, "groups").Cast<Dictionary<string, object>>())
+                .Select(group => StringValue(group, "name"))
+                .ToList();
+            foreach (var expected in new[] { "入门", "项目流程", "机电风管", "族批处理" })
+            {
+                Require(groupNames.Contains(expected), "workspace group name must match module display name: " + expected);
+            }
+
+            foreach (var removed in new[] { "诊断", "机电工具", "族工具" })
+            {
+                Require(!groupNames.Contains(removed), "workspace group should be removed or renamed: " + removed);
+            }
+
+            Require(Modules(sampleModules).Any(module => StringValue(module, "displayName") == "入门"), "sample entry module displayName must be 入门.");
+            Require(Modules(sampleModules).Any(module => StringValue(module, "displayName") == "项目流程"), "sample project workflow module displayName must be 项目流程.");
+            Require(Modules(rootModules).Any(module => StringValue(module, "displayName") == "机电风管"), "duct module displayName must remain 机电风管.");
+            Require(Modules(rootModules).Any(module => StringValue(module, "displayName") == "族批处理"), "family module displayName must remain 族批处理.");
+            Require(!ReadText("modules/samples/modules.json").Contains("诊断摘要"), "diagnostics summary sample feature must be removed from the workspace.");
         }
 
         private static void ValidateRevitDeploymentConfiguration()
