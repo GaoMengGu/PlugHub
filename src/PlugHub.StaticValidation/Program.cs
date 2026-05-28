@@ -33,6 +33,7 @@ namespace PlugHub.StaticValidation
                 ValidateBuiltinOnlySpecification();
                 ValidateSettingsCreationAndSortingSpecification();
                 ValidateDefaultIconSpecification();
+                ValidateRevitApiReferenceStrategy();
                 ValidateSigningGuidance();
                 ValidateRevitDeploymentConfiguration();
 
@@ -424,6 +425,36 @@ namespace PlugHub.StaticValidation
             Require(!modulesText.Contains("commandAssembly"), "framework config must not ship command-backed feature entries.");
         }
 
+        private static void ValidateRevitApiReferenceStrategy()
+        {
+            var revitProject = ReadText("src/PlugHub.Revit2020/PlugHub.Revit2020.csproj");
+            var buildProps = ReadText("build/Directory.Build.props");
+            var buildScript = ReadText("scripts/build-revit2020.ps1");
+            var workflow = ReadText(".github/workflows/release.yml");
+
+            foreach (var token in new[] { "RevitApiReferenceMode", "Installed", "NuGet", "RevitApiNuGetVersion" })
+            {
+                Require(revitProject.Contains(token), "Revit project must support installed and NuGet API reference modes: " + token);
+                Require(buildProps.Contains(token), "shared build props must expose Revit API reference mode metadata: " + token);
+            }
+
+            Require(revitProject.Contains("Autodesk.Revit.SDK"), "CI builds must reference Autodesk.Revit.SDK through NuGet instead of checked-in Revit API DLLs.");
+            Require(revitProject.Contains("Condition=\"'$(RevitApiReferenceMode)' == 'NuGet'\""), "NuGet Revit API references must be conditional.");
+            Require(revitProject.Contains("Condition=\"'$(RevitApiReferenceMode)' == 'Installed'\""), "installed Revit API references must remain conditional for local builds.");
+            Require(revitProject.Contains("EnsureInstalledRevitApiReferences"), "local installed API references must still validate RevitAPI.dll and RevitAPIUI.dll.");
+
+            foreach (var version in new[] { "2018", "2020", "2022", "2024" })
+            {
+                Require(buildProps.Contains("Revit" + version + "InstallDir"), "shared build props must reserve install-dir metadata for Revit " + version + ".");
+            }
+
+            Require(buildProps.Contains("dist\\Revit$(RevitVersion)"), "output path must be version-derived for future Revit adapters.");
+            Require(buildScript.Contains("[switch]$UseRevitApiNuGet"), "build script must offer an explicit NuGet API reference mode for CI.");
+            Require(buildScript.Contains("/p:RevitApiReferenceMode=NuGet"), "build script must pass NuGet reference mode when requested.");
+            Require(workflow.Contains("-UseRevitApiNuGet"), "release workflow must build through NuGet API references.");
+            Require(!workflow.Contains("REVIT2020_API_ZIP_BASE64"), "release workflow must not require a secret containing Autodesk Revit API DLLs.");
+        }
+
         private static void ValidateSigningGuidance()
         {
             var signingDoc = ReadText("docs/signing.md");
@@ -438,7 +469,7 @@ namespace PlugHub.StaticValidation
             Require(signingScript.Contains("signtool") && signingScript.Contains("/fd SHA256") && signingScript.Contains("/tr"), "signing script must use Authenticode SHA256 signing with timestamp support.");
             Require(workflow.Contains("push:") && workflow.Contains("tags:") && workflow.Contains("\"V*\""), "release workflow must run only for version tag pushes.");
             Require(workflow.Contains("sigstore/cosign-installer") && workflow.Contains("cosign sign-blob") && workflow.Contains("id-token: write"), "release workflow must use keyless cosign blob signing.");
-            Require(workflow.Contains("REVIT2020_API_ZIP_BASE64") && workflow.Contains("RevitAPI.dll") && workflow.Contains("RevitAPIUI.dll"), "release workflow must document the required Revit API secret input.");
+            Require(signingDoc.Contains("Revit API 引用通过 NuGet 仅用于 CI 编译"), "signing guidance must document the NuGet-only CI Revit API reference strategy.");
         }
 
         private static void ValidateRevitDeploymentConfiguration()

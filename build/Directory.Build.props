@@ -10,16 +10,30 @@
   </PropertyGroup>
 
   <!--
-    Windows 构建机传入：
+    Local Windows builds use installed Revit API DLLs:
       /p:Revit2020InstallDir="C:\Program Files\Autodesk\Revit 2020"
-    或：
       /p:RevitApiDir="C:\Program Files\Autodesk\Revit 2020"
+
+    CI release builds use NuGet compile references only:
+      /p:RevitApiReferenceMode=NuGet
   -->
   <PropertyGroup>
     <RevitVersion Condition="'$(RevitVersion)' == ''">2020</RevitVersion>
+    <RevitApiReferenceMode Condition="'$(RevitApiReferenceMode)' == ''">Installed</RevitApiReferenceMode>
+    <Revit2018InstallDir Condition="'$(Revit2018InstallDir)' == ''">C:\Program Files\Autodesk\Revit 2018</Revit2018InstallDir>
     <Revit2020InstallDir Condition="'$(Revit2020InstallDir)' == ''">C:\Program Files\Autodesk\Revit 2020</Revit2020InstallDir>
-    <RevitApiDir Condition="'$(RevitApiDir)' == ''">$(Revit2020InstallDir)</RevitApiDir>
-    <RevitAddinsDir Condition="'$(RevitAddinsDir)' == ''">$(APPDATA)\Autodesk\Revit\Addins\2020</RevitAddinsDir>
-    <PlugHubOutputDir Condition="'$(PlugHubOutputDir)' == ''">$(MSBuildThisFileDirectory)..\dist\Revit2020\</PlugHubOutputDir>
+    <Revit2022InstallDir Condition="'$(Revit2022InstallDir)' == ''">C:\Program Files\Autodesk\Revit 2022</Revit2022InstallDir>
+    <Revit2024InstallDir Condition="'$(Revit2024InstallDir)' == ''">C:\Program Files\Autodesk\Revit 2024</Revit2024InstallDir>
+    <RevitInstallDir Condition="'$(RevitInstallDir)' == '' and '$(RevitVersion)' == '2018'">$(Revit2018InstallDir)</RevitInstallDir>
+    <RevitInstallDir Condition="'$(RevitInstallDir)' == '' and '$(RevitVersion)' == '2020'">$(Revit2020InstallDir)</RevitInstallDir>
+    <RevitInstallDir Condition="'$(RevitInstallDir)' == '' and '$(RevitVersion)' == '2022'">$(Revit2022InstallDir)</RevitInstallDir>
+    <RevitInstallDir Condition="'$(RevitInstallDir)' == '' and '$(RevitVersion)' == '2024'">$(Revit2024InstallDir)</RevitInstallDir>
+    <RevitApiDir Condition="'$(RevitApiDir)' == ''">$(RevitInstallDir)</RevitApiDir>
+    <RevitAddinsDir Condition="'$(RevitAddinsDir)' == ''">$(APPDATA)\Autodesk\Revit\Addins\$(RevitVersion)</RevitAddinsDir>
+    <PlugHubOutputDir Condition="'$(PlugHubOutputDir)' == ''">$(MSBuildThisFileDirectory)..\dist\Revit$(RevitVersion)\</PlugHubOutputDir>
+    <RevitApiNuGetVersion Condition="'$(RevitApiNuGetVersion)' == '' and '$(RevitVersion)' == '2018'">2018.2.0.2001</RevitApiNuGetVersion>
+    <RevitApiNuGetVersion Condition="'$(RevitApiNuGetVersion)' == '' and '$(RevitVersion)' == '2020'">2020.2.1.2001</RevitApiNuGetVersion>
+    <RevitApiNuGetVersion Condition="'$(RevitApiNuGetVersion)' == '' and '$(RevitVersion)' == '2022'">2022.1.1.516</RevitApiNuGetVersion>
+    <RevitApiNuGetVersion Condition="'$(RevitApiNuGetVersion)' == '' and '$(RevitVersion)' == '2024'">2024.1.10.25</RevitApiNuGetVersion>
   </PropertyGroup>
 </Project>

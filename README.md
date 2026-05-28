@@ -30,6 +30,8 @@ dotnet run --project src\PlugHub.StaticValidation\PlugHub.StaticValidation.cspro
 
 ## Revit 2020 构建
 
+本地构建默认引用本机 Revit 安装目录中的 API DLL：
+
 ```powershell
 .\scripts\build-revit2020.ps1 -RevitApiDir "D:\Program Files\Autodesk\Revit 2020"
 ```
@@ -45,6 +47,8 @@ dist\Revit2020
 ```powershell
 .\scripts\build-revit2020.ps1 -RevitApiDir "D:\Program Files\Autodesk\Revit 2020" -InstallAddin
 ```
+
+发布 workflow 使用 NuGet 编译引用，不需要把 `RevitAPI.dll` 或 `RevitAPIUI.dll` 放入仓库。
 
 ## 文档
 

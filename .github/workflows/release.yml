@@ -18,30 +18,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Restore Revit 2020 API references
-        shell: pwsh
-        env:
-          REVIT2020_API_ZIP_BASE64: ${{ secrets.REVIT2020_API_ZIP_BASE64 }}
-        run: |
-          if ([string]::IsNullOrWhiteSpace($env:REVIT2020_API_ZIP_BASE64)) {
-            throw "Missing secret REVIT2020_API_ZIP_BASE64. It must contain a base64 zip with RevitAPI.dll and RevitAPIUI.dll."
-          }
-
-          $apiDir = Join-Path $env:RUNNER_TEMP "revit2020-api"
-          $zipPath = Join-Path $env:RUNNER_TEMP "revit2020-api.zip"
-          New-Item -ItemType Directory -Force -Path $apiDir | Out-Null
-          [IO.File]::WriteAllBytes($zipPath, [Convert]::FromBase64String($env:REVIT2020_API_ZIP_BASE64))
-          Expand-Archive -LiteralPath $zipPath -DestinationPath $apiDir -Force
-
-          if (!(Test-Path (Join-Path $apiDir "RevitAPI.dll")) -or !(Test-Path (Join-Path $apiDir "RevitAPIUI.dll"))) {
-            throw "The Revit API zip must contain RevitAPI.dll and RevitAPIUI.dll at its root."
-          }
-
-          "REVIT_API_DIR=$apiDir" | Out-File -FilePath $env:GITHUB_ENV -Append
-
       - name: Build Revit 2020 package
         shell: pwsh
-        run: .\scripts\build-revit2020.ps1 -RevitApiDir "$env:REVIT_API_DIR"
+        run: .\scripts\build-revit2020.ps1 -UseRevitApiNuGet
 
       - name: Install cosign
         uses: sigstore/cosign-installer@v3

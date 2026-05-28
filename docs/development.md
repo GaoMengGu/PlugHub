@@ -32,6 +32,8 @@ dotnet run --project src\PlugHub.StaticValidation\PlugHub.StaticValidation.cspro
 
 ## Revit 2020 构建
 
+本地构建默认使用 `Installed` 引用模式，从本机 Revit 安装目录读取 `RevitAPI.dll` 和 `RevitAPIUI.dll`：
+
 ```powershell
 .\scripts\build-revit2020.ps1 -RevitApiDir "D:\Program Files\Autodesk\Revit 2020"
 ```
@@ -42,6 +44,14 @@ dotnet run --project src\PlugHub.StaticValidation\PlugHub.StaticValidation.cspro
 - 复制 DLL、运行时配置、运行时插件包投放目录和 `.addin` 到 `dist\Revit2020`。
 - 将 `.addin` 中的 Assembly 写成 `PlugHub.Revit2020.dll` 的绝对路径。
 - 构建前清理旧样例模块、旧内置模块 DLL/PDB 和旧 `modules` 投放目录残留。
+
+CI 发布构建使用 `NuGet` 引用模式，只把 Revit API 当作编译引用：
+
+```powershell
+.\scripts\build-revit2020.ps1 -UseRevitApiNuGet
+```
+
+该模式不会把 `RevitAPI.dll` 或 `RevitAPIUI.dll` 放入仓库，也不需要仓库 secret。当前使用 `Autodesk.Revit.SDK` NuGet 包是为了 CI 编译便利；本地和实机验收仍以真实 Revit 安装目录为准。
 
 如需安装 addin manifest：
 
@@ -96,7 +106,9 @@ dotnet run --project src\PlugHub.StaticValidation\PlugHub.StaticValidation.cspro
 
 本地开发可用 self-signed 证书；公开分发前需要评估公开可信证书或 SignPath Foundation 等开源签名方案。详细说明见 [signing.md](signing.md)。
 
-发布 `V*` tag 时，GitHub Actions 会运行 release workflow，构建 Revit 2020 包并用 cosign 为 DLL 和 zip 产物生成 Sigstore 签名 bundle。该 workflow 需要仓库 secret `REVIT2020_API_ZIP_BASE64`。
+发布 `V*` tag 时，GitHub Actions 会运行 release workflow，使用 NuGet 编译引用构建 Revit 2020 包，并用 cosign 为 DLL 和 zip 产物生成 Sigstore 签名 bundle。
+
+版本预留在 `build\Directory.Build.props` 中维护：`RevitVersion` 控制输出路径和 addin 目录，`RevitApiReferenceMode` 控制 `Installed` / `NuGet` 引用模式，`RevitApiNuGetVersion` 控制 CI 编译引用包版本。后续增加 2018、2022、2024 适配时，应复用这些属性。
 
 ## Agent 协作规则
 

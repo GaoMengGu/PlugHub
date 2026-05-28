@@ -15,6 +15,9 @@
     <Reference Include="PresentationCore" />
     <Reference Include="PresentationFramework" />
     <Reference Include="WindowsBase" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(RevitApiReferenceMode)' == 'Installed'">
     <Reference Include="RevitAPI">
       <HintPath>$(RevitApiDir)\RevitAPI.dll</HintPath>
       <Private>false</Private>
@@ -25,6 +28,10 @@
       <Private>false</Private>
       <EmbedInteropTypes>false</EmbedInteropTypes>
     </Reference>
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(RevitApiReferenceMode)' == 'NuGet'">
+    <PackageReference Include="Autodesk.Revit.SDK" Version="$(RevitApiNuGetVersion)" PrivateAssets="all" ExcludeAssets="runtime" />
   </ItemGroup>
 
   <ItemGroup>
@@ -39,9 +46,14 @@
     </None>
   </ItemGroup>
 
-  <Target Name="EnsureRevitApiReferences" BeforeTargets="ResolveReferences">
-    <Error Condition="!Exists('$(RevitApiDir)\RevitAPI.dll')" Text="RevitAPI.dll not found. Pass /p:RevitApiDir=&quot;C:\Program Files\Autodesk\Revit 2020&quot; or copy Revit 2020 API DLLs to that folder." />
-    <Error Condition="!Exists('$(RevitApiDir)\RevitAPIUI.dll')" Text="RevitAPIUI.dll not found. Pass /p:RevitApiDir=&quot;C:\Program Files\Autodesk\Revit 2020&quot; or copy Revit 2020 API DLLs to that folder." />
+  <Target Name="EnsureRevitApiReferenceMode" BeforeTargets="ResolveReferences">
+    <Error Condition="'$(RevitApiReferenceMode)' != 'Installed' and '$(RevitApiReferenceMode)' != 'NuGet'" Text="Unsupported RevitApiReferenceMode '$(RevitApiReferenceMode)'. Use Installed for local Revit API DLLs or NuGet for CI compile references." />
+    <Error Condition="'$(RevitApiReferenceMode)' == 'NuGet' and '$(RevitApiNuGetVersion)' == ''" Text="RevitApiNuGetVersion is required when RevitApiReferenceMode=NuGet." />
+  </Target>
+
+  <Target Name="EnsureInstalledRevitApiReferences" BeforeTargets="ResolveReferences" Condition="'$(RevitApiReferenceMode)' == 'Installed'">
+    <Error Condition="!Exists('$(RevitApiDir)\RevitAPI.dll')" Text="RevitAPI.dll not found. Pass /p:RevitApiDir=&quot;C:\Program Files\Autodesk\Revit $(RevitVersion)&quot; or build with /p:RevitApiReferenceMode=NuGet for CI compile references." />
+    <Error Condition="!Exists('$(RevitApiDir)\RevitAPIUI.dll')" Text="RevitAPIUI.dll not found. Pass /p:RevitApiDir=&quot;C:\Program Files\Autodesk\Revit $(RevitVersion)&quot; or build with /p:RevitApiReferenceMode=NuGet for CI compile references." />
   </Target>
 
   <Target Name="StagePlugHubOutput" AfterTargets="Build">

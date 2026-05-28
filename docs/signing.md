@@ -60,18 +60,9 @@ workflow 使用 GitHub OIDC 和 cosign keyless signing，对发布产物做 Sigs
 - `PlugHub*.dll`：生成对应的 `.sigstore.json` bundle。
 - `PlugHub-Revit2020-<tag>.zip`：生成 zip 包和 zip 的 `.sigstore.json` bundle。
 
-由于 Revit 2020 API DLL 不能放入仓库，workflow 需要配置仓库 secret：
+Revit API 引用通过 NuGet 仅用于 CI 编译。release workflow 使用 `.\scripts\build-revit2020.ps1 -UseRevitApiNuGet`，通过 `Autodesk.Revit.SDK` 包获得编译期引用，不需要把 `RevitAPI.dll` / `RevitAPIUI.dll` 放入仓库，也不需要配置包含 Autodesk DLL 的 GitHub secret。
 
-```text
-REVIT2020_API_ZIP_BASE64
-```
-
-该 secret 应是一个 zip 文件的 Base64 内容，zip 根目录必须包含：
-
-```text
-RevitAPI.dll
-RevitAPIUI.dll
-```
+本地构建和 Revit 实机验收仍使用真实 Revit 安装目录中的 API DLL。NuGet 包只解决 CI 编译引用问题，不代表可以绕过 Revit 运行环境，也不改变 Autodesk DLL 的分发边界。
 
 cosign 签名是发布校验签名，不是 Windows Authenticode 内嵌签名。它不能消除 Windows 或 Revit 的“未知发布者”提示；如果目标是消除该提示，仍需 Authenticode 代码签名证书。
 
