@@ -33,6 +33,7 @@ namespace PlugHub.StaticValidation
                 ValidateBuiltinOnlySpecification();
                 ValidateSettingsCreationAndSortingSpecification();
                 ValidateDefaultIconSpecification();
+                ValidatePackageSourceAndReleaseBehavior();
                 ValidateRevitApiReferenceStrategy();
                 ValidateSigningGuidance();
                 ValidateRevitDeploymentConfiguration();
@@ -283,7 +284,7 @@ namespace PlugHub.StaticValidation
             var modulesText = ReadText("config/sources.example.json");
             Require(modulesText.Contains("\"type\": \"github\""), "modules config must include a github module source example.");
             Require(modulesText.Contains("\"autoUpdate\""), "github module source example must expose autoUpdate.");
-            Require(modulesText.Contains("\"repository\": \"GaoMengGu/PlugHub_Modules\""), "default github source must point at GaoMengGu/PlugHub_Modules.");
+            Require(modulesText.Contains("\"repository\": \"GaoMengGu/PlugHub_Packages\""), "default github source must point at GaoMengGu/PlugHub_Packages.");
             Require(modulesText.Contains("\"manifestPath\": \"package.json\""), "module source examples must point at package.json.");
 
             var revitText = ReadAllCSharp("src/PlugHub.Revit2020");
@@ -423,6 +424,32 @@ namespace PlugHub.StaticValidation
             Require(iconProvider.Contains("BuiltinIconKeys") && iconProvider.Contains("settings") && iconProvider.Contains("duct") && iconProvider.Contains("family"), "default icon provider must expose a small built-in icon suite.");
             Require(settingsWindow.Contains("BuildBuiltinIconMenu") && settingsWindow.Contains("SetSelectedFeatureBuiltinIcon"), "settings must let users choose built-in feature icons.");
             Require(!modulesText.Contains("commandAssembly"), "framework config must not ship command-backed feature entries.");
+        }
+
+        private static void ValidatePackageSourceAndReleaseBehavior()
+        {
+            var modulesText = ReadText("config/sources.example.json");
+            var settingsWindow = ReadText("src/PlugHub.Revit2020/FrameworkSettingsWindow.cs");
+            var sourceResolver = ReadText("src/PlugHub.Framework/Sources/ModuleSourceResolver.cs");
+            var workflow = ReadText(".github/workflows/release.yml");
+            var buildScript = ReadText("scripts/build-revit2020.ps1");
+            var readme = ReadText("README.md");
+
+            Require(modulesText.Contains("\"repository\": \"GaoMengGu/PlugHub_Packages\""), "default github source must point at GaoMengGu/PlugHub_Packages.");
+            Require(modulesText.Contains("packages/github/GaoMengGu_PlugHub_Packages"), "default github cache path must use PlugHub_Packages.");
+            Require(!modulesText.Contains("GaoMengGu/PlugHub_Modules"), "default github source must not point at PlugHub_Modules.");
+            Require(settingsWindow.Contains("GaoMengGu/PlugHub_Packages"), "settings source creation must default to PlugHub_Packages.");
+
+            Require(sourceResolver.Contains("AddGitHubPackageManifests"), "github package sources must scan package manifests instead of only reading repository-root package.json.");
+            Require(sourceResolver.Contains("FindModuleManifests(sourceDirectory)") && sourceResolver.Contains("ignoreNonPlugHubManifest"), "github package scanning must ignore non-PlugHub package.json files.");
+            Require(sourceResolver.Contains("RemoteHasChanged") && sourceResolver.Contains("ls-remote") && sourceResolver.Contains("rev-parse HEAD"), "github updates must skip pull when the remote ref has not changed.");
+            Require(sourceResolver.Contains("--filter=blob:none") && sourceResolver.Contains("sparse-checkout"), "github clone must avoid downloading the whole repository when possible.");
+
+            Require(workflow.Contains("-UseRelativeAddinAssembly"), "release workflow must build a package with relative addin assembly path.");
+            Require(buildScript.Contains("[switch]$UseRelativeAddinAssembly") && buildScript.Contains("PlugHub.Revit2020.dll"), "build script must support relative release addin assembly paths.");
+            Require(workflow.Contains("*.pdb") && workflow.Contains("*.sigstore.json") && !workflow.Contains("Compress-Archive -Path \"dist\\Revit2020\\*\""), "release zip must exclude pdb and sigstore files.");
+
+            Require(readme.Contains("个人使用") && readme.Contains("不得商用"), "README must state the non-commercial personal-use license restriction.");
         }
 
         private static void ValidateRevitApiReferenceStrategy()

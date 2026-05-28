@@ -21,6 +21,8 @@ namespace PlugHub.Revit2020
         private const string SourcesFileName = "sources.json";
         private const string DefaultPackageManifestName = "package.json";
         private const string AdjacentPackageManifestPattern = "*.package.json";
+        private const string DefaultGitHubRepository = "GaoMengGu/PlugHub_Packages";
+        private const string DefaultGitHubCachePath = "packages/github/GaoMengGu_PlugHub_Packages";
 
         private readonly string _configDirectory;
         private FrameworkConfiguration _configuration;
@@ -524,12 +526,26 @@ namespace PlugHub.Revit2020
 
             foreach (var source in configuration.Modules.ModuleSources ?? new List<ModuleSourceConfiguration>())
             {
-                var sourceDirectory = ResolvePath(baseDirectory, source.Path);
-                var manifestPath = Path.Combine(sourceDirectory, string.IsNullOrWhiteSpace(source.ManifestPath) ? DefaultPackageManifestName : source.ManifestPath);
-                var manifest = TryReadModulesConfiguration(manifestPath);
-                if (manifest != null)
+                var sourceDirectory = ResolveSourceDirectory(baseDirectory, source);
+                if (IsDefaultManifestPath(source.ManifestPath))
                 {
-                    AddModuleDocument(documents, seenPaths, manifestPath, manifest);
+                    foreach (var manifestPath in FindModuleManifests(sourceDirectory))
+                    {
+                        var manifest = TryReadModulesConfiguration(manifestPath);
+                        if (manifest != null)
+                        {
+                            AddModuleDocument(documents, seenPaths, manifestPath, manifest);
+                        }
+                    }
+
+                    continue;
+                }
+
+                var explicitManifestPath = Path.Combine(sourceDirectory, source.ManifestPath.Trim());
+                var explicitManifest = TryReadModulesConfiguration(explicitManifestPath);
+                if (explicitManifest != null)
+                {
+                    AddModuleDocument(documents, seenPaths, explicitManifestPath, explicitManifest);
                 }
             }
 
@@ -553,11 +569,19 @@ namespace PlugHub.Revit2020
         {
             if (!File.Exists(path)) return null;
 
-            var text = File.ReadAllText(path);
-            var root = _serializer.Deserialize<Dictionary<string, object>>(text);
+            Dictionary<string, object>? root;
+            try
+            {
+                root = _serializer.Deserialize<Dictionary<string, object>>(File.ReadAllText(path));
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+
             if (root == null || !root.ContainsKey("schemaVersion") || !root.ContainsKey("modules")) return null;
 
-            return _serializer.Deserialize<ModulesConfiguration>(text);
+            return _serializer.Deserialize<ModulesConfiguration>(File.ReadAllText(path));
         }
 
         private static void AddModuleDocument(ICollection<ModuleManifestDocument> documents, ISet<string> seenPaths, string path, ModulesConfiguration modules)
@@ -601,6 +625,35 @@ namespace PlugHub.Revit2020
         {
             if (string.IsNullOrWhiteSpace(path)) return baseDirectory;
             return Path.IsPathRooted(path) ? path : Path.GetFullPath(Path.Combine(baseDirectory, path));
+        }
+
+        private static string ResolveSourceDirectory(string baseDirectory, ModuleSourceConfiguration source)
+        {
+            if (source == null) return baseDirectory;
+            if (!string.IsNullOrWhiteSpace(source.Path)) return ResolvePath(baseDirectory, source.Path);
+
+            if (string.Equals(source.Type, "github", StringComparison.OrdinalIgnoreCase))
+            {
+                var repository = string.IsNullOrWhiteSpace(source.Repository) ? source.Id : source.Repository;
+                return Path.Combine(baseDirectory, "packages/github", SafePathSegment(repository));
+            }
+
+            return baseDirectory;
+        }
+
+        private static bool IsDefaultManifestPath(string manifestPath)
+        {
+            return string.IsNullOrWhiteSpace(manifestPath)
+                || string.Equals(manifestPath.Trim(), DefaultPackageManifestName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string SafePathSegment(string value)
+        {
+            var chars = (value ?? string.Empty)
+                .Select(ch => char.IsLetterOrDigit(ch) || ch == '-' || ch == '_' || ch == '.' ? ch : '_')
+                .ToArray();
+            var segment = new string(chars).Trim('_');
+            return string.IsNullOrWhiteSpace(segment) ? "github-source" : segment;
         }
 
         private static DataGridTextColumn TextColumn(string propertyName, string header, bool readOnly, double starWidth)
@@ -788,8 +841,8 @@ namespace PlugHub.Revit2020
                 Enabled = true,
                 AutoUpdate = normalizedType == "github",
                 Type = normalizedType,
-                Path = normalizedType == "github" ? "packages/github/GaoMengGu_PlugHub_Modules" : "packages/" + id,
-                Repository = normalizedType == "github" ? "GaoMengGu/PlugHub_Modules" : string.Empty,
+                Path = normalizedType == "github" ? DefaultGitHubCachePath : "packages/" + id,
+                Repository = normalizedType == "github" ? DefaultGitHubRepository : string.Empty,
                 Ref = "main",
                 ManifestPath = DefaultPackageManifestName,
                 Status = "待保存"

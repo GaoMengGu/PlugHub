@@ -20,7 +20,7 @@ jobs:
 
       - name: Build Revit 2020 package
         shell: pwsh
-        run: .\scripts\build-revit2020.ps1 -UseRevitApiNuGet
+        run: .\scripts\build-revit2020.ps1 -UseRevitApiNuGet -UseRelativeAddinAssembly
 
       - name: Install cosign
         uses: sigstore/cosign-installer@v3
@@ -42,11 +42,27 @@ jobs:
         run: |
           $tag = "${{ github.ref_name }}"
           $zipPath = "PlugHub-Revit2020-$tag.zip"
+          $sourceRoot = (Resolve-Path "dist\Revit2020").Path
+          $artifactDir = Join-Path $env:RUNNER_TEMP "PlugHub-Revit2020-$tag"
           if (Test-Path $zipPath) {
             Remove-Item -LiteralPath $zipPath -Force
           }
 
-          Compress-Archive -Path "dist\Revit2020\*" -DestinationPath $zipPath -Force
+          if (Test-Path $artifactDir) {
+            Remove-Item -LiteralPath $artifactDir -Recurse -Force
+          }
+
+          New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
+          Get-ChildItem -LiteralPath $sourceRoot -Recurse -File |
+            Where-Object { $_.Name -notlike "*.sigstore.json" -and $_.Name -notlike "*.pdb" } |
+            ForEach-Object {
+              $relativePath = $_.FullName.Substring($sourceRoot.Length).TrimStart("\", "/")
+              $targetPath = Join-Path $artifactDir $relativePath
+              New-Item -ItemType Directory -Force -Path (Split-Path $targetPath -Parent) | Out-Null
+              Copy-Item -LiteralPath $_.FullName -Destination $targetPath -Force
+            }
+
+          Compress-Archive -Path "$artifactDir\*" -DestinationPath $zipPath -Force
           cosign sign-blob --yes --bundle "$zipPath.sigstore.json" "$zipPath"
 
       - name: Publish GitHub release

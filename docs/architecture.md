@@ -38,7 +38,7 @@ PlugHub.StaticValidation      # 静态验证入口
 负责框架层的插件包来源，不是插件包自身清单。
 
 - `packageDirectories`：自动扫描的投放目录，当前默认保留 `packages/dropins`。
-- `moduleSources`：显式来源，可配置本地文件夹或 GitHub 仓库。
+- `moduleSources`：显式来源，可配置本地文件夹或 GitHub 仓库。默认 GitHub 来源是 `GaoMengGu/PlugHub_Packages`。
 - `modules`：根配置内联插件包列表，当前默认为空，框架不随包提供业务模块。
 - `conflictPolicy`：重复模块、重复功能、缺失模块类型等冲突策略。
 
@@ -86,7 +86,7 @@ PlugHub.StaticValidation      # 静态验证入口
 - 插件包：显示外部清单发现的 module，允许整体启用、禁用、隐藏、改显示名和排序；不在 Revit 设置页新建业务模块。
 - 功能：显示/隐藏、显示名、所属分组、按钮大小、图标路径和拖拽/右键排序；不在 Revit 设置页新建空功能。
 - 分组：集中管理 Revit Ribbon panel 的显示名和顺序，支持通过右键菜单新增或删除未使用的自定义分组，功能通过「所属分组」决定进入哪个 panel。
-- 来源：启用/禁用本地文件夹或 GitHub 来源，维护路径、仓库、分支和清单路径。
+- 来源：启用/禁用本地文件夹或 GitHub 来源，维护路径、仓库、分支和清单路径。GitHub 包仓库按 `package.json` 和 `*.package.json` 扫描 PlugHub 包清单，普通仓库级 `package.json` 会被忽略。
 - 诊断：只读展示当前运行时诊断。
 
 设置页只保存配置，不执行 Git 拉取、程序集加载或运行时刷新。Ribbon 结构类变更保存后需要重启 Revit。

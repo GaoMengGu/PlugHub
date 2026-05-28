@@ -13,11 +13,11 @@
       "autoUpdate": false
     },
     {
-      "id": "plughub-modules",
+      "id": "plughub-packages",
       "type": "github",
-      "repository": "GaoMengGu/PlugHub_Modules",
+      "repository": "GaoMengGu/PlugHub_Packages",
       "ref": "main",
-      "path": "packages/github/GaoMengGu_PlugHub_Modules",
+      "path": "packages/github/GaoMengGu_PlugHub_Packages",
       "manifestPath": "package.json",
       "enabled": false,
       "autoUpdate": false

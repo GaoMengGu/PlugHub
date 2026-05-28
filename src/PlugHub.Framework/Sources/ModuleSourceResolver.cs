@@ -100,7 +100,38 @@ namespace PlugHub.Framework.Sources
                 return;
             }
 
+            if (IsDefaultManifestPath(source.ManifestPath))
+            {
+                AddGitHubPackageManifests(source, sourceDirectory, resolved, diagnostics);
+                return;
+            }
+
             AddModulesFromManifest(source, sourceDirectory, resolved, diagnostics);
+        }
+
+        private void AddGitHubPackageManifests(ModuleSourceConfiguration source, string sourceDirectory, ModulesConfiguration resolved, ICollection<DiagnosticMessage> diagnostics)
+        {
+            var loadedAny = false;
+            foreach (var manifestPath in FindModuleManifests(sourceDirectory))
+            {
+                var manifestSource = new ModuleSourceConfiguration
+                {
+                    Id = source.Id,
+                    Type = source.Type,
+                    Path = Path.GetDirectoryName(manifestPath) ?? sourceDirectory,
+                    Repository = source.Repository,
+                    Ref = source.Ref,
+                    ManifestPath = Path.GetFileName(manifestPath),
+                    Enabled = source.Enabled,
+                    AutoUpdate = source.AutoUpdate
+                };
+                loadedAny = AddModulesFromManifest(manifestSource, Path.GetDirectoryName(manifestPath) ?? sourceDirectory, resolved, diagnostics, true) || loadedAny;
+            }
+
+            if (!loadedAny)
+            {
+                AddSourceDiagnostic(diagnostics, source.Id, "PH-SOURCE-MANIFEST", "No PlugHub package manifests were found in GitHub source cache: " + sourceDirectory);
+            }
         }
 
         private static IEnumerable<string> FindModuleManifests(string sourceDirectory)
@@ -123,13 +154,13 @@ namespace PlugHub.Framework.Sources
             }
         }
 
-        private void AddModulesFromManifest(ModuleSourceConfiguration source, string sourceDirectory, ModulesConfiguration resolved, ICollection<DiagnosticMessage> diagnostics, bool ignoreNonPlugHubManifest = false)
+        private bool AddModulesFromManifest(ModuleSourceConfiguration source, string sourceDirectory, ModulesConfiguration resolved, ICollection<DiagnosticMessage> diagnostics, bool ignoreNonPlugHubManifest = false)
         {
             var manifestPath = Path.Combine(sourceDirectory, string.IsNullOrWhiteSpace(source.ManifestPath) ? DefaultPackageManifestName : source.ManifestPath);
             if (!File.Exists(manifestPath))
             {
                 AddSourceDiagnostic(diagnostics, source.Id, "PH-SOURCE-MANIFEST", "Module source manifest was not found: " + manifestPath);
-                return;
+                return false;
             }
 
             try
@@ -141,19 +172,24 @@ namespace PlugHub.Framework.Sources
                         AddSourceDiagnostic(diagnostics, source.Id, "PH-SOURCE-MANIFEST", manifestError);
                     }
 
-                    return;
+                    return false;
                 }
 
+                var loadedAny = false;
                 foreach (var module in sourceModules.Modules ?? new List<ModuleConfiguration>())
                 {
                     module.SourceId = string.IsNullOrWhiteSpace(module.SourceId) ? source.Id : module.SourceId;
                     module.ResolvedBaseDirectory = sourceDirectory;
                     resolved.Modules.Add(module);
+                    loadedAny = true;
                 }
+
+                return loadedAny;
             }
             catch (Exception ex)
             {
                 AddSourceDiagnostic(diagnostics, source.Id, "PH-SOURCE-MANIFEST", ex.Message);
+                return false;
             }
         }
 
@@ -201,16 +237,89 @@ namespace PlugHub.Framework.Sources
 
             if (!Directory.Exists(Path.Combine(sourceDirectory, ".git")))
             {
-                RunGit("clone --depth 1 --branch " + Quote(gitRef) + " " + Quote(repositoryUrl) + " " + Quote(sourceDirectory), source.Id, diagnostics);
+                if (RunGit("clone --quiet --filter=blob:none --depth 1 --sparse --branch " + Quote(gitRef) + " " + Quote(repositoryUrl) + " " + Quote(sourceDirectory), source.Id, diagnostics))
+                {
+                    ConfigureSparseCheckout(sourceDirectory, source.Id, diagnostics);
+                }
+
                 return;
             }
 
-            RunGit("-C " + Quote(sourceDirectory) + " fetch --all --prune", source.Id, diagnostics);
+            ConfigureSparseCheckout(sourceDirectory, source.Id, diagnostics);
+            if (!RemoteHasChanged(source, sourceDirectory, repositoryUrl, gitRef, diagnostics))
+            {
+                return;
+            }
+
+            RunGit("-C " + Quote(sourceDirectory) + " fetch --quiet --depth 1 origin " + Quote(gitRef), source.Id, diagnostics);
             RunGit("-C " + Quote(sourceDirectory) + " checkout " + Quote(gitRef), source.Id, diagnostics);
-            RunGit("-C " + Quote(sourceDirectory) + " pull --ff-only", source.Id, diagnostics);
+            RunGit("-C " + Quote(sourceDirectory) + " pull --quiet --ff-only --depth 1 origin " + Quote(gitRef), source.Id, diagnostics);
         }
 
-        private static void RunGit(string arguments, string sourceId, ICollection<DiagnosticMessage> diagnostics)
+        private static bool RemoteHasChanged(ModuleSourceConfiguration source, string sourceDirectory, string repositoryUrl, string gitRef, ICollection<DiagnosticMessage> diagnostics)
+        {
+            var local = RunGitCapture("-C " + Quote(sourceDirectory) + " rev-parse HEAD", source.Id, diagnostics, false);
+            var remote = RunGitCapture("ls-remote " + Quote(repositoryUrl) + " " + Quote(gitRef), source.Id, diagnostics, false);
+            if (string.IsNullOrWhiteSpace(remote))
+            {
+                remote = RunGitCapture("ls-remote " + Quote(repositoryUrl) + " " + Quote("refs/heads/" + gitRef), source.Id, diagnostics, false);
+            }
+
+            var remoteHead = (remote ?? string.Empty)
+                .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(line => line.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? string.Empty)
+                .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+
+            if (string.IsNullOrWhiteSpace(local) || string.IsNullOrWhiteSpace(remoteHead))
+            {
+                return true;
+            }
+
+            return !string.Equals(local.Trim(), remoteHead.Trim(), StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static void ConfigureSparseCheckout(string sourceDirectory, string sourceId, ICollection<DiagnosticMessage> diagnostics)
+        {
+            RunGit("-C " + Quote(sourceDirectory) + " sparse-checkout set --no-cone " + string.Join(" ", SparseCheckoutPatterns().Select(Quote)), sourceId, diagnostics);
+        }
+
+        private static IEnumerable<string> SparseCheckoutPatterns()
+        {
+            return new[]
+            {
+                "package.json",
+                "*.package.json",
+                "*.dll",
+                "*.png",
+                "*.jpg",
+                "*.jpeg",
+                "*.ico",
+                "*.bmp",
+                "*.webp",
+                "**/package.json",
+                "**/*.package.json",
+                "**/*.dll",
+                "**/*.png",
+                "**/*.jpg",
+                "**/*.jpeg",
+                "**/*.ico",
+                "**/*.bmp",
+                "**/*.webp"
+            };
+        }
+
+        private static bool RunGit(string arguments, string sourceId, ICollection<DiagnosticMessage> diagnostics)
+        {
+            var result = RunGitCommand(arguments, sourceId, diagnostics, true);
+            return result.ExitCode == 0;
+        }
+
+        private static string RunGitCapture(string arguments, string sourceId, ICollection<DiagnosticMessage> diagnostics, bool reportFailure)
+        {
+            return RunGitCommand(arguments, sourceId, diagnostics, reportFailure).StandardOutput.Trim();
+        }
+
+        private static GitCommandResult RunGitCommand(string arguments, string sourceId, ICollection<DiagnosticMessage> diagnostics, bool reportFailure)
         {
             try
             {
@@ -228,27 +337,46 @@ namespace PlugHub.Framework.Sources
                 {
                     if (process == null)
                     {
-                        AddSourceDiagnostic(diagnostics, sourceId, "PH-SOURCE-GIT", "Could not start git process.");
-                        return;
+                        if (reportFailure)
+                        {
+                            AddSourceDiagnostic(diagnostics, sourceId, "PH-SOURCE-GIT", "Could not start git process.");
+                        }
+
+                        return GitCommandResult.Failed;
                     }
 
                     if (!process.WaitForExit(30000))
                     {
                         try { process.Kill(); } catch (Exception) { }
-                        AddSourceDiagnostic(diagnostics, sourceId, "PH-SOURCE-GIT", "Git operation timed out.");
-                        return;
+                        if (reportFailure)
+                        {
+                            AddSourceDiagnostic(diagnostics, sourceId, "PH-SOURCE-GIT", "Git operation timed out.");
+                        }
+
+                        return GitCommandResult.Failed;
                     }
 
+                    var output = process.StandardOutput.ReadToEnd();
+                    var error = process.StandardError.ReadToEnd();
                     if (process.ExitCode != 0)
                     {
-                        var error = process.StandardError.ReadToEnd();
-                        AddSourceDiagnostic(diagnostics, sourceId, "PH-SOURCE-GIT", string.IsNullOrWhiteSpace(error) ? "Git operation failed." : error.Trim());
+                        if (reportFailure)
+                        {
+                            AddSourceDiagnostic(diagnostics, sourceId, "PH-SOURCE-GIT", string.IsNullOrWhiteSpace(error) ? "Git operation failed." : error.Trim());
+                        }
                     }
+
+                    return new GitCommandResult(process.ExitCode, output, error);
                 }
             }
             catch (Exception ex)
             {
-                AddSourceDiagnostic(diagnostics, sourceId, "PH-SOURCE-GIT", ex.Message);
+                if (reportFailure)
+                {
+                    AddSourceDiagnostic(diagnostics, sourceId, "PH-SOURCE-GIT", ex.Message);
+                }
+
+                return GitCommandResult.Failed;
             }
         }
 
@@ -264,6 +392,12 @@ namespace PlugHub.Framework.Sources
                 .ToArray();
             var segment = new string(chars).Trim('_');
             return string.IsNullOrWhiteSpace(segment) ? "github-source" : segment;
+        }
+
+        private static bool IsDefaultManifestPath(string manifestPath)
+        {
+            return string.IsNullOrWhiteSpace(manifestPath)
+                || string.Equals(manifestPath.Trim(), DefaultPackageManifestName, StringComparison.OrdinalIgnoreCase);
         }
 
         private static ModulesConfiguration CloneModules(ModulesConfiguration modules)
@@ -303,6 +437,22 @@ namespace PlugHub.Framework.Sources
                 Code = code ?? string.Empty,
                 Message = message ?? string.Empty
             });
+        }
+
+        private sealed class GitCommandResult
+        {
+            public static readonly GitCommandResult Failed = new GitCommandResult(-1, string.Empty, string.Empty);
+
+            public GitCommandResult(int exitCode, string standardOutput, string standardError)
+            {
+                ExitCode = exitCode;
+                StandardOutput = standardOutput ?? string.Empty;
+                StandardError = standardError ?? string.Empty;
+            }
+
+            public int ExitCode { get; }
+            public string StandardOutput { get; }
+            public string StandardError { get; }
         }
     }
 

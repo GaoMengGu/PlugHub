@@ -44,7 +44,7 @@ SignPath Foundation 面向符合条件的开源项目提供免费代码签名流
 - CI 产生可追踪的构建产物。
 - 按服务方要求配置仓库、项目和签名策略。
 
-这类方案适合后续将 PlugHub 和 `PlugHub_Modules` 做成稳定开源发布流程时再接入。当前阶段建议先保留 `scripts\sign-revit2020.ps1`，本地开发用 self-signed，公开发布前再决定证书或托管签名服务。
+这类方案适合后续将 PlugHub 和 `PlugHub_Packages` 做成稳定发布流程时再接入。当前阶段建议先保留 `scripts\sign-revit2020.ps1`，本地开发用 self-signed，公开发布前再决定证书或托管签名服务。
 
 ## GitHub Release 中的 cosign 签名
 
@@ -58,7 +58,7 @@ git push origin V1.0.0
 workflow 使用 GitHub OIDC 和 cosign keyless signing，对发布产物做 Sigstore blob 签名：
 
 - `PlugHub*.dll`：生成对应的 `.sigstore.json` bundle。
-- `PlugHub-Revit2020-<tag>.zip`：生成 zip 包和 zip 的 `.sigstore.json` bundle。
+- `PlugHub-Revit2020-<tag>.zip`：生成 zip 包和 zip 的 `.sigstore.json` bundle。zip 内不包含 `.pdb` 和 `.sigstore.json`。
 
 Revit API 引用通过 NuGet 仅用于 CI 编译。release workflow 使用 `.\scripts\build-revit2020.ps1 -UseRevitApiNuGet`，通过 `Autodesk.Revit.SDK` 包获得编译期引用，不需要把 `RevitAPI.dll` / `RevitAPIUI.dll` 放入仓库，也不需要配置包含 Autodesk DLL 的 GitHub secret。
 

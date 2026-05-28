@@ -42,7 +42,7 @@ dotnet run --project src\PlugHub.StaticValidation\PlugHub.StaticValidation.cspro
 
 - 编译 `PlugHub.Revit2020` 及其依赖。
 - 复制 DLL、运行时配置、运行时插件包投放目录和 `.addin` 到 `dist\Revit2020`。
-- 将 `.addin` 中的 Assembly 写成 `PlugHub.Revit2020.dll` 的绝对路径。
+- 默认将 `.addin` 中的 Assembly 写成本机 `PlugHub.Revit2020.dll` 绝对路径；release workflow 使用相对路径 `PlugHub.Revit2020.dll`。
 - 构建前清理旧样例模块、旧内置模块 DLL/PDB 和旧 `modules` 投放目录残留。
 
 CI 发布构建使用 `NuGet` 引用模式，只把 Revit API 当作编译引用：
@@ -77,7 +77,7 @@ CI 发布构建使用 `NuGet` 引用模式，只把 Revit API 当作编译引用
 - Ribbon 中出现 `PlugHub` tab。
 - 固定出现 `框架` panel 和「设置」按钮。
 - 未配置外部模块时不出现业务 panel。
-- 配置 `D:\AI\code\PlugHub_Modules` 或其他外部模块来源后，出现对应外部模块 panel。
+- 配置本地插件包文件夹或 GitHub 插件包来源后，出现对应外部模块 panel。
 - 「设置」打开 WPF 窗口，关闭后 Revit 可继续操作。
 - 插件包和功能显示名、开关、所属分组、图标、大小、排序保存后能写回配置。
 - 自定义分组通过分组页右键菜单新增或删除；删除前必须先移走该分组下的功能。
@@ -90,8 +90,8 @@ CI 发布构建使用 `NuGet` 引用模式，只把 Revit API 当作编译引用
 
 - 新增外部插件包时，优先放到 `packages/dropins` 或配置 `moduleSources`。
 - 本地来源使用 `type: "localFolder"`，GitHub 来源使用 `type: "github"`。
-- 默认 GitHub 来源指向 `GaoMengGu/PlugHub_Modules`，本地缓存目录为 `packages/github/GaoMengGu_PlugHub_Modules`。
-- GitHub 来源会解析到本地缓存目录；启用 `autoUpdate` 后运行时才会尝试 Git 操作。
+- 默认 GitHub 来源指向 `GaoMengGu/PlugHub_Packages`，本地缓存目录为 `packages/github/GaoMengGu_PlugHub_Packages`。
+- GitHub 来源会解析到本地缓存目录；启用 `autoUpdate` 后运行时才会尝试 Git 操作。更新前会先比对远端引用，未变化时跳过 fetch/pull；首次 clone 使用浅克隆和 sparse checkout，尽量只下载包清单、DLL 和图标资产。
 - 外部插件包文件夹推荐使用 `package.json`；平铺投放 DLL 时使用 `<DllName>.package.json`；框架来源配置文件名统一为 `config\sources.json`。
 - 功能如果没有 `commandAssembly` / `commandType`，Ribbon 按钮会回落到框架状态窗口。
 - workspace 未配置 group 时，Composer 会按 feature 的 `group`、`category` 或 `moduleId` 生成 fallback panel。

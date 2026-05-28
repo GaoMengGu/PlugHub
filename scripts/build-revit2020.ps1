@@ -4,6 +4,7 @@ param(
     [switch]$UseRevitApiNuGet,
     [string]$RevitApiNuGetVersion = "",
     [string]$OutputDir = "$PSScriptRoot\..\dist\Revit2020",
+    [switch]$UseRelativeAddinAssembly,
     [switch]$InstallAddin
 )
 
@@ -102,7 +103,7 @@ foreach ($RelativeConfigPath in $RequiredConfigFiles) {
 $xml = [xml](Get-Content $Addin -Raw)
 $assemblyNode = $xml.SelectSingleNode('//RevitAddIns/AddIn/Assembly')
 if ($null -eq $assemblyNode) { throw "Missing Assembly node in $Addin." }
-$assemblyNode.InnerText = $Dll
+$assemblyNode.InnerText = if ($UseRelativeAddinAssembly) { "PlugHub.Revit2020.dll" } else { $Dll }
 $xml.Save($Addin)
 
 if ($InstallAddin) {
