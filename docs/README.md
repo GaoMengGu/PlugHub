@@ -7,6 +7,7 @@
 1. [project-overview.md](project-overview.md)：项目背景、目标、开发思路、当前进度和已知边界。
 2. [architecture.md](architecture.md)：当前架构、运行链路、配置模型、模块契约和关键设计决策。
 3. [development.md](development.md)：本地开发、构建、验证、Revit 实机验收和 agent 协作规则。
+4. [signing.md](signing.md)：DLL 签名的免费/公开分发方案、脚本用法和证书安全约束。
 
 ## 文档维护原则
 

@@ -157,30 +157,6 @@ namespace PlugHub.Revit2020
             };
         }
 
-        private static UIElement BuildGridWithActions(DataGrid grid, params Button[] actions)
-        {
-            var root = new DockPanel();
-            if (actions.Length > 0)
-            {
-                var bar = new StackPanel
-                {
-                    Orientation = Orientation.Horizontal,
-                    HorizontalAlignment = HorizontalAlignment.Right,
-                    Margin = new Thickness(0, 0, 0, 8)
-                };
-                foreach (var action in actions)
-                {
-                    bar.Children.Add(action);
-                }
-
-                DockPanel.SetDock(bar, Dock.Top);
-                root.Children.Add(bar);
-            }
-
-            root.Children.Add(grid);
-            return root;
-        }
-
         private static Button CreateButton(string text, RoutedEventHandler handler)
         {
             var button = new Button
@@ -690,6 +666,7 @@ namespace PlugHub.Revit2020
             menu.Items.Add(MenuItem("设为大按钮", (sender, args) => SetSelectedFeatureSize("large")));
             menu.Items.Add(MenuItem("设为小按钮", (sender, args) => SetSelectedFeatureSize("small")));
             menu.Items.Add(MenuItem("设置图标...", (sender, args) => SetSelectedFeatureIcon()));
+            menu.Items.Add(BuildBuiltinIconMenu());
             menu.Items.Add(MenuItem("清空图标", (sender, args) => SetSelectedFeatureIcon(string.Empty)));
             menu.Items.Add(new Separator());
             menu.Items.Add(MenuItem("上移", (sender, args) => MoveSelectedRow(_featuresGrid, -1)));
@@ -700,8 +677,23 @@ namespace PlugHub.Revit2020
         private ContextMenu BuildGroupMenu()
         {
             var menu = new ContextMenu();
+            menu.Items.Add(MenuItem("新增分组", (sender, args) => AddCustomGroup()));
+            menu.Items.Add(MenuItem("删除分组", (sender, args) => RemoveSelectedGroup()));
+            menu.Items.Add(new Separator());
             menu.Items.Add(MenuItem("上移", (sender, args) => MoveSelectedRow(_groupsGrid, -1)));
             menu.Items.Add(MenuItem("下移", (sender, args) => MoveSelectedRow(_groupsGrid, 1)));
+            return menu;
+        }
+
+        private MenuItem BuildBuiltinIconMenu()
+        {
+            var menu = new MenuItem { Header = "选择内置图标" };
+            foreach (var option in BuiltinIconOptions())
+            {
+                var value = option.Value;
+                menu.Items.Add(MenuItem(option.DisplayText, (sender, args) => SetSelectedFeatureBuiltinIcon(value)));
+            }
+
             return menu;
         }
 
@@ -771,6 +763,11 @@ namespace PlugHub.Revit2020
             _featuresGrid.Items.Refresh();
         }
 
+        private void SetSelectedFeatureBuiltinIcon(string iconPath)
+        {
+            SetSelectedFeatureIcon(iconPath);
+        }
+
         private void SetSelectedSourceEnabled(bool enabled)
         {
             if (_sourcesGrid.SelectedItem is SourceRow row)
@@ -791,12 +788,50 @@ namespace PlugHub.Revit2020
                 Enabled = true,
                 AutoUpdate = normalizedType == "github",
                 Type = normalizedType,
-                Path = normalizedType == "github" ? "packages/github/" + id : "packages/" + id,
-                Repository = normalizedType == "github" ? "owner/repository" : string.Empty,
+                Path = normalizedType == "github" ? "packages/github/GaoMengGu_PlugHub_Modules" : "packages/" + id,
+                Repository = normalizedType == "github" ? "GaoMengGu/PlugHub_Modules" : string.Empty,
                 Ref = "main",
                 ManifestPath = DefaultPackageManifestName,
                 Status = "待保存"
             });
+        }
+
+        private void AddCustomGroup()
+        {
+            EndGridEdits();
+            var id = UniqueGroupId(_groupRows, "custom-group");
+            var index = _groupRows.Count + 1;
+            var row = new GroupRow
+            {
+                Id = id,
+                Name = "自定义分组 " + index,
+                FeatureCount = 0,
+                Order = (_groupRows.Count + 1) * 100
+            };
+
+            _groupRows.Add(row);
+            RefreshGroupPositions();
+            RefreshFeatureGroupOptions();
+            _groupsGrid.SelectedItem = row;
+            RefreshStatus("已新增自定义分组，可在功能页把功能移动到该分组。");
+        }
+
+        private void RemoveSelectedGroup()
+        {
+            if (!(_groupsGrid.SelectedItem is GroupRow row)) return;
+
+            EndGridEdits();
+            var isInUse = _featureRows.Any(feature => string.Equals(feature.Group, row.Id, StringComparison.OrdinalIgnoreCase));
+            if (isInUse)
+            {
+                MessageBox.Show(this, "该分组仍有功能使用。请先在功能页把功能移动到其他分组。", "PlugHub 设置", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            _groupRows.Remove(row);
+            RefreshGroupPositions();
+            RefreshFeatureGroupOptions();
+            RefreshStatus("已删除未使用的自定义分组。");
         }
 
         private List<GroupOption> GroupOptionsForFeatureRows()
@@ -823,6 +858,42 @@ namespace PlugHub.Revit2020
                 .OrderBy(option => option.DisplayText, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(option => option.Id, StringComparer.OrdinalIgnoreCase)
                 .ToList();
+        }
+
+        private static List<IconOption> BuiltinIconOptions()
+        {
+            return DefaultRibbonIconProvider.BuiltinIconKeys
+                .Select(key => new IconOption
+                {
+                    Value = DefaultRibbonIconProvider.ToIconPath(key),
+                    DisplayText = BuiltinIconDisplayName(key)
+                })
+                .ToList();
+        }
+
+        private static string BuiltinIconDisplayName(string key)
+        {
+            if (string.Equals(key, "settings", StringComparison.OrdinalIgnoreCase)) return "设置";
+            if (string.Equals(key, "tool", StringComparison.OrdinalIgnoreCase)) return "工具";
+            if (string.Equals(key, "duct", StringComparison.OrdinalIgnoreCase)) return "风管";
+            if (string.Equals(key, "family", StringComparison.OrdinalIgnoreCase)) return "族";
+            if (string.Equals(key, "batch", StringComparison.OrdinalIgnoreCase)) return "批处理";
+            if (string.Equals(key, "document", StringComparison.OrdinalIgnoreCase)) return "文档";
+            if (string.Equals(key, "warning", StringComparison.OrdinalIgnoreCase)) return "提示";
+            return "默认";
+        }
+
+        private void RefreshFeatureGroupOptions()
+        {
+            foreach (var column in _featuresGrid.Columns.OfType<DataGridComboBoxColumn>())
+            {
+                if (string.Equals(Convert.ToString(column.Header), "所属分组", StringComparison.OrdinalIgnoreCase))
+                {
+                    column.ItemsSource = GroupOptionsForFeatureRows();
+                }
+            }
+
+            _featuresGrid.Items.Refresh();
         }
 
         private void EnsureViewGroupForFeature(ModuleConfiguration module, FeatureConfiguration feature)
@@ -1195,6 +1266,20 @@ namespace PlugHub.Revit2020
             return candidate;
         }
 
+        private static string UniqueGroupId(IEnumerable<GroupRow> rows, string prefix)
+        {
+            var existing = new HashSet<string>(rows.Select(row => row.Id), StringComparer.OrdinalIgnoreCase);
+            var index = 1;
+            string candidate;
+            do
+            {
+                candidate = prefix + "-" + index++;
+            }
+            while (existing.Contains(candidate));
+
+            return candidate;
+        }
+
         private sealed class ModuleRow
         {
             public string Id { get; set; } = string.Empty;
@@ -1264,6 +1349,12 @@ namespace PlugHub.Revit2020
         private sealed class GroupOption
         {
             public string Id { get; set; } = string.Empty;
+            public string DisplayText { get; set; } = string.Empty;
+        }
+
+        private sealed class IconOption
+        {
+            public string Value { get; set; } = string.Empty;
             public string DisplayText { get; set; } = string.Empty;
         }
 

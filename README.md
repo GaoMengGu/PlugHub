@@ -18,8 +18,6 @@ PlugHub 是面向 Revit 2020 的模块化插件框架。它提供统一 Ribbon �
 - 平铺投放 DLL 时，使用 `<DllName>.package.json` 作为邻接清单。
 - 在 `config\sources.json` 中配置指定本地文件夹或 GitHub 仓库来源。
 
-当前从框架中分离出的示例模块位于 `D:\AI\code\PlugHub_Modules`。
-
 ## 验证
 
 当前非 Revit 环境只做 C# 静态验证：

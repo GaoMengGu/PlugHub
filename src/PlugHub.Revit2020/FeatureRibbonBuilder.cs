@@ -69,6 +69,8 @@ namespace PlugHub.Revit2020
 
             data.ToolTip = tooltip;
             data.LongDescription = longDescription;
+            data.Image = DefaultRibbonIconProvider.CreateSmallIcon("settings");
+            data.LargeImage = DefaultRibbonIconProvider.CreateLargeIcon("settings");
             panel.AddItem(data);
         }
 
@@ -121,9 +123,8 @@ namespace PlugHub.Revit2020
 
             data.ToolTip = BuildToolTip(feature);
             data.LongDescription = feature.Description;
-            var icon = LoadFeatureIcon(feature.IconPath);
-            data.Image = icon ?? DefaultRibbonIconProvider.CreateSmallIcon();
-            data.LargeImage = icon ?? DefaultRibbonIconProvider.CreateLargeIcon();
+            data.Image = LoadFeatureIcon(feature.IconPath, false) ?? DefaultRibbonIconProvider.CreateSmallIcon();
+            data.LargeImage = LoadFeatureIcon(feature.IconPath, true) ?? DefaultRibbonIconProvider.CreateLargeIcon();
 
             return data;
         }
@@ -262,9 +263,18 @@ namespace PlugHub.Revit2020
                 : Path.GetFullPath(Path.Combine(_baseDirectory, configuredAssembly));
         }
 
-        private ImageSource? LoadFeatureIcon(string iconPath)
+        private ImageSource? LoadFeatureIcon(string iconPath, bool large)
+        {
+            return LoadConfiguredIcon(iconPath, large);
+        }
+
+        private ImageSource? LoadConfiguredIcon(string iconPath, bool large)
         {
             if (string.IsNullOrWhiteSpace(iconPath)) return null;
+            if (DefaultRibbonIconProvider.TryCreateIcon(iconPath, large, out var builtinIcon))
+            {
+                return builtinIcon;
+            }
 
             var resolvedPath = Path.IsPathRooted(iconPath)
                 ? iconPath

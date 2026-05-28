@@ -33,6 +33,7 @@ namespace PlugHub.StaticValidation
                 ValidateBuiltinOnlySpecification();
                 ValidateSettingsCreationAndSortingSpecification();
                 ValidateDefaultIconSpecification();
+                ValidateSigningGuidance();
                 ValidateRevitDeploymentConfiguration();
 
                 var modules = AllModules().ToList();
@@ -57,6 +58,7 @@ namespace PlugHub.StaticValidation
             {
                 "README.md",
                 "AGENTS.md",
+                ".github/workflows/release.yml",
                 "PlugHub.sln",
                 "PlugHub.slnx",
                 "src/PlugHub.Contracts/PlugHub.Contracts.csproj",
@@ -77,6 +79,7 @@ namespace PlugHub.StaticValidation
                 "src/PlugHub.Revit2020/FrameworkStatusWindow.cs",
                 "src/PlugHub.Revit2020/DefaultRibbonIconProvider.cs",
                 "src/PlugHub.Revit2020/RevitWindowOwner.cs",
+                "scripts/sign-revit2020.ps1",
                 "config/sources.example.json",
                 "config/views.example.json",
                 "config/feature-combinations.example.json",
@@ -85,7 +88,8 @@ namespace PlugHub.StaticValidation
                 "docs/README.md",
                 "docs/project-overview.md",
                 "docs/architecture.md",
-                "docs/development.md"
+                "docs/development.md",
+                "docs/signing.md"
             };
 
             var missing = required.Where(path => !File.Exists(FullPath(path))).ToList();
@@ -111,10 +115,12 @@ namespace PlugHub.StaticValidation
             }
 
             var index = ReadText("docs/README.md");
-            foreach (var requiredLink in new[] { "project-overview.md", "architecture.md", "development.md" })
+            foreach (var requiredLink in new[] { "project-overview.md", "architecture.md", "development.md", "signing.md" })
             {
                 Require(index.Contains(requiredLink), "docs index must link to " + requiredLink);
             }
+
+            Require(!ReadText("README.md").Contains("D:\\AI\\code\\PlugHub_Modules"), "root README must not expose local external module paths.");
         }
 
         private static void ValidateLayering()
@@ -276,6 +282,7 @@ namespace PlugHub.StaticValidation
             var modulesText = ReadText("config/sources.example.json");
             Require(modulesText.Contains("\"type\": \"github\""), "modules config must include a github module source example.");
             Require(modulesText.Contains("\"autoUpdate\""), "github module source example must expose autoUpdate.");
+            Require(modulesText.Contains("\"repository\": \"GaoMengGu/PlugHub_Modules\""), "default github source must point at GaoMengGu/PlugHub_Modules.");
             Require(modulesText.Contains("\"manifestPath\": \"package.json\""), "module source examples must point at package.json.");
 
             var revitText = ReadAllCSharp("src/PlugHub.Revit2020");
@@ -397,17 +404,41 @@ namespace PlugHub.StaticValidation
 
             Require(!settingsWindow.Contains("TextColumn(nameof(ModuleRow.Order)") && !settingsWindow.Contains("TextColumn(nameof(FeatureRow.Order)") && !settingsWindow.Contains("TextColumn(nameof(GroupRow.Order)"), "settings must not expose raw numeric order columns.");
             Require(settingsWindow.Contains("PositionText") && settingsWindow.Contains("RefreshPluginPackagePositions") && settingsWindow.Contains("RefreshFeaturePositions") && settingsWindow.Contains("RefreshGroupPositions"), "settings must show human-readable position text and maintain drag/up-down sorting.");
+            Require(settingsWindow.Contains("AddCustomGroup") && settingsWindow.Contains("RemoveSelectedGroup"), "settings must allow custom workspace groups to be created and removed.");
+            Require(!settingsWindow.Contains("CreateButton(\"新增分组\"") && !settingsWindow.Contains("CreateButton(\"删除分组\""), "custom group create/delete actions must remain in the right-click menu only.");
         }
 
         private static void ValidateDefaultIconSpecification()
         {
             var ribbonBuilder = ReadText("src/PlugHub.Revit2020/FeatureRibbonBuilder.cs");
             var iconProvider = ReadText("src/PlugHub.Revit2020/DefaultRibbonIconProvider.cs");
+            var settingsWindow = ReadText("src/PlugHub.Revit2020/FrameworkSettingsWindow.cs");
             var modulesText = ReadText("config/sources.example.json");
 
             Require(ribbonBuilder.Contains("DefaultRibbonIconProvider") && ribbonBuilder.Contains("CreateSmallIcon") && ribbonBuilder.Contains("CreateLargeIcon"), "Ribbon builder must apply built-in default small/large icons.");
+            Require(ribbonBuilder.Contains("CreateSmallIcon(\"settings\")") && ribbonBuilder.Contains("CreateLargeIcon(\"settings\")"), "settings ribbon button must use a built-in settings icon.");
+            Require(ribbonBuilder.Contains("LoadConfiguredIcon"), "Ribbon builder must resolve configured file icons and built-in icon keys.");
             Require(iconProvider.Contains("CreateSmallIcon") && iconProvider.Contains("CreateLargeIcon"), "default icon provider must expose small and large icon factories.");
+            Require(iconProvider.Contains("BuiltinIconKeys") && iconProvider.Contains("settings") && iconProvider.Contains("duct") && iconProvider.Contains("family"), "default icon provider must expose a small built-in icon suite.");
+            Require(settingsWindow.Contains("BuildBuiltinIconMenu") && settingsWindow.Contains("SetSelectedFeatureBuiltinIcon"), "settings must let users choose built-in feature icons.");
             Require(!modulesText.Contains("commandAssembly"), "framework config must not ship command-backed feature entries.");
+        }
+
+        private static void ValidateSigningGuidance()
+        {
+            var signingDoc = ReadText("docs/signing.md");
+            var signingScript = ReadText("scripts/sign-revit2020.ps1");
+            var workflow = ReadText(".github/workflows/release.yml");
+
+            foreach (var token in new[] { "SignPath Foundation", "self-signed", "signtool", "Thumbprint" })
+            {
+                Require(signingDoc.Contains(token) || signingScript.Contains(token), "signing guidance must mention: " + token);
+            }
+
+            Require(signingScript.Contains("signtool") && signingScript.Contains("/fd SHA256") && signingScript.Contains("/tr"), "signing script must use Authenticode SHA256 signing with timestamp support.");
+            Require(workflow.Contains("push:") && workflow.Contains("tags:") && workflow.Contains("\"V*\""), "release workflow must run only for version tag pushes.");
+            Require(workflow.Contains("sigstore/cosign-installer") && workflow.Contains("cosign sign-blob") && workflow.Contains("id-token: write"), "release workflow must use keyless cosign blob signing.");
+            Require(workflow.Contains("REVIT2020_API_ZIP_BASE64") && workflow.Contains("RevitAPI.dll") && workflow.Contains("RevitAPIUI.dll"), "release workflow must document the required Revit API secret input.");
         }
 
         private static void ValidateRevitDeploymentConfiguration()

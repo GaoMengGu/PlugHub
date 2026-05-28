@@ -70,6 +70,7 @@ dotnet run --project src\PlugHub.StaticValidation\PlugHub.StaticValidation.cspro
 - 配置 `D:\AI\code\PlugHub_Modules` 或其他外部模块来源后，出现对应外部模块 panel。
 - 「设置」打开 WPF 窗口，关闭后 Revit 可继续操作。
 - 插件包和功能显示名、开关、所属分组、图标、大小、排序保存后能写回配置。
+- 自定义分组通过分组页右键菜单新增或删除；删除前必须先移走该分组下的功能。
 - Ribbon 结构、图标和大小调整后，重启 Revit 能看到新布局。
 - 外部模块按钮能进入对应 Revit API 命令，例如分离后的 `Tee/Tap 切换` 和 `批量材质参数`。
 
@@ -79,10 +80,23 @@ dotnet run --project src\PlugHub.StaticValidation\PlugHub.StaticValidation.cspro
 
 - 新增外部插件包时，优先放到 `packages/dropins` 或配置 `moduleSources`。
 - 本地来源使用 `type: "localFolder"`，GitHub 来源使用 `type: "github"`。
+- 默认 GitHub 来源指向 `GaoMengGu/PlugHub_Modules`，本地缓存目录为 `packages/github/GaoMengGu_PlugHub_Modules`。
 - GitHub 来源会解析到本地缓存目录；启用 `autoUpdate` 后运行时才会尝试 Git 操作。
 - 外部插件包文件夹推荐使用 `package.json`；平铺投放 DLL 时使用 `<DllName>.package.json`；框架来源配置文件名统一为 `config\sources.json`。
 - 功能如果没有 `commandAssembly` / `commandType`，Ribbon 按钮会回落到框架状态窗口。
 - workspace 未配置 group 时，Composer 会按 feature 的 `group`、`category` 或 `moduleId` 生成 fallback panel。
+
+## 签名
+
+可选签名脚本：
+
+```powershell
+.\scripts\sign-revit2020.ps1 -Thumbprint "<Thumbprint>"
+```
+
+本地开发可用 self-signed 证书；公开分发前需要评估公开可信证书或 SignPath Foundation 等开源签名方案。详细说明见 [signing.md](signing.md)。
+
+发布 `V*` tag 时，GitHub Actions 会运行 release workflow，构建 Revit 2020 包并用 cosign 为 DLL 和 zip 产物生成 Sigstore 签名 bundle。该 workflow 需要仓库 secret `REVIT2020_API_ZIP_BASE64`。
 
 ## Agent 协作规则
 
