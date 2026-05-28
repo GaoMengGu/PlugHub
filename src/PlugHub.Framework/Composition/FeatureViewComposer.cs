@@ -70,7 +70,7 @@ namespace PlugHub.Framework.Composition
                 }
             }
 
-            var group = SelectGroup(feature, groups);
+            var group = SelectGroup(feature, groups) ?? CreateFallbackGroup(feature);
             if (group == null)
             {
                 return ProjectedFeature.Hidden(feature.Id, "feature does not match any view group");
@@ -112,6 +112,27 @@ namespace PlugHub.Framework.Composition
                 .ThenBy(group => group.Order)
                 .ThenBy(group => group.Name)
                 .FirstOrDefault();
+        }
+
+        private static ViewGroupConfiguration? CreateFallbackGroup(FeatureDescriptor feature)
+        {
+            var groupId = FirstNonEmpty(feature.Group, feature.Category, feature.ModuleId);
+            if (string.IsNullOrWhiteSpace(groupId)) return null;
+
+            return new ViewGroupConfiguration
+            {
+                Id = groupId,
+                Name = groupId,
+                Order = feature.Order,
+                IncludeTags = new List<string>(),
+                IncludeCategories = new List<string>(),
+                Presentation = "panel"
+            };
+        }
+
+        private static string FirstNonEmpty(params string[] values)
+        {
+            return values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
         }
 
         private static bool Contains(IEnumerable<string> values, string candidate)

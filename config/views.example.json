@@ -5,37 +5,18 @@
     {
       "id": "workspace",
       "name": "PlugHub 工作台",
-      "description": "单一工作台视图，承载所有已启用且可见的模块功能。",
+      "description": "单一工作台视图，承载外部模块提供的已启用且可见功能。",
       "ribbon": {
         "tabName": "PlugHub",
-        "fallbackPanelName": "其他工具"
+        "fallbackPanelName": "外部模块"
       },
       "includeTags": [],
       "excludeTags": [],
       "includeCategories": [],
       "excludeCategories": [],
-      "groups": [
-        {
-          "id": "mep-tools",
-          "name": "机电风管",
-          "description": "机电建模辅助入口。",
-          "includeCategories": ["mep"],
-          "includeTags": ["mep", "duct"],
-          "order": 300,
-          "presentation": "panel"
-        },
-        {
-          "id": "family-tools",
-          "name": "族批处理",
-          "description": "族文件批处理入口。",
-          "includeCategories": ["family"],
-          "includeTags": ["family", "material"],
-          "order": 400,
-          "presentation": "panel"
-        }
-      ],
+      "groups": [],
       "sort": ["group.order", "feature.order", "feature.name", "feature.id"],
-      "emptyStateText": "PlugHub 工作台没有可用功能。"
+      "emptyStateText": "PlugHub 工作台没有可用功能。请在 packages/dropins、指定本地文件夹或 GitHub 来源中添加插件包。"
     }
   ]
 }

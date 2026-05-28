@@ -4,7 +4,7 @@
   "required": ["schemaVersion", "modules"],
   "properties": {
     "schemaVersion": {"type": "string"},
-    "moduleDirectories": {"type": "array", "items": {"type": "string"}},
+    "packageDirectories": {"type": "array", "items": {"type": "string"}},
     "moduleSources": {
       "type": "array",
       "items": {

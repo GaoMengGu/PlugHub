@@ -10,7 +10,7 @@ if (!(Test-Path $Dll)) { throw "Missing $Dll. Run scripts\build-revit2020.ps1 fi
 if (!(Test-Path $Addin)) { throw "Missing $Addin. Run scripts\build-revit2020.ps1 first." }
 
 $RequiredConfigFiles = @(
-    "config\modules.json",
+    "config\sources.json",
     "config\views.json",
     "config\feature-combinations.json"
 )

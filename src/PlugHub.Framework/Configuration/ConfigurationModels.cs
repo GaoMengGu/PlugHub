@@ -12,7 +12,7 @@ namespace PlugHub.Framework.Configuration
     public sealed class ModulesConfiguration
     {
         public string SchemaVersion { get; set; } = string.Empty;
-        public List<string> ModuleDirectories { get; set; } = new List<string>();
+        public List<string> PackageDirectories { get; set; } = new List<string>();
         public List<ModuleSourceConfiguration> ModuleSources { get; set; } = new List<ModuleSourceConfiguration>();
         public ConflictPolicyConfiguration ConflictPolicy { get; set; } = new ConflictPolicyConfiguration();
         public List<ModuleConfiguration> Modules { get; set; } = new List<ModuleConfiguration>();

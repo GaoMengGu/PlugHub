@@ -37,7 +37,13 @@ $RemovedModuleName = "PlugHub." + "Sample" + "Module"
 $StaleOutputPaths = @(
     (Join-Path $OutputDir ($RemovedModuleName + ".dll")),
     (Join-Path $OutputDir ($RemovedModuleName + ".pdb")),
-    (Join-Path $OutputDir ("modules\" + "samples"))
+    (Join-Path $OutputDir "PlugHub.BuiltinModule.dll"),
+    (Join-Path $OutputDir "PlugHub.BuiltinModule.pdb"),
+    (Join-Path $OutputDir "config\modules.json"),
+    (Join-Path $OutputDir "config\plugin-sources.json"),
+    (Join-Path $OutputDir ("modules\" + "samples")),
+    (Join-Path $OutputDir ("modules\" + "dropins")),
+    (Join-Path $OutputDir "modules")
 )
 foreach ($StaleOutputPath in $StaleOutputPaths) {
     if (Test-Path $StaleOutputPath) {
@@ -58,7 +64,7 @@ if (!(Test-Path $Dll)) { throw "Build finished but $Dll was not found." }
 if (!(Test-Path $Addin)) { throw "Build finished but $Addin was not found." }
 
 $RequiredConfigFiles = @(
-    "config\modules.json",
+    "config\sources.json",
     "config\views.json",
     "config\feature-combinations.json"
 )

@@ -22,7 +22,7 @@ namespace PlugHub.Framework.Configuration
 
             return new FrameworkConfiguration
             {
-                Modules = ReadJson<ModulesConfiguration>(Path.Combine(configDirectory, "modules.json")),
+                Modules = ReadJson<ModulesConfiguration>(Path.Combine(configDirectory, "sources.json")),
                 Views = ReadJson<ViewsConfiguration>(Path.Combine(configDirectory, "views.json")),
                 FeatureCombinations = ReadOptionalJson<FeatureCombinationsConfiguration>(Path.Combine(configDirectory, "feature-combinations.json"))
             };
@@ -121,7 +121,7 @@ namespace PlugHub.Framework.Configuration
             return new ModulesConfiguration
             {
                 SchemaVersion = modules.SchemaVersion,
-                ModuleDirectories = new List<string>(modules.ModuleDirectories ?? new List<string>()),
+                PackageDirectories = new List<string>(modules.PackageDirectories ?? new List<string>()),
                 ModuleSources = (modules.ModuleSources ?? new List<ModuleSourceConfiguration>()).Select(source => new ModuleSourceConfiguration
                 {
                     Id = source.Id,

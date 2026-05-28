@@ -21,7 +21,7 @@ namespace PlugHub.Framework.Discovery
 
             foreach (var module in (modulesConfiguration.Modules ?? new List<ModuleConfiguration>()).OrderBy(module => module.Order).ThenBy(module => module.Id, StringComparer.OrdinalIgnoreCase))
             {
-                var descriptor = ToDescriptor(module);
+                var descriptor = ToDescriptor(baseDirectory, module);
                 descriptors.Add(descriptor);
 
                 if (!module.Enabled || !module.Visible)
@@ -100,7 +100,7 @@ namespace PlugHub.Framework.Discovery
             return Path.Combine(sourceDirectory, assemblyName);
         }
 
-        private static ModuleDescriptor ToDescriptor(ModuleConfiguration module)
+        private static ModuleDescriptor ToDescriptor(string baseDirectory, ModuleConfiguration module)
         {
             return new ModuleDescriptor
             {
@@ -122,12 +122,31 @@ namespace PlugHub.Framework.Discovery
                     Order = feature.Order,
                     DefaultState = ParseFeatureState(feature.DefaultState),
                     CommandKey = feature.CommandKey,
-                    CommandAssembly = string.IsNullOrWhiteSpace(feature.CommandAssembly) ? module.Assembly : feature.CommandAssembly,
+                    CommandAssembly = ResolveFeatureCommandAssembly(baseDirectory, module, feature.CommandAssembly),
                     CommandType = feature.CommandType,
                     ButtonSize = string.IsNullOrWhiteSpace(feature.ButtonSize) ? "large" : feature.ButtonSize,
-                    IconPath = feature.IconPath
+                    IconPath = ResolveFeatureAssetPath(baseDirectory, module, feature.IconPath)
                 }).ToList()
             };
+        }
+
+        private static string ResolveFeatureCommandAssembly(string baseDirectory, ModuleConfiguration module, string commandAssembly)
+        {
+            var configuredAssembly = string.IsNullOrWhiteSpace(commandAssembly) ? module.Assembly : commandAssembly;
+            if (string.IsNullOrWhiteSpace(configuredAssembly)) return string.Empty;
+            if (Path.IsPathRooted(configuredAssembly)) return configuredAssembly;
+
+            var sourceDirectory = string.IsNullOrWhiteSpace(module.ResolvedBaseDirectory) ? baseDirectory : module.ResolvedBaseDirectory;
+            return Path.Combine(sourceDirectory, configuredAssembly);
+        }
+
+        private static string ResolveFeatureAssetPath(string baseDirectory, ModuleConfiguration module, string assetPath)
+        {
+            if (string.IsNullOrWhiteSpace(assetPath)) return string.Empty;
+            if (Path.IsPathRooted(assetPath)) return assetPath;
+
+            var sourceDirectory = string.IsNullOrWhiteSpace(module.ResolvedBaseDirectory) ? baseDirectory : module.ResolvedBaseDirectory;
+            return Path.Combine(sourceDirectory, assetPath);
         }
 
         private static DiagnosticSeverity SeverityFor(string policy)

@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "1.0",
+  "packageDirectories": [
+    "packages/dropins"
+  ],
+  "moduleSources": [
+    {
+      "id": "local-company-tools",
+      "type": "localFolder",
+      "path": "packages/company",
+      "manifestPath": "package.json",
+      "enabled": false,
+      "autoUpdate": false
+    },
+    {
+      "id": "team-github-tools",
+      "type": "github",
+      "repository": "GaoMengGu/PlugHubModules",
+      "ref": "main",
+      "path": "packages/github/GaoMengGu_PlugHubModules",
+      "manifestPath": "package.json",
+      "enabled": false,
+      "autoUpdate": false
+    }
+  ],
+  "conflictPolicy": {
+    "duplicateFeatureId": "fail-feature",
+    "duplicateModuleId": "fail-module",
+    "missingModuleType": "warn"
+  },
+  "modules": []
+}
