@@ -34,6 +34,7 @@ namespace PlugHub.StaticValidation
                 ValidateSettingsCreationAndSortingSpecification();
                 ValidateDefaultIconSpecification();
                 ValidatePackageSourceAndReleaseBehavior();
+                ValidateLegacyGitHubSourceMigrationBehavior();
                 ValidateRevitApiReferenceStrategy();
                 ValidateSigningGuidance();
                 ValidateRevitDeploymentConfiguration();
@@ -444,12 +445,66 @@ namespace PlugHub.StaticValidation
             Require(sourceResolver.Contains("FindModuleManifests(sourceDirectory)") && sourceResolver.Contains("ignoreNonPlugHubManifest"), "github package scanning must ignore non-PlugHub package.json files.");
             Require(sourceResolver.Contains("RemoteHasChanged") && sourceResolver.Contains("ls-remote") && sourceResolver.Contains("rev-parse HEAD"), "github updates must skip pull when the remote ref has not changed.");
             Require(sourceResolver.Contains("--filter=blob:none") && sourceResolver.Contains("sparse-checkout"), "github clone must avoid downloading the whole repository when possible.");
+            Require(sourceResolver.Contains("NormalizeGitHubSourceDefaults") && sourceResolver.Contains("GaoMengGu_PlugHub_Modules"), "github source resolver must migrate legacy PlugHub_Modules default cache paths.");
+            Require(settingsWindow.Contains("NormalizeGitHubSourceDefaults") && settingsWindow.Contains("LoadPostSaveDiagnosticRows"), "settings window must migrate legacy github sources and avoid showing stale runtime diagnostics immediately after save.");
+            Require(!settingsWindow.Contains("LoadDiagnosticRows(FrameworkRuntimeState.Current);\r\n            LoadSourceRows();"), "settings save must not reload stale runtime diagnostics after saving configuration.");
 
             Require(workflow.Contains("-UseRelativeAddinAssembly"), "release workflow must build a package with relative addin assembly path.");
             Require(buildScript.Contains("[switch]$UseRelativeAddinAssembly") && buildScript.Contains("PlugHub.Revit2020.dll"), "build script must support relative release addin assembly paths.");
             Require(workflow.Contains("*.pdb") && workflow.Contains("*.sigstore.json") && !workflow.Contains("Compress-Archive -Path \"dist\\Revit2020\\*\""), "release zip must exclude pdb and sigstore files.");
 
             Require(readme.Contains("个人使用") && readme.Contains("不得商用"), "README must state the non-commercial personal-use license restriction.");
+        }
+
+        private static void ValidateLegacyGitHubSourceMigrationBehavior()
+        {
+            var tempRoot = Path.Combine(Path.GetTempPath(), "PlugHub.StaticValidation", Guid.NewGuid().ToString("N"));
+            try
+            {
+                var packageDirectory = Path.Combine(tempRoot, "packages", "github", "GaoMengGu_PlugHub_Packages");
+                Directory.CreateDirectory(packageDirectory);
+                File.WriteAllText(
+                    Path.Combine(packageDirectory, "package.json"),
+                    "{\"schemaVersion\":\"1.0\",\"modules\":[{\"id\":\"demo-package\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
+
+                var modules = new PlugHub.Framework.Configuration.ModulesConfiguration
+                {
+                    SchemaVersion = "1.0",
+                    PackageDirectories = new List<string>(),
+                    ModuleSources = new List<PlugHub.Framework.Configuration.ModuleSourceConfiguration>
+                    {
+                        new PlugHub.Framework.Configuration.ModuleSourceConfiguration
+                        {
+                            Id = "plughub-modules",
+                            Type = "github",
+                            Path = "packages/github/GaoMengGu_PlugHub_Modules",
+                            Repository = "GaoMengGu/PlugHub_Packages",
+                            Ref = "main",
+                            ManifestPath = "package.json",
+                            Enabled = true,
+                            AutoUpdate = false
+                        }
+                    },
+                    ConflictPolicy = new PlugHub.Framework.Configuration.ConflictPolicyConfiguration(),
+                    Modules = new List<PlugHub.Framework.Configuration.ModuleConfiguration>()
+                };
+
+                var result = new PlugHub.Framework.Sources.ModuleSourceResolver().Resolve(tempRoot, modules);
+                var source = result.Modules.ModuleSources.FirstOrDefault();
+                Require(source != null, "legacy github source migration must preserve a module source.");
+                Require(source!.Id == "plughub-packages", "legacy github source id must migrate to plughub-packages.");
+                Require(source.Repository == "GaoMengGu/PlugHub_Packages", "legacy github source repository must migrate to PlugHub_Packages.");
+                Require(source.Path == "packages/github/GaoMengGu_PlugHub_Packages", "legacy github source cache path must migrate to PlugHub_Packages.");
+                Require(result.Modules.Modules.Any(module => module.Id == "demo-package"), "legacy github source migration must load manifests from the new package cache.");
+                Require(!result.Diagnostics.Any(message => message.Message.Contains("GaoMengGu_PlugHub_Modules")), "legacy github source migration must not report diagnostics for the old cache path.");
+            }
+            finally
+            {
+                if (Directory.Exists(tempRoot))
+                {
+                    Directory.Delete(tempRoot, true);
+                }
+            }
         }
 
         private static void ValidateRevitApiReferenceStrategy()

@@ -21,8 +21,12 @@ namespace PlugHub.Revit2020
         private const string SourcesFileName = "sources.json";
         private const string DefaultPackageManifestName = "package.json";
         private const string AdjacentPackageManifestPattern = "*.package.json";
+        private const string DefaultGitHubSourceId = "plughub-packages";
         private const string DefaultGitHubRepository = "GaoMengGu/PlugHub_Packages";
         private const string DefaultGitHubCachePath = "packages/github/GaoMengGu_PlugHub_Packages";
+        private const string LegacyGitHubSourceId = "plughub-modules";
+        private const string LegacyGitHubRepository = "GaoMengGu/PlugHub_Modules";
+        private const string LegacyGitHubCacheSegment = "GaoMengGu_PlugHub_Modules";
 
         private readonly string _configDirectory;
         private FrameworkConfiguration _configuration;
@@ -45,6 +49,7 @@ namespace PlugHub.Revit2020
         {
             _configDirectory = configDirectory ?? throw new ArgumentNullException(nameof(configDirectory));
             _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+            NormalizeGitHubSourceDefaults(_configuration.Modules);
             _moduleDocuments = LoadModuleDocuments(_configuration);
 
             Title = "PlugHub 设置";
@@ -195,7 +200,7 @@ namespace PlugHub.Revit2020
             LoadPluginPackageRows();
             LoadGroupRows();
             LoadFeatureRows();
-            LoadSourceRows();
+            LoadSourceRows(FrameworkRuntimeState.Current);
             LoadDiagnosticRows(FrameworkRuntimeState.Current);
             RefreshStatus("已加载配置。设置窗口会保存根配置和独立模块清单；Ribbon 布局、图标和按钮大小需重启 Revit 重绘。");
         }
@@ -321,7 +326,7 @@ namespace PlugHub.Revit2020
             _featuresGrid.ItemsSource = _featureRows;
         }
 
-        private void LoadSourceRows()
+        private void LoadSourceRows(FrameworkRuntimeSnapshot? snapshot)
         {
             _sourcesGrid.Columns.Clear();
             _sourcesGrid.Columns.Add(TextColumn(nameof(SourceRow.Id), "来源 ID", false, 1.4));
@@ -334,7 +339,7 @@ namespace PlugHub.Revit2020
             _sourcesGrid.Columns.Add(TextColumn(nameof(SourceRow.ManifestPath), "清单", false, 1.1));
             _sourcesGrid.Columns.Add(TextColumn(nameof(SourceRow.Status), "状态", true, 1.4));
 
-            var diagnostics = DiagnosticsBySourceId(FrameworkRuntimeState.Current);
+            var diagnostics = DiagnosticsBySourceId(snapshot);
             _sourceRows = new ObservableCollection<SourceRow>((_configuration.Modules.ModuleSources ?? new List<ModuleSourceConfiguration>())
                 .Select(source => new SourceRow
                 {
@@ -348,7 +353,7 @@ namespace PlugHub.Revit2020
                     ManifestPath = string.IsNullOrWhiteSpace(source.ManifestPath) ? DefaultPackageManifestName : source.ManifestPath,
                     Status = diagnostics.TryGetValue(source.Id ?? string.Empty, out var diagnostic)
                         ? diagnostic
-                        : source.Enabled ? "就绪" : "停用"
+                        : source.Enabled ? "就绪，重启 Revit 后重新加载" : "停用"
                 }));
             _sourcesGrid.ItemsSource = _sourceRows;
         }
@@ -385,6 +390,25 @@ namespace PlugHub.Revit2020
             _diagnosticsGrid.ItemsSource = rows;
         }
 
+        private void LoadPostSaveDiagnosticRows()
+        {
+            _diagnosticsGrid.Columns.Clear();
+            _diagnosticsGrid.Columns.Add(TextColumn(nameof(DiagnosticRow.Severity), "级别", true, 0.8));
+            _diagnosticsGrid.Columns.Add(TextColumn(nameof(DiagnosticRow.Code), "代码", true, 1.1));
+            _diagnosticsGrid.Columns.Add(TextColumn(nameof(DiagnosticRow.Scope), "对象", true, 1.4));
+            _diagnosticsGrid.Columns.Add(TextColumn(nameof(DiagnosticRow.Message), "消息", true, 4.6));
+            _diagnosticsGrid.ItemsSource = new[]
+            {
+                new DiagnosticRow
+                {
+                    Severity = "Info",
+                    Code = "PH-SAVED",
+                    Scope = "settings",
+                    Message = "配置已保存。来源和 Ribbon 布局会在重启 Revit 后重新加载；此处不显示保存前的运行时诊断。"
+                }
+            };
+        }
+
         private void Save()
         {
             EndGridEdits();
@@ -398,8 +422,8 @@ namespace PlugHub.Revit2020
             SaveJson(Path.Combine(_configDirectory, "views.json"), _configuration.Views);
             SaveJson(Path.Combine(_configDirectory, "feature-combinations.json"), _configuration.FeatureCombinations);
 
-            LoadDiagnosticRows(FrameworkRuntimeState.Current);
-            LoadSourceRows();
+            LoadPostSaveDiagnosticRows();
+            LoadSourceRows(null);
             RefreshStatus("已保存配置。插件包、分组、功能和来源设置已写回对应清单；Ribbon 布局、图标、按钮大小需重启 Revit 重绘。");
             MessageBox.Show(
                 this,
@@ -414,6 +438,7 @@ namespace PlugHub.Revit2020
             try
             {
                 _configuration = FrameworkConfigurationLoader.LoadFromDirectory(_configDirectory);
+                NormalizeGitHubSourceDefaults(_configuration.Modules);
                 _moduleDocuments = LoadModuleDocuments(_configuration);
                 LoadRows();
                 RefreshStatus("已从配置文件重新加载。");
@@ -497,6 +522,7 @@ namespace PlugHub.Revit2020
                     AutoUpdate = row.AutoUpdate
                 })
                 .ToList();
+            NormalizeGitHubSourceDefaults(_configuration.Modules);
         }
 
         private void SaveJson(string path, object value)
@@ -554,6 +580,7 @@ namespace PlugHub.Revit2020
 
         private void SaveModuleDocuments()
         {
+            NormalizeGitHubSourceDefaults(_configuration.Modules);
             foreach (var document in _moduleDocuments)
             {
                 SaveJson(document.Path, document.Modules);
@@ -639,6 +666,49 @@ namespace PlugHub.Revit2020
             }
 
             return baseDirectory;
+        }
+
+        private static void NormalizeGitHubSourceDefaults(ModulesConfiguration modules)
+        {
+            if (modules?.ModuleSources == null) return;
+            foreach (var source in modules.ModuleSources)
+            {
+                NormalizeGitHubSourceDefaults(source);
+            }
+        }
+
+        private static void NormalizeGitHubSourceDefaults(ModuleSourceConfiguration source)
+        {
+            if (source == null || !string.Equals(source.Type, "github", StringComparison.OrdinalIgnoreCase)) return;
+
+            var usesLegacyDefault = string.Equals(source.Id, LegacyGitHubSourceId, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(source.Repository, LegacyGitHubRepository, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(source.Repository, DefaultGitHubRepository, StringComparison.OrdinalIgnoreCase)
+                || IsLegacyGitHubCachePath(source.Path);
+            if (!usesLegacyDefault) return;
+
+            if (string.IsNullOrWhiteSpace(source.Id) || string.Equals(source.Id, LegacyGitHubSourceId, StringComparison.OrdinalIgnoreCase))
+            {
+                source.Id = DefaultGitHubSourceId;
+            }
+
+            if (string.IsNullOrWhiteSpace(source.Repository)
+                || string.Equals(source.Repository, LegacyGitHubRepository, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(source.Repository, DefaultGitHubRepository, StringComparison.OrdinalIgnoreCase))
+            {
+                source.Repository = DefaultGitHubRepository;
+            }
+
+            if (string.IsNullOrWhiteSpace(source.Path) || IsLegacyGitHubCachePath(source.Path))
+            {
+                source.Path = DefaultGitHubCachePath;
+            }
+        }
+
+        private static bool IsLegacyGitHubCachePath(string path)
+        {
+            return !string.IsNullOrWhiteSpace(path)
+                && path.Replace(" ", string.Empty).IndexOf(LegacyGitHubCacheSegment, StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static bool IsDefaultManifestPath(string manifestPath)

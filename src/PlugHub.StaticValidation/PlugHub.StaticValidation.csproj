@@ -9,4 +9,8 @@
   <ItemGroup>
     <Reference Include="System.Web.Extensions" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\PlugHub.Contracts\PlugHub.Contracts.csproj" />
+    <ProjectReference Include="..\PlugHub.Framework\PlugHub.Framework.csproj" />
+  </ItemGroup>
 </Project>

@@ -13,6 +13,12 @@ namespace PlugHub.Framework.Sources
     {
         private const string DefaultPackageManifestName = "package.json";
         private const string AdjacentPackageManifestPattern = "*.package.json";
+        private const string DefaultGitHubSourceId = "plughub-packages";
+        private const string DefaultGitHubRepository = "GaoMengGu/PlugHub_Packages";
+        private const string DefaultGitHubCachePath = "packages/github/GaoMengGu_PlugHub_Packages";
+        private const string LegacyGitHubSourceId = "plughub-modules";
+        private const string LegacyGitHubRepository = "GaoMengGu/PlugHub_Modules";
+        private const string LegacyGitHubCacheSegment = "GaoMengGu_PlugHub_Modules";
 
         private readonly JavaScriptSerializer _serializer = new JavaScriptSerializer();
 
@@ -32,20 +38,21 @@ namespace PlugHub.Framework.Sources
             foreach (var source in modules.ModuleSources ?? new List<ModuleSourceConfiguration>())
             {
                 if (!source.Enabled) continue;
+                var normalizedSource = NormalizeGitHubSourceDefaults(source);
 
-                if (string.Equals(source.Type, "localFolder", StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(normalizedSource.Type, "localFolder", StringComparison.OrdinalIgnoreCase))
                 {
-                    AddLocalFolderModules(baseDirectory, source, resolved, diagnostics);
+                    AddLocalFolderModules(baseDirectory, normalizedSource, resolved, diagnostics);
                     continue;
                 }
 
-                if (string.Equals(source.Type, "github", StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(normalizedSource.Type, "github", StringComparison.OrdinalIgnoreCase))
                 {
-                    AddGitHubModules(baseDirectory, source, resolved, diagnostics);
+                    AddGitHubModules(baseDirectory, normalizedSource, resolved, diagnostics);
                     continue;
                 }
 
-                AddSourceDiagnostic(diagnostics, source.Id, "PH-SOURCE-MANIFEST", "Unknown module source type: " + source.Type);
+                AddSourceDiagnostic(diagnostics, normalizedSource.Id, "PH-SOURCE-MANIFEST", "Unknown module source type: " + normalizedSource.Type);
             }
 
             return new ModuleSourceResolutionResult(resolved, diagnostics);
@@ -400,25 +407,75 @@ namespace PlugHub.Framework.Sources
                 || string.Equals(manifestPath.Trim(), DefaultPackageManifestName, StringComparison.OrdinalIgnoreCase);
         }
 
+        private static ModuleSourceConfiguration NormalizeGitHubSourceDefaults(ModuleSourceConfiguration source)
+        {
+            var normalized = CloneSource(source);
+            if (!string.Equals(normalized.Type, "github", StringComparison.OrdinalIgnoreCase))
+            {
+                return normalized;
+            }
+
+            var usesLegacyDefault = string.Equals(normalized.Id, LegacyGitHubSourceId, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized.Repository, LegacyGitHubRepository, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized.Repository, DefaultGitHubRepository, StringComparison.OrdinalIgnoreCase)
+                || IsLegacyGitHubCachePath(normalized.Path);
+            if (!usesLegacyDefault)
+            {
+                return normalized;
+            }
+
+            if (string.IsNullOrWhiteSpace(normalized.Id) || string.Equals(normalized.Id, LegacyGitHubSourceId, StringComparison.OrdinalIgnoreCase))
+            {
+                normalized.Id = DefaultGitHubSourceId;
+            }
+
+            if (string.IsNullOrWhiteSpace(normalized.Repository)
+                || string.Equals(normalized.Repository, LegacyGitHubRepository, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized.Repository, DefaultGitHubRepository, StringComparison.OrdinalIgnoreCase))
+            {
+                normalized.Repository = DefaultGitHubRepository;
+            }
+
+            if (string.IsNullOrWhiteSpace(normalized.Path) || IsLegacyGitHubCachePath(normalized.Path))
+            {
+                normalized.Path = DefaultGitHubCachePath;
+            }
+
+            return normalized;
+        }
+
+        private static bool IsLegacyGitHubCachePath(string path)
+        {
+            return !string.IsNullOrWhiteSpace(path)
+                && path.Replace(" ", string.Empty).IndexOf(LegacyGitHubCacheSegment, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
         private static ModulesConfiguration CloneModules(ModulesConfiguration modules)
         {
             return new ModulesConfiguration
             {
                 SchemaVersion = modules.SchemaVersion,
                 PackageDirectories = new List<string>(modules.PackageDirectories ?? new List<string>()),
-                ModuleSources = (modules.ModuleSources ?? new List<ModuleSourceConfiguration>()).Select(source => new ModuleSourceConfiguration
-                {
-                    Id = source.Id,
-                    Type = source.Type,
-                    Path = source.Path,
-                    Repository = source.Repository,
-                    Ref = source.Ref,
-                    ManifestPath = source.ManifestPath,
-                    Enabled = source.Enabled,
-                    AutoUpdate = source.AutoUpdate
-                }).ToList(),
+                ModuleSources = (modules.ModuleSources ?? new List<ModuleSourceConfiguration>())
+                    .Select(NormalizeGitHubSourceDefaults)
+                    .ToList(),
                 ConflictPolicy = modules.ConflictPolicy ?? new ConflictPolicyConfiguration(),
                 Modules = new List<ModuleConfiguration>(modules.Modules ?? new List<ModuleConfiguration>())
+            };
+        }
+
+        private static ModuleSourceConfiguration CloneSource(ModuleSourceConfiguration source)
+        {
+            return new ModuleSourceConfiguration
+            {
+                Id = source.Id,
+                Type = source.Type,
+                Path = source.Path,
+                Repository = source.Repository,
+                Ref = source.Ref,
+                ManifestPath = source.ManifestPath,
+                Enabled = source.Enabled,
+                AutoUpdate = source.AutoUpdate
             };
         }
 
