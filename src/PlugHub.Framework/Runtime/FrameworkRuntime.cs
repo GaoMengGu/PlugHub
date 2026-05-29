@@ -19,8 +19,6 @@ namespace PlugHub.Framework.Runtime
         private readonly ModuleDiscoveryService _moduleDiscovery = new ModuleDiscoveryService();
         private readonly ModuleSourceResolver _moduleSourceResolver = new ModuleSourceResolver();
         private readonly PackageRepositoryService _packageRepositoryService = new PackageRepositoryService();
-        private readonly FeatureRegistry _featureRegistry = new FeatureRegistry();
-        private readonly DiagnosticsSink _diagnostics = new DiagnosticsSink();
         private readonly FeatureViewComposer _composer = new FeatureViewComposer();
 
         public FrameworkRuntimeSnapshot Load(string configDirectory)
@@ -31,46 +29,52 @@ namespace PlugHub.Framework.Runtime
 
         public FrameworkRuntimeSnapshot Load(string baseDirectory, string configDirectory)
         {
-            _diagnostics.AddRange(_packageRepositoryService.ApplyPendingOperations(baseDirectory));
+            var diagnostics = new DiagnosticsSink();
+            var featureRegistry = new FeatureRegistry();
+
+            diagnostics.AddRange(_packageRepositoryService.ApplyPendingOperations(baseDirectory));
 
             var configuration = _configurationLoader.Load(configDirectory);
             var sourceResult = _moduleSourceResolver.Resolve(baseDirectory, configuration.Modules);
             configuration.Modules = sourceResult.Modules;
-            _diagnostics.AddRange(sourceResult.Diagnostics);
+            diagnostics.AddRange(sourceResult.Diagnostics);
 
             var view = _configurationLoader.GetDefaultView(configuration);
             var preset = _configurationLoader.GetPresetForView(configuration, view);
             var effectiveModules = _configurationLoader.ApplyPreset(configuration.Modules, preset);
             var runtimeConfiguration = new FrameworkRuntimeConfiguration(configuration, view, preset, effectiveModules);
             var discoveryResult = _moduleDiscovery.Discover(baseDirectory, runtimeConfiguration.EffectiveModules);
-            _diagnostics.AddRange(discoveryResult.Diagnostics);
+            diagnostics.AddRange(discoveryResult.Diagnostics);
 
-            RegisterModules(runtimeConfiguration, discoveryResult.Modules);
+            RegisterModules(runtimeConfiguration, discoveryResult.Modules, featureRegistry);
 
-            var allFeatures = _featureRegistry.All();
+            var allFeatures = featureRegistry.All();
             var composition = _composer.ComposeDetailed(allFeatures, runtimeConfiguration.ActiveView);
 
-            _diagnostics.AddRange(_featureRegistry.Diagnostics);
+            diagnostics.AddRange(featureRegistry.Diagnostics);
             if (composition.SkippedFeatures.Count > 0)
             {
-                _diagnostics.Warning(string.Empty, "RT-COMPOSE-SKIPPED", $"Skipped {composition.SkippedFeatures.Count} features while composing the active view.");
+                diagnostics.Warning(string.Empty, "RT-COMPOSE-SKIPPED", $"Skipped {composition.SkippedFeatures.Count} features while composing the active view.");
             }
 
             var snapshot = new FrameworkRuntimeSnapshot(
                 runtimeConfiguration,
                 allFeatures,
                 composition,
-                _diagnostics.Messages);
+                diagnostics.Messages);
 
             FrameworkRuntimeState.SetCurrent(baseDirectory, configDirectory, snapshot);
             return snapshot;
         }
 
-        private void RegisterModules(FrameworkRuntimeConfiguration runtimeConfiguration, IReadOnlyList<ModuleDescriptor> modules)
+        private void RegisterModules(
+            FrameworkRuntimeConfiguration runtimeConfiguration,
+            IReadOnlyList<ModuleDescriptor> modules,
+            FeatureRegistry featureRegistry)
         {
             foreach (var module in modules)
             {
-                _featureRegistry.Register(module, runtimeConfiguration.Configuration.Modules.ConflictPolicy);
+                featureRegistry.Register(module, runtimeConfiguration.Configuration.Modules.ConflictPolicy);
             }
         }
     }
