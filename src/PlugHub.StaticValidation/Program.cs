@@ -32,6 +32,7 @@ namespace PlugHub.StaticValidation
                 ValidateSettingsRibbonCleanupSpecification();
                 ValidateBuiltinOnlySpecification();
                 ValidateSettingsCreationAndSortingSpecification();
+                ValidateSettingsGroupFeatureEditingBehavior();
                 ValidateDefaultIconSpecification();
                 ValidatePackageSourceAndReleaseBehavior();
                 ValidateRepositoryInstallFlowBehavior();
@@ -327,7 +328,7 @@ namespace PlugHub.StaticValidation
             Require(ribbonBuilder.Contains("LoadFeatureIcon") && ribbonBuilder.Contains("LargeImage"), "configured feature icons must be applied to Revit ribbon buttons.");
             Require(ribbonBuilder.Contains("FrameworkSettingsCommand"), "framework Ribbon panel must expose settings command.");
 
-            foreach (var token in new[] { "class FrameworkSettingsWindow", ": Window", "TabControl", "DataGrid", "BuildPluginPackagesTab", "BuildFeaturesTab", "BuildGroupsTab", "BuildRepositoriesTab", "BuildLogsTab", "RepositoryRow", "RepositoryPackageRow", "GroupRow", "ReloadFromDisk", "ContextMenu", "DragDrop", "Microsoft.Win32.OpenFileDialog" })
+            foreach (var token in new[] { "class FrameworkSettingsWindow", ": Window", "TabControl", "DataGrid", "BuildFeaturesTab", "BuildGroupsTab", "BuildRepositoriesTab", "BuildLogsTab", "RepositoryRow", "RepositoryPackageRow", "GroupRow", "ReloadFromDisk", "ContextMenu", "DragDrop", "Microsoft.Win32.OpenFileDialog" })
             {
                 Require(settingsWindow.Contains(token), "WPF settings UI token missing: " + token);
             }
@@ -434,6 +435,28 @@ namespace PlugHub.StaticValidation
             Require(!modulesText.Contains("commandAssembly"), "framework config must not ship command-backed feature entries.");
         }
 
+        private static void ValidateSettingsGroupFeatureEditingBehavior()
+        {
+            var settingsWindow = ReadText("src/PlugHub.Revit2020/FrameworkSettingsWindow.cs");
+            var ribbonBuilder = ReadText("src/PlugHub.Revit2020/FeatureRibbonBuilder.cs");
+
+            Require(settingsWindow.Contains("BuildSelectedFeatureEditor") && settingsWindow.Contains("_selectedFeatureGroupCombo") && settingsWindow.Contains("_selectedFeatureButtonSizeCombo"), "feature group and button size editors must be ordinary selected-feature combo boxes.");
+            Require(settingsWindow.Contains("ApplySelectedFeatureGroup") && settingsWindow.Contains("ApplySelectedFeatureButtonSize"), "selected feature combo boxes must write group and button size back to the selected row.");
+            Require(settingsWindow.Contains("RefreshFeaturePositionsByGroup"), "feature ordering must be recalculated per workspace group.");
+            Require(settingsWindow.Contains("SortFeatureRowsForRuntimeOrder"), "feature grid must be ordered the same way runtime ribbon composition is ordered.");
+            Require(settingsWindow.Contains("IsInteractiveGridEditor"), "row drag behavior must ignore combo boxes, text boxes, check boxes, and buttons.");
+            Require(settingsWindow.Contains("TrySave") && settingsWindow.Contains("ReportSettingsError"), "settings save must catch exceptions and report them inline.");
+            Require(settingsWindow.Contains("SafeRefreshGrid") && settingsWindow.Contains("IsEditTransactionRefreshError"), "settings grid refresh must be safe during DataGrid edit transactions.");
+            foreach (var forbiddenRefresh in new[] { "_featuresGrid.Items.Refresh", "_groupsGrid.Items.Refresh", "_repositoriesGrid.Items.Refresh", "_repositoryPackagesGrid.Items.Refresh", "_pluginPackagesGrid.Items.Refresh" })
+            {
+                Require(!settingsWindow.Contains(forbiddenRefresh), "settings grid refresh must not call Items.Refresh directly: " + forbiddenRefresh);
+            }
+
+            Require(!settingsWindow.Contains("MessageBox.Show"), "settings window must not show pop-up prompts for normal settings operations.");
+            Require(!settingsWindow.Contains("BuildInstalledPackagesTab") && !settingsWindow.Contains("BuildPluginPackagesTab") && !settingsWindow.Contains("ApplyPluginPackageRows();"), "settings window must not expose the installed package settings tab.");
+            Require(ribbonBuilder.Contains("OrderFeaturesForRibbon"), "Ribbon builder must explicitly order features inside each panel.");
+        }
+
         private static void ValidatePackageSourceAndReleaseBehavior()
         {
             var modulesText = ReadText("config/sources.example.json");
@@ -455,9 +478,16 @@ namespace PlugHub.StaticValidation
             Require(settingsWindow.Contains("BrowseSelectedRepository") && settingsWindow.Contains("InstallSelectedRepositoryPackage"), "settings must browse repositories and install selected packages.");
             Require(settingsWindow.Contains("UpdateSelectedRepositoryPackage") && settingsWindow.Contains("UninstallSelectedRepositoryPackage"), "settings must support repository package update and uninstall.");
             Require(settingsWindow.Contains("LoadCachedRepositoryPackages") && settingsWindow.Contains("StartRepositoryUpdateCheck") && settingsWindow.Contains("Task.Run"), "settings must show cached repository packages and check for updates in the background.");
+            Require(settingsWindow.Contains("ComboColumn(nameof(RepositoryRow.Provider), \"类型\"") && settingsWindow.Contains("new[] { \"github\", \"gitee\" }"), "repository settings must expose a provider type column for GitHub and Gitee.");
+            Require(settingsWindow.Contains("MenuItem(\"新增仓库\"") && settingsWindow.Contains("AddRepository()"), "repository context menu must expose one generic add repository action.");
+            foreach (var forbiddenAddMenu in new[] { "新增 GitHub 公开仓库", "新增 GitHub 私有仓库", "新增 Gitee 公开仓库", "新增 Gitee 私有仓库" })
+            {
+                Require(!settingsWindow.Contains(forbiddenAddMenu), "repository context menu must not expose split add repository entries: " + forbiddenAddMenu);
+            }
+
             Require(settingsWindow.Contains("BuildLogsTab") && settingsWindow.Contains("\"日志\"") && !settingsWindow.Contains("BuildDiagnosticsTab"), "settings must present diagnostics as logs.");
-            Require(settingsWindow.Contains("ApiKey") && settingsWindow.Contains("private") && settingsWindow.Contains("公开") && settingsWindow.Contains("私有"), "settings must support public and private repositories with apiKey.");
-            Require(settingsWindow.Contains("AddRepository(\"gitee\", \"public\")") && !settingsWindow.Contains("确定卸载插件包") && !settingsWindow.Contains("result.Success ? MessageBoxImage.Information"), "repository package install and uninstall must report status inline without pop-up result prompts, and settings must expose Gitee creation.");
+            Require(settingsWindow.Contains("ApiKey") && settingsWindow.Contains("Visibility") && settingsWindow.Contains("private"), "settings must support public and private repositories with apiKey.");
+            Require(!settingsWindow.Contains("确定卸载插件包") && !settingsWindow.Contains("result.Success ? MessageBoxImage.Information"), "repository package install and uninstall must report status inline without pop-up result prompts.");
             Require(packageRepositoryService.Contains("--sparse") && packageRepositoryService.Contains("sparse-checkout") && packageRepositoryService.Contains("SparseCheckoutPatterns"), "repository browsing must use sparse checkout instead of pulling the whole repository.");
             Require(packageRepositoryService.Contains("\"gitee\"") && packageRepositoryService.Contains("https://gitee.com/") && packageRepositoryService.Contains("oauth2:"), "repository browsing must support Gitee HTTPS repositories with apiKey credentials.");
             Require(packageRepositoryService.Contains("InstallPackagePayload") && packageRepositoryService.Contains("WriteSingleModuleManifest") && !packageRepositoryService.Contains("CopyDirectory("), "repository install must split selected plugins and must not copy the whole repository directory.");

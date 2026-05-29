@@ -42,8 +42,16 @@ namespace PlugHub.Revit2020
             {
                 var panelName = SafeDisplayName(group.Key.GroupName, fallbackPanelName);
                 var panel = GetOrCreatePanel(application, tabName, panelName);
-                AddFeatureButtons(panel, group);
+                AddFeatureButtons(panel, OrderFeaturesForRibbon(group));
             }
+        }
+
+        private static IEnumerable<FeatureViewModel> OrderFeaturesForRibbon(IEnumerable<FeatureViewModel> features)
+        {
+            return (features ?? new List<FeatureViewModel>())
+                .OrderBy(feature => feature.DisplayOrder)
+                .ThenBy(feature => feature.DisplayName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(feature => feature.FeatureId, StringComparer.OrdinalIgnoreCase);
         }
 
         private void AddFrameworkButtons(RibbonPanel panel)

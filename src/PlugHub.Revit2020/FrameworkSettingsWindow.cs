@@ -11,6 +11,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using PlugHub.Contracts.Modules;
 using PlugHub.Framework.Configuration;
 using PlugHub.Framework.Packages;
@@ -40,10 +41,16 @@ namespace PlugHub.Revit2020
         private ObservableCollection<ModuleRow> _moduleRows = new ObservableCollection<ModuleRow>();
         private ObservableCollection<FeatureRow> _featureRows = new ObservableCollection<FeatureRow>();
         private ObservableCollection<GroupRow> _groupRows = new ObservableCollection<GroupRow>();
+        private readonly ObservableCollection<GroupOption> _groupOptions = new ObservableCollection<GroupOption>();
+        private readonly IReadOnlyList<string> _buttonSizeOptions = new[] { "large", "small" };
+        private readonly TextBlock _selectedFeatureName = new TextBlock();
+        private readonly ComboBox _selectedFeatureGroupCombo = new ComboBox();
+        private readonly ComboBox _selectedFeatureButtonSizeCombo = new ComboBox();
         private ObservableCollection<RepositoryRow> _repositoryRows = new ObservableCollection<RepositoryRow>();
         private ObservableCollection<RepositoryPackageRow> _repositoryPackageRows = new ObservableCollection<RepositoryPackageRow>();
         private int _dragSourceRowIndex = -1;
         private DataGrid? _dragSourceGrid;
+        private bool _syncingSelectedFeatureEditor;
 
         public FrameworkSettingsWindow(string configDirectory, FrameworkConfiguration configuration)
         {
@@ -90,7 +97,6 @@ namespace PlugHub.Revit2020
                 Background = Brushes.Transparent,
                 BorderBrush = new SolidColorBrush(Color.FromRgb(220, 226, 234))
             };
-            tabs.Items.Add(BuildPluginPackagesTab());
             tabs.Items.Add(BuildFeaturesTab());
             tabs.Items.Add(BuildGroupsTab());
             tabs.Items.Add(BuildRepositoriesTab());
@@ -105,7 +111,7 @@ namespace PlugHub.Revit2020
                 Margin = new Thickness(0, 12, 0, 0)
             };
             buttons.Children.Add(CreateButton("重新加载", (sender, args) => ReloadFromDisk()));
-            buttons.Children.Add(CreateButton("保存配置", (sender, args) => Save()));
+            buttons.Children.Add(CreateButton("保存配置", (sender, args) => TrySave()));
             buttons.Children.Add(CreateButton("关闭", (sender, args) => Close()));
             Grid.SetRow(buttons, 2);
             root.Children.Add(buttons);
@@ -113,23 +119,78 @@ namespace PlugHub.Revit2020
             return root;
         }
 
-        private TabItem BuildPluginPackagesTab()
-        {
-            _pluginPackagesGrid.ContextMenu = BuildPluginPackageMenu();
-            AttachGridBehaviors(_pluginPackagesGrid);
-            return BuildTab("插件包", _pluginPackagesGrid);
-        }
-
         private TabItem BuildFeaturesTab()
         {
             _featuresGrid.ContextMenu = BuildFeatureMenu();
+            _featuresGrid.SelectionChanged += (sender, args) => SyncSelectedFeatureEditor();
             AttachGridBehaviors(_featuresGrid);
-            return BuildTab("功能", _featuresGrid);
+
+            var layout = new Grid();
+            layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            var editor = BuildSelectedFeatureEditor();
+            Grid.SetRow(editor, 0);
+            layout.Children.Add(editor);
+            Grid.SetRow(_featuresGrid, 1);
+            layout.Children.Add(_featuresGrid);
+            return BuildTab("功能", layout);
+        }
+
+        private UIElement BuildSelectedFeatureEditor()
+        {
+            _selectedFeatureName.Text = "未选择功能";
+            _selectedFeatureName.MinWidth = 180;
+            _selectedFeatureName.VerticalAlignment = VerticalAlignment.Center;
+            _selectedFeatureName.Foreground = new SolidColorBrush(Color.FromRgb(45, 56, 72));
+
+            _selectedFeatureGroupCombo.ItemsSource = _groupOptions;
+            _selectedFeatureGroupCombo.DisplayMemberPath = nameof(GroupOption.DisplayText);
+            _selectedFeatureGroupCombo.SelectedValuePath = nameof(GroupOption.Id);
+            _selectedFeatureGroupCombo.MinWidth = 180;
+            _selectedFeatureGroupCombo.Height = 26;
+            _selectedFeatureGroupCombo.Margin = new Thickness(6, 0, 16, 0);
+            _selectedFeatureGroupCombo.SelectionChanged += (sender, args) => ApplySelectedFeatureGroup();
+
+            _selectedFeatureButtonSizeCombo.ItemsSource = _buttonSizeOptions;
+            _selectedFeatureButtonSizeCombo.MinWidth = 96;
+            _selectedFeatureButtonSizeCombo.Height = 26;
+            _selectedFeatureButtonSizeCombo.Margin = new Thickness(6, 0, 0, 0);
+            _selectedFeatureButtonSizeCombo.SelectionChanged += (sender, args) => ApplySelectedFeatureButtonSize();
+
+            var editor = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Margin = new Thickness(8, 8, 8, 6),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            editor.Children.Add(_selectedFeatureName);
+            editor.Children.Add(EditorLabel("所属分组"));
+            editor.Children.Add(_selectedFeatureGroupCombo);
+            editor.Children.Add(EditorLabel("图标大小"));
+            editor.Children.Add(_selectedFeatureButtonSizeCombo);
+
+            SyncSelectedFeatureEditor();
+            return editor;
+        }
+
+        private static TextBlock EditorLabel(string text)
+        {
+            return new TextBlock
+            {
+                Text = text,
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = new SolidColorBrush(Color.FromRgb(72, 84, 101))
+            };
         }
 
         private TabItem BuildGroupsTab()
         {
             _groupsGrid.ContextMenu = BuildGroupMenu();
+            _groupsGrid.CurrentCellChanged += (sender, args) =>
+            {
+                RefreshFeatureGroupOptions();
+                RefreshFeatureCounts();
+            };
             AttachGridBehaviors(_groupsGrid);
             return BuildTab("分组", _groupsGrid);
         }
@@ -227,7 +288,6 @@ namespace PlugHub.Revit2020
 
         private void LoadRows()
         {
-            LoadPluginPackageRows();
             LoadGroupRows();
             LoadFeatureRows();
             LoadRepositoryRows();
@@ -315,6 +375,7 @@ namespace PlugHub.Revit2020
                 .ThenBy(group => group.Name, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(group => group.Id, StringComparer.OrdinalIgnoreCase));
             RefreshGroupPositions();
+            RefreshFeatureGroupOptions();
             _groupsGrid.ItemsSource = _groupRows;
         }
 
@@ -326,8 +387,8 @@ namespace PlugHub.Revit2020
             _featuresGrid.Columns.Add(TextColumn(nameof(FeatureRow.DisplayName), "显示名", false, 1.8));
             _featuresGrid.Columns.Add(CheckColumn(nameof(FeatureRow.Visible), "显示"));
             _featuresGrid.Columns.Add(TextColumn(nameof(FeatureRow.ModuleName), "插件包", true, 1.5));
-            _featuresGrid.Columns.Add(ComboColumn(nameof(FeatureRow.Group), "所属分组", GroupOptionsForFeatureRows(), 1.6, nameof(GroupOption.DisplayText), nameof(GroupOption.Id)));
-            _featuresGrid.Columns.Add(ComboColumn(nameof(FeatureRow.ButtonSize), "大小", new[] { "large", "small" }, 0.8));
+            _featuresGrid.Columns.Add(TextColumn(nameof(FeatureRow.GroupDisplayText), "所属分组", true, 1.6));
+            _featuresGrid.Columns.Add(TextColumn(nameof(FeatureRow.ButtonSizeDisplayText), "图标大小", true, 0.8));
             _featuresGrid.Columns.Add(TextColumn(nameof(FeatureRow.IconPath), "图标", false, 1.5));
 
             _featureRows = new ObservableCollection<FeatureRow>(EditableModules()
@@ -355,14 +416,22 @@ namespace PlugHub.Revit2020
                 .OrderBy(row => row.ModuleName, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(row => row.Order)
                 .ThenBy(row => row.Name, StringComparer.OrdinalIgnoreCase));
-            RefreshFeaturePositions();
+            SortFeatureRowsForRuntimeOrder();
+            RefreshFeaturePositionsByGroup();
             _featuresGrid.ItemsSource = _featureRows;
+            if (_featureRows.Count > 0)
+            {
+                _featuresGrid.SelectedIndex = 0;
+            }
+
+            SyncSelectedFeatureEditor();
         }
 
         private void LoadRepositoryRows()
         {
             _repositoriesGrid.Columns.Clear();
             _repositoriesGrid.Columns.Add(CheckColumn(nameof(RepositoryRow.Enabled), "启用"));
+            _repositoriesGrid.Columns.Add(ComboColumn(nameof(RepositoryRow.Provider), "类型", new[] { "github", "gitee" }, 0.8));
             _repositoriesGrid.Columns.Add(ComboColumn(nameof(RepositoryRow.Visibility), "可见性", new[] { "public", "private" }, 0.9));
             _repositoriesGrid.Columns.Add(TextColumn(nameof(RepositoryRow.Repository), "仓库", false, 1.7));
             _repositoriesGrid.Columns.Add(TextColumn(nameof(RepositoryRow.Ref), "分支", false, 0.7));
@@ -425,7 +494,7 @@ namespace PlugHub.Revit2020
                 LoadDiagnosticRowsFromMessages(messages);
             }
 
-            _repositoriesGrid.Items.Refresh();
+            SafeRefreshGrid(_repositoriesGrid);
         }
 
         private void StartRepositoryUpdateCheck()
@@ -481,7 +550,7 @@ namespace PlugHub.Revit2020
                         }
                     }
 
-                    _repositoriesGrid.Items.Refresh();
+                    SafeRefreshGrid(_repositoriesGrid);
                     RefreshStatus("仓库后台更新检查完成。");
                 }));
             });
@@ -579,10 +648,21 @@ namespace PlugHub.Revit2020
             };
         }
 
+        private void TrySave()
+        {
+            try
+            {
+                Save();
+            }
+            catch (Exception ex)
+            {
+                ReportSettingsError("保存配置失败", ex);
+            }
+        }
+
         private void Save()
         {
             EndGridEdits();
-            ApplyPluginPackageRows();
             ApplyGroupRows();
             ApplyFeatureRows();
             ApplyRepositoryRows();
@@ -595,12 +675,6 @@ namespace PlugHub.Revit2020
             LoadPostSaveDiagnosticRows();
             LoadRepositoryRows();
             RefreshStatus("已保存配置。插件包、分组、功能和仓库设置已写回对应清单；Ribbon 布局、图标、按钮大小需重启 Revit 重绘。");
-            MessageBox.Show(
-                this,
-                "配置已保存。\n\n插件包、分组、功能和仓库设置已写回对应清单。Ribbon 布局、图标、按钮大小仍需重启 Revit 重绘。",
-                "PlugHub 设置",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
         }
 
         private void ReloadFromDisk()
@@ -614,8 +688,7 @@ namespace PlugHub.Revit2020
             }
             catch (Exception ex)
             {
-                RefreshStatus("重新加载失败：" + ex.Message);
-                MessageBox.Show(this, ex.Message, "PlugHub 设置", MessageBoxButton.OK, MessageBoxImage.Warning);
+                ReportSettingsError("重新加载失败", ex);
             }
         }
 
@@ -672,6 +745,16 @@ namespace PlugHub.Revit2020
                 EnsureViewGroupForFeature(module, feature);
                 module.Features.Add(feature);
                 row.OriginalModuleId = row.ModuleId;
+            }
+
+            foreach (var module in modulesById.Values)
+            {
+                module.Features = module.Features
+                    .OrderBy(feature => feature.Group, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(feature => feature.Order)
+                    .ThenBy(feature => DisplayName(feature.DisplayName, feature.Name, feature.Id), StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(feature => feature.Id, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
             }
         }
 
@@ -883,6 +966,48 @@ namespace PlugHub.Revit2020
             return column;
         }
 
+        private static DataGridTemplateColumn ComboBoxTemplateColumn<T>(
+            string propertyName,
+            string header,
+            IEnumerable<T> values,
+            double starWidth,
+            string displayMemberPath = "",
+            string selectedValuePath = "",
+            SelectionChangedEventHandler? selectionChanged = null)
+        {
+            var template = new DataTemplate();
+            var factory = new FrameworkElementFactory(typeof(ComboBox));
+            factory.SetValue(ItemsControl.ItemsSourceProperty, values);
+            factory.SetValue(Control.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch);
+            factory.SetValue(FrameworkElement.MarginProperty, new Thickness(2, 0, 2, 0));
+            factory.SetValue(ComboBox.IsSynchronizedWithCurrentItemProperty, false);
+
+            if (!string.IsNullOrWhiteSpace(displayMemberPath) && !string.IsNullOrWhiteSpace(selectedValuePath))
+            {
+                factory.SetValue(ItemsControl.DisplayMemberPathProperty, displayMemberPath);
+                factory.SetValue(Selector.SelectedValuePathProperty, selectedValuePath);
+                factory.SetBinding(Selector.SelectedValueProperty, new Binding(propertyName) { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged });
+            }
+            else
+            {
+                factory.SetBinding(Selector.SelectedItemProperty, new Binding(propertyName) { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged });
+            }
+
+            if (selectionChanged != null)
+            {
+                factory.AddHandler(Selector.SelectionChangedEvent, selectionChanged);
+            }
+
+            template.VisualTree = factory;
+            return new DataGridTemplateColumn
+            {
+                Header = header,
+                CellTemplate = template,
+                CellEditingTemplate = template,
+                Width = new DataGridLength(starWidth, DataGridLengthUnitType.Star)
+            };
+        }
+
         private ContextMenu BuildPluginPackageMenu()
         {
             var menu = new ContextMenu();
@@ -943,10 +1068,7 @@ namespace PlugHub.Revit2020
             menu.Items.Add(new Separator());
             menu.Items.Add(MenuItem("浏览仓库插件包", (sender, args) => BrowseSelectedRepository()));
             menu.Items.Add(new Separator());
-            menu.Items.Add(MenuItem("新增 GitHub 公开仓库", (sender, args) => AddRepository("github", "public")));
-            menu.Items.Add(MenuItem("新增 GitHub 私有仓库", (sender, args) => AddRepository("github", "private")));
-            menu.Items.Add(MenuItem("新增 Gitee 公开仓库", (sender, args) => AddRepository("gitee", "public")));
-            menu.Items.Add(MenuItem("新增 Gitee 私有仓库", (sender, args) => AddRepository("gitee", "private")));
+            menu.Items.Add(MenuItem("新增仓库", (sender, args) => AddRepository()));
             menu.Items.Add(MenuItem("删除仓库", (sender, args) => RemoveSelectedRepository()));
             return menu;
         }
@@ -973,7 +1095,7 @@ namespace PlugHub.Revit2020
             {
                 row.Enabled = enabled;
                 row.Visible = visible;
-                _pluginPackagesGrid.Items.Refresh();
+                SafeRefreshGrid(_pluginPackagesGrid);
             }
         }
 
@@ -982,7 +1104,7 @@ namespace PlugHub.Revit2020
             if (_featuresGrid.SelectedItem is FeatureRow row)
             {
                 row.Visible = visible;
-                _featuresGrid.Items.Refresh();
+                SafeRefreshGrid(_featuresGrid);
             }
         }
 
@@ -991,7 +1113,7 @@ namespace PlugHub.Revit2020
             if (_featuresGrid.SelectedItem is FeatureRow row)
             {
                 row.ButtonSize = NormalizeButtonSize(size);
-                _featuresGrid.Items.Refresh();
+                SafeRefreshGrid(_featuresGrid);
             }
         }
 
@@ -1011,7 +1133,7 @@ namespace PlugHub.Revit2020
             }
 
             row.IconPath = iconPath;
-            _featuresGrid.Items.Refresh();
+            SafeRefreshGrid(_featuresGrid);
         }
 
         private void SetSelectedFeatureBuiltinIcon(string iconPath)
@@ -1025,47 +1147,55 @@ namespace PlugHub.Revit2020
             {
                 row.Enabled = enabled;
                 row.Status = enabled ? "可浏览" : "停用";
-                _repositoriesGrid.Items.Refresh();
+                SafeRefreshGrid(_repositoriesGrid);
             }
         }
 
-        private void AddRepository(string provider, string visibility)
+        private void AddRepository()
         {
-            var normalizedProvider = string.Equals(provider, "gitee", StringComparison.OrdinalIgnoreCase) ? "gitee" : "github";
-            var normalizedVisibility = string.Equals(visibility, "private", StringComparison.OrdinalIgnoreCase) ? "private" : "public";
-            var id = UniqueRepositoryId(_repositoryRows, normalizedProvider + "-" + normalizedVisibility + "-repository");
-            _repositoryRows.Add(new RepositoryRow
+            var id = UniqueRepositoryId(_repositoryRows, "repository");
+            var row = new RepositoryRow
             {
                 Id = id,
                 Enabled = true,
-                Provider = normalizedProvider,
-                Visibility = normalizedVisibility,
-                Repository = normalizedVisibility == "public" && normalizedProvider == "github" ? DefaultGitHubRepository : string.Empty,
+                Provider = "github",
+                Visibility = "public",
+                Repository = DefaultGitHubRepository,
                 Ref = "main",
                 ManifestPath = DefaultPackageManifestName,
                 ApiKey = string.Empty,
                 Status = "待保存"
-            });
+            };
+            _repositoryRows.Add(row);
+            _repositoriesGrid.SelectedItem = row;
+            SafeRefreshGrid(_repositoriesGrid);
         }
 
         private void BrowseSelectedRepository()
         {
-            EndGridEdits();
-            ApplyRepositoryRows();
+            try
+            {
+                EndGridEdits();
+                ApplyRepositoryRows();
 
-            if (!(_repositoriesGrid.SelectedItem is RepositoryRow row)) return;
-            var repository = row.ToConfiguration();
-            var baseDirectory = Directory.GetParent(_configDirectory)?.FullName ?? _configDirectory;
-            var packages = _packageRepositoryService.Browse(baseDirectory, repository, out var diagnostics);
+                if (!(_repositoriesGrid.SelectedItem is RepositoryRow row)) return;
+                var repository = row.ToConfiguration();
+                var baseDirectory = Directory.GetParent(_configDirectory)?.FullName ?? _configDirectory;
+                var packages = _packageRepositoryService.Browse(baseDirectory, repository, out var diagnostics);
 
-            row.Status = diagnostics.Any()
-                ? diagnostics.Last().Message
-                : "已浏览 " + packages.Count + " 个插件包";
-            _repositoriesGrid.Items.Refresh();
+                row.Status = diagnostics.Any()
+                    ? diagnostics.Last().Message
+                    : "已浏览 " + packages.Count + " 个插件包";
+                SafeRefreshGrid(_repositoriesGrid);
 
-            LoadRepositoryPackageRows(packages);
-            LoadDiagnosticRowsFromMessages(diagnostics);
-            RefreshStatus(row.Status);
+                LoadRepositoryPackageRows(packages);
+                LoadDiagnosticRowsFromMessages(diagnostics);
+                RefreshStatus(row.Status);
+            }
+            catch (Exception ex)
+            {
+                ReportSettingsError("浏览仓库失败", ex);
+            }
         }
 
         private void InstallSelectedRepositoryPackage()
@@ -1086,18 +1216,24 @@ namespace PlugHub.Revit2020
 
         private void RunRepositoryPackageOperation(Func<RepositoryPackageDescriptor, PackageRepositoryOperationResult> operation)
         {
-            EndGridEdits();
-            if (!(_repositoryPackagesGrid.SelectedItem is RepositoryPackageRow row)) return;
+            try
+            {
+                EndGridEdits();
+                if (!(_repositoryPackagesGrid.SelectedItem is RepositoryPackageRow row)) return;
 
-            var result = operation(row.ToDescriptor());
-            RefreshRepositoryPackageInstallState(row.PackageId, row.InstallDirectory);
-            _repositoryPackagesGrid.Items.Refresh();
+                var result = operation(row.ToDescriptor());
+                RefreshRepositoryPackageInstallState(row.PackageId, row.InstallDirectory);
+                SafeRefreshGrid(_repositoryPackagesGrid);
 
-            _moduleDocuments = LoadModuleDocuments(_configuration);
-            LoadPluginPackageRows();
-            LoadGroupRows();
-            LoadFeatureRows();
-            RefreshStatus(result.Message);
+                _moduleDocuments = LoadModuleDocuments(_configuration);
+                LoadGroupRows();
+                LoadFeatureRows();
+                RefreshStatus(result.Message);
+            }
+            catch (Exception ex)
+            {
+                ReportSettingsError("插件包操作失败", ex);
+            }
         }
 
         private void RefreshRepositoryPackageInstallState(string packageId, string installDirectory)
@@ -1151,7 +1287,7 @@ namespace PlugHub.Revit2020
             var isInUse = _featureRows.Any(feature => string.Equals(feature.Group, row.Id, StringComparison.OrdinalIgnoreCase));
             if (isInUse)
             {
-                MessageBox.Show(this, "该分组仍有功能使用。请先在功能页把功能移动到其他分组。", "PlugHub 设置", MessageBoxButton.OK, MessageBoxImage.Information);
+                RefreshStatus("该分组仍有功能使用。请先在功能页把功能移动到其他分组。");
                 return;
             }
 
@@ -1212,15 +1348,86 @@ namespace PlugHub.Revit2020
 
         private void RefreshFeatureGroupOptions()
         {
-            foreach (var column in _featuresGrid.Columns.OfType<DataGridComboBoxColumn>())
+            var options = GroupOptionsForFeatureRows();
+            _groupOptions.Clear();
+            foreach (var option in options)
             {
-                if (string.Equals(Convert.ToString(column.Header), "所属分组", StringComparison.OrdinalIgnoreCase))
-                {
-                    column.ItemsSource = GroupOptionsForFeatureRows();
-                }
+                _groupOptions.Add(option);
             }
 
-            _featuresGrid.Items.Refresh();
+            SafeRefreshGrid(_featuresGrid);
+            SyncSelectedFeatureEditor();
+        }
+
+        private void SyncSelectedFeatureEditor()
+        {
+            _syncingSelectedFeatureEditor = true;
+            try
+            {
+                var row = _featuresGrid.SelectedItem as FeatureRow;
+                var hasSelection = row != null;
+                _selectedFeatureName.Text = hasSelection ? row!.Name : "未选择功能";
+                _selectedFeatureGroupCombo.IsEnabled = hasSelection;
+                _selectedFeatureButtonSizeCombo.IsEnabled = hasSelection;
+                _selectedFeatureGroupCombo.SelectedValue = hasSelection ? row!.Group : null;
+                _selectedFeatureButtonSizeCombo.SelectedItem = hasSelection ? NormalizeButtonSize(row!.ButtonSize) : null;
+            }
+            finally
+            {
+                _syncingSelectedFeatureEditor = false;
+            }
+        }
+
+        private void ApplySelectedFeatureGroup()
+        {
+            if (_syncingSelectedFeatureEditor) return;
+            if (!(_featuresGrid.SelectedItem is FeatureRow row)) return;
+
+            var groupId = Convert.ToString(_selectedFeatureGroupCombo.SelectedValue);
+            if (string.IsNullOrWhiteSpace(groupId)) return;
+            row.Group = groupId.Trim();
+            UpdateFeatureDisplayFields(row);
+            SortFeatureRowsForRuntimeOrder();
+            RefreshFeaturePositionsByGroup();
+            _featuresGrid.SelectedItem = row;
+            _featuresGrid.ScrollIntoView(row);
+            SyncSelectedFeatureEditor();
+            RefreshStatus("已调整功能所属分组，保存并重启 Revit 后 Ribbon 分组生效。");
+        }
+
+        private void ApplySelectedFeatureButtonSize()
+        {
+            if (_syncingSelectedFeatureEditor) return;
+            if (!(_featuresGrid.SelectedItem is FeatureRow row)) return;
+
+            var buttonSize = Convert.ToString(_selectedFeatureButtonSizeCombo.SelectedItem);
+            if (string.IsNullOrWhiteSpace(buttonSize)) return;
+            row.ButtonSize = NormalizeButtonSize(buttonSize);
+            UpdateFeatureDisplayFields(row);
+            SafeRefreshGrid(_featuresGrid);
+            RefreshStatus("已调整功能图标大小，保存并重启 Revit 后 Ribbon 按钮大小生效。");
+        }
+
+        private FeatureRow? SelectedFeatureRow()
+        {
+            return _featuresGrid.SelectedItem as FeatureRow;
+        }
+
+        private void SelectFeatureRow(FeatureRow row)
+        {
+            if (row == null) return;
+            _featuresGrid.SelectedItem = row;
+            _featuresGrid.ScrollIntoView(row);
+            SyncSelectedFeatureEditor();
+        }
+
+        private void RefreshFeatureOrderAndSelection(FeatureRow? selectedRow)
+        {
+            RefreshFeaturePositionsByGroup();
+            if (selectedRow != null)
+            {
+                SelectFeatureRow(selectedRow);
+            }
         }
 
         private void EnsureViewGroupForFeature(ModuleConfiguration module, FeatureConfiguration feature)
@@ -1370,9 +1577,7 @@ namespace PlugHub.Revit2020
 
             if (grid == _featuresGrid)
             {
-                MoveRow(_featureRows, sourceIndex, targetIndex);
-                RecalculateFeatureOrders();
-                _featuresGrid.SelectedIndex = targetIndex;
+                MoveSelectedFeature(direction);
                 return;
             }
 
@@ -1390,6 +1595,25 @@ namespace PlugHub.Revit2020
             rows.Move(sourceIndex, targetIndex);
         }
 
+        private void MoveSelectedFeature(int direction)
+        {
+            var row = SelectedFeatureRow();
+            if (row == null) return;
+
+            var sameGroupIndexes = _featureRows
+                .Select((feature, index) => new { Feature = feature, Index = index })
+                .Where(item => string.Equals(item.Feature.Group, row.Group, StringComparison.OrdinalIgnoreCase))
+                .Select(item => item.Index)
+                .ToList();
+            var groupPosition = sameGroupIndexes.IndexOf(_featureRows.IndexOf(row));
+            var targetGroupPosition = groupPosition + direction;
+            if (groupPosition < 0 || targetGroupPosition < 0 || targetGroupPosition >= sameGroupIndexes.Count) return;
+
+            MoveRow(_featureRows, _featureRows.IndexOf(row), sameGroupIndexes[targetGroupPosition]);
+            RecalculateFeatureOrders();
+            SelectFeatureRow(row);
+        }
+
         private void RecalculatePluginPackageOrders()
         {
             RefreshPluginPackagePositions();
@@ -1397,7 +1621,7 @@ namespace PlugHub.Revit2020
 
         private void RecalculateFeatureOrders()
         {
-            RefreshFeaturePositions();
+            RefreshFeaturePositionsByGroup();
         }
 
         private void RecalculateGroupOrders()
@@ -1413,18 +1637,44 @@ namespace PlugHub.Revit2020
                 _moduleRows[index].PositionText = "第 " + (index + 1) + " 项";
             }
 
-            _pluginPackagesGrid.Items.Refresh();
+            SafeRefreshGrid(_pluginPackagesGrid);
         }
 
-        private void RefreshFeaturePositions()
+        private void SortFeatureRowsForRuntimeOrder()
         {
+            var sorted = _featureRows
+                .OrderBy(row => GroupOrderForFeature(row.Group))
+                .ThenBy(row => GroupDisplayName(row.Group), StringComparer.OrdinalIgnoreCase)
+                .ThenBy(row => row.Order)
+                .ThenBy(row => row.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(row => row.FeatureId, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            _featureRows.Clear();
+            foreach (var row in sorted)
+            {
+                _featureRows.Add(row);
+            }
+        }
+
+        private void RefreshFeaturePositionsByGroup()
+        {
+            var groupIndexes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             for (var index = 0; index < _featureRows.Count; index++)
             {
-                _featureRows[index].Order = (index + 1) * 10;
-                _featureRows[index].PositionText = "第 " + (index + 1) + " 项";
+                var row = _featureRows[index];
+                var groupKey = string.IsNullOrWhiteSpace(row.Group) ? string.Empty : row.Group.Trim();
+                groupIndexes.TryGetValue(groupKey, out var groupIndex);
+                groupIndex++;
+                groupIndexes[groupKey] = groupIndex;
+
+                row.Order = groupIndex * 10;
+                row.PositionText = GroupDisplayName(groupKey) + " 第 " + groupIndex + " 项";
+                UpdateFeatureDisplayFields(row);
             }
 
-            _featuresGrid.Items.Refresh();
+            RefreshFeatureCounts();
+            SafeRefreshGrid(_featuresGrid);
         }
 
         private void RefreshGroupPositions()
@@ -1436,7 +1686,26 @@ namespace PlugHub.Revit2020
                 _groupRows[index].FeatureCountText = _groupRows[index].FeatureCount + " 个";
             }
 
-            _groupsGrid.Items.Refresh();
+            SafeRefreshGrid(_groupsGrid);
+        }
+
+        private void RefreshFeatureCounts()
+        {
+            foreach (var group in _groupRows)
+            {
+                group.FeatureCount = _featureRows.Count(feature => string.Equals(feature.Group, group.Id, StringComparison.OrdinalIgnoreCase));
+                group.FeatureCountText = group.FeatureCount + " 个";
+            }
+
+            SafeRefreshGrid(_groupsGrid);
+        }
+
+        private void UpdateFeatureDisplayFields(FeatureRow row)
+        {
+            if (row == null) return;
+            row.GroupDisplayText = GroupDisplayName(row.Group);
+            row.ButtonSize = NormalizeButtonSize(row.ButtonSize);
+            row.ButtonSizeDisplayText = ButtonSizeDisplayName(row.ButtonSize);
         }
 
         private void AttachGridBehaviors(DataGrid grid)
@@ -1462,6 +1731,12 @@ namespace PlugHub.Revit2020
         private void GridPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             if (!(sender is DataGrid grid)) return;
+            if (IsInteractiveGridEditor(e.OriginalSource as DependencyObject))
+            {
+                ResetDragSource();
+                return;
+            }
+
             var row = FindAncestor<DataGridRow>(e.OriginalSource as DependencyObject);
             _dragSourceGrid = grid;
             _dragSourceRowIndex = row?.GetIndex() ?? -1;
@@ -1473,7 +1748,15 @@ namespace PlugHub.Revit2020
             if (!(sender is DataGrid grid) || grid != _dragSourceGrid) return;
             if (_dragSourceRowIndex >= grid.Items.Count) return;
 
-            DragDrop.DoDragDrop(grid, grid.Items[_dragSourceRowIndex], DragDropEffects.Move);
+            try
+            {
+                DragDrop.DoDragDrop(grid, grid.Items[_dragSourceRowIndex], DragDropEffects.Move);
+            }
+            catch (Exception ex)
+            {
+                ReportSettingsError("拖拽排序失败", ex);
+                ResetDragSource();
+            }
         }
 
         private static void GridDragOver(object sender, DragEventArgs e)
@@ -1484,12 +1767,25 @@ namespace PlugHub.Revit2020
 
         private void GridDrop(object sender, DragEventArgs e)
         {
-            if (!(sender is DataGrid grid) || grid != _dragSourceGrid) return;
-            if (_dragSourceRowIndex < 0) return;
+            if (!(sender is DataGrid grid) || grid != _dragSourceGrid)
+            {
+                ResetDragSource();
+                return;
+            }
+
+            if (_dragSourceRowIndex < 0)
+            {
+                ResetDragSource();
+                return;
+            }
 
             var row = FindAncestor<DataGridRow>(e.OriginalSource as DependencyObject);
             var targetIndex = row?.GetIndex() ?? grid.Items.Count - 1;
-            if (targetIndex < 0 || targetIndex == _dragSourceRowIndex) return;
+            if (targetIndex < 0 || targetIndex == _dragSourceRowIndex)
+            {
+                ResetDragSource();
+                return;
+            }
 
             if (grid == _pluginPackagesGrid)
             {
@@ -1498,8 +1794,19 @@ namespace PlugHub.Revit2020
             }
             else if (grid == _featuresGrid)
             {
+                var dragged = _featureRows[_dragSourceRowIndex];
+                var target = _featureRows[targetIndex];
+                if (!string.Equals(dragged.Group, target.Group, StringComparison.OrdinalIgnoreCase))
+                {
+                    dragged.Group = target.Group;
+                    UpdateFeatureDisplayFields(dragged);
+                }
+
                 MoveRow(_featureRows, _dragSourceRowIndex, targetIndex);
                 RecalculateFeatureOrders();
+                SelectFeatureRow(dragged);
+                ResetDragSource();
+                return;
             }
             else if (grid == _groupsGrid)
             {
@@ -1508,8 +1815,48 @@ namespace PlugHub.Revit2020
             }
 
             grid.SelectedIndex = targetIndex;
+            ResetDragSource();
+        }
+
+        private void ResetDragSource()
+        {
             _dragSourceRowIndex = -1;
             _dragSourceGrid = null;
+        }
+
+        private void SafeRefreshGrid(DataGrid grid)
+        {
+            if (grid == null) return;
+
+            if (!grid.Dispatcher.CheckAccess())
+            {
+                grid.Dispatcher.BeginInvoke(new Action(() => SafeRefreshGrid(grid)), DispatcherPriority.Background);
+                return;
+            }
+
+            if (TryRefreshGrid(grid)) return;
+            grid.Dispatcher.BeginInvoke(new Action(() => TryRefreshGrid(grid)), DispatcherPriority.Background);
+        }
+
+        private static bool TryRefreshGrid(DataGrid grid)
+        {
+            try
+            {
+                CommitGrid(grid);
+                grid.Items.Refresh();
+                return true;
+            }
+            catch (InvalidOperationException ex) when (IsEditTransactionRefreshError(ex))
+            {
+                return false;
+            }
+        }
+
+        private static bool IsEditTransactionRefreshError(Exception ex)
+        {
+            var message = ex.Message ?? string.Empty;
+            return message.IndexOf("AddNew", StringComparison.OrdinalIgnoreCase) >= 0
+                || message.IndexOf("EditItem", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private void EndGridEdits()
@@ -1530,6 +1877,22 @@ namespace PlugHub.Revit2020
         private void RefreshStatus(string text)
         {
             _statusText.Text = text;
+        }
+
+        private void ReportSettingsError(string title, Exception ex)
+        {
+            var message = title + "：" + ex.Message;
+            LoadDiagnosticRowsFromMessages(new[]
+            {
+                new DiagnosticMessage
+                {
+                    Severity = DiagnosticSeverity.Warning,
+                    Code = "PH-SETTINGS",
+                    ModuleId = "settings",
+                    Message = message
+                }
+            });
+            RefreshStatus(message);
         }
 
         private string ToPluginRelativePath(string path)
@@ -1560,6 +1923,15 @@ namespace PlugHub.Revit2020
             return null;
         }
 
+        private static bool IsInteractiveGridEditor(DependencyObject? source)
+        {
+            return FindAncestor<ComboBox>(source) != null
+                || FindAncestor<TextBox>(source) != null
+                || FindAncestor<CheckBox>(source) != null
+                || FindAncestor<ButtonBase>(source) != null
+                || FindAncestor<Thumb>(source) != null;
+        }
+
         private static Dictionary<string, string> DiagnosticsBySourceId(FrameworkRuntimeSnapshot? snapshot)
         {
             return (snapshot?.Diagnostics ?? new List<DiagnosticMessage>())
@@ -1575,9 +1947,26 @@ namespace PlugHub.Revit2020
             return fallback ?? string.Empty;
         }
 
+        private int GroupOrderForFeature(string groupId)
+        {
+            var group = _groupRows.FirstOrDefault(row => string.Equals(row.Id, groupId, StringComparison.OrdinalIgnoreCase));
+            return group?.Order > 0 ? group.Order : int.MaxValue;
+        }
+
+        private string GroupDisplayName(string groupId)
+        {
+            var group = _groupRows.FirstOrDefault(row => string.Equals(row.Id, groupId, StringComparison.OrdinalIgnoreCase));
+            return DisplayName(group?.Name ?? string.Empty, groupId, "未分组");
+        }
+
         private static string NormalizeButtonSize(string value)
         {
             return string.Equals(value, "small", StringComparison.OrdinalIgnoreCase) ? "small" : "large";
+        }
+
+        private static string ButtonSizeDisplayName(string value)
+        {
+            return string.Equals(NormalizeButtonSize(value), "small", StringComparison.OrdinalIgnoreCase) ? "小" : "大";
         }
 
         private static string UniqueRepositoryId(IEnumerable<RepositoryRow> rows, string prefix)
@@ -1643,11 +2032,13 @@ namespace PlugHub.Revit2020
             public string Description { get; set; } = string.Empty;
             public string Category { get; set; } = string.Empty;
             public string Group { get; set; } = string.Empty;
+            public string GroupDisplayText { get; set; } = string.Empty;
             public List<string> Tags { get; set; } = new List<string>();
             public bool Visible { get; set; }
             public string IconPath { get; set; } = string.Empty;
             public int Order { get; set; }
             public string ButtonSize { get; set; } = "large";
+            public string ButtonSizeDisplayText { get; set; } = "大";
             public string CommandKey { get; set; } = string.Empty;
             public string CommandAssembly { get; set; } = string.Empty;
             public string CommandType { get; set; } = string.Empty;
