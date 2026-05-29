@@ -24,7 +24,8 @@ namespace PlugHub.Revit2020
         private const string SourcesFileName = "sources.json";
         private const string DefaultPackageManifestName = "package.json";
         private const string AdjacentPackageManifestPattern = "*.package.json";
-        private const string DefaultGitHubRepository = "GaoMengGu/PlugHub_Packages";
+        private const string DefaultRepositoryProvider = "gitee";
+        private const string DefaultPublicRepository = "https://gitee.com/GaoMengGu/PlugHub_Packages";
 
         private readonly string _configDirectory;
         private FrameworkConfiguration _configuration;
@@ -443,7 +444,7 @@ namespace PlugHub.Revit2020
                 {
                     Id = repository.Id,
                     Enabled = repository.Enabled,
-                    Provider = string.IsNullOrWhiteSpace(repository.Provider) ? "github" : repository.Provider,
+                    Provider = string.IsNullOrWhiteSpace(repository.Provider) ? DefaultRepositoryProvider : repository.Provider,
                     Visibility = string.Equals(repository.Visibility, "private", StringComparison.OrdinalIgnoreCase) ? "private" : "public",
                     Repository = repository.Repository,
                     Ref = string.IsNullOrWhiteSpace(repository.Ref) ? "main" : repository.Ref,
@@ -765,7 +766,7 @@ namespace PlugHub.Revit2020
                 .Select(row => new PackageRepositoryConfiguration
                 {
                     Id = row.Id.Trim(),
-                    Provider = string.IsNullOrWhiteSpace(row.Provider) ? "github" : row.Provider.Trim(),
+                    Provider = string.IsNullOrWhiteSpace(row.Provider) ? DefaultRepositoryProvider : row.Provider.Trim(),
                     Visibility = string.Equals(row.Visibility, "private", StringComparison.OrdinalIgnoreCase) ? "private" : "public",
                     Repository = row.Repository ?? string.Empty,
                     Ref = string.IsNullOrWhiteSpace(row.Ref) ? "main" : row.Ref.Trim(),
@@ -1158,9 +1159,9 @@ namespace PlugHub.Revit2020
             {
                 Id = id,
                 Enabled = true,
-                Provider = "github",
+                Provider = DefaultRepositoryProvider,
                 Visibility = "public",
-                Repository = DefaultGitHubRepository,
+                Repository = DefaultPublicRepository,
                 Ref = "main",
                 ManifestPath = DefaultPackageManifestName,
                 ApiKey = string.Empty,
@@ -2081,7 +2082,7 @@ namespace PlugHub.Revit2020
         {
             public string Id { get; set; } = string.Empty;
             public bool Enabled { get; set; }
-            public string Provider { get; set; } = "github";
+            public string Provider { get; set; } = DefaultRepositoryProvider;
             public string Visibility { get; set; } = "public";
             public string Repository { get; set; } = string.Empty;
             public string Ref { get; set; } = "main";
@@ -2095,7 +2096,7 @@ namespace PlugHub.Revit2020
                 {
                     Id = Id ?? string.Empty,
                     Enabled = Enabled,
-                    Provider = string.IsNullOrWhiteSpace(Provider) ? "github" : Provider,
+                    Provider = string.IsNullOrWhiteSpace(Provider) ? DefaultRepositoryProvider : Provider,
                     Visibility = string.Equals(Visibility, "private", StringComparison.OrdinalIgnoreCase) ? "private" : "public",
                     Repository = Repository ?? string.Empty,
                     Ref = string.IsNullOrWhiteSpace(Ref) ? "main" : Ref.Trim(),

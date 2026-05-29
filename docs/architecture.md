@@ -39,7 +39,7 @@ PlugHub.StaticValidation      # 静态验证入口
 
 - `packageDirectories`：自动扫描的安装目录，当前默认只保留 `packages`。Revit 启动只从这里发现插件包。
 - `moduleSources`：兼容保留，默认为空；不再配置启动时拉取或加载的仓库来源。
-- `repositories`：设置页可浏览的插件包仓库。`provider` 支持 GitHub 和 Gitee；公开仓库无需凭据，私有仓库需要 `apiKey`；仓库内容只有在用户选择安装或更新后才会复制到 `packages`。
+- `repositories`：设置页可浏览的插件包仓库。`provider` 支持 GitHub 和 Gitee；默认公开仓库使用 Gitee `https://gitee.com/GaoMengGu/PlugHub_Packages`；公开仓库无需凭据，私有仓库需要 `apiKey`；仓库内容只有在用户选择安装或更新后才会复制到 `packages`。
 - `modules`：根配置内联插件包列表，当前默认为空，框架不随包提供业务模块。
 - `conflictPolicy`：重复模块、重复功能、缺失模块类型等冲突策略。
 

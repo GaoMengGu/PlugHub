@@ -1,0 +1,64 @@
+name: Sync Main To Gitee
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-main-to-gitee
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    name: Push main to Gitee
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate Gitee secrets
+        shell: bash
+        env:
+          GITEE_PRIVATE_KEY: ${{ secrets.GITEE_PRIVATE_KEY }}
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          GITEE_USER: ${{ secrets.GITEE_USER }}
+        run: |
+          test -n "$GITEE_PRIVATE_KEY" || { echo "GITEE_PRIVATE_KEY is required."; exit 1; }
+          test -n "$GITEE_TOKEN" || { echo "GITEE_TOKEN is required."; exit 1; }
+          test -n "$GITEE_USER" || { echo "GITEE_USER is required."; exit 1; }
+
+      - name: Configure Gitee SSH
+        shell: bash
+        env:
+          GITEE_PRIVATE_KEY: ${{ secrets.GITEE_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$GITEE_PRIVATE_KEY" > ~/.ssh/gitee_sync
+          chmod 600 ~/.ssh/gitee_sync
+          ssh-keyscan gitee.com >> ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<'EOF'
+          Host gitee.com
+            HostName gitee.com
+            User git
+            IdentityFile ~/.ssh/gitee_sync
+            StrictHostKeyChecking yes
+          EOF
+
+      - name: Push main to Gitee
+        shell: bash
+        env:
+          GITEE_USER: ${{ secrets.GITEE_USER }}
+        run: |
+          git config user.name "$GITEE_USER"
+          git config user.email "$GITEE_USER@users.noreply.gitee.com"
+          git remote remove gitee 2>/dev/null || true
+          git remote add gitee git@gitee.com:GaoMengGu/PlugHub.git
+          git push gitee HEAD:main

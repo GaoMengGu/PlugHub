@@ -34,7 +34,7 @@ namespace PlugHub.Framework.Configuration
     public sealed class PackageRepositoryConfiguration
     {
         public string Id { get; set; } = string.Empty;
-        public string Provider { get; set; } = "github";
+        public string Provider { get; set; } = "gitee";
         public string Visibility { get; set; } = "public";
         public string Repository { get; set; } = string.Empty;
         public string Ref { get; set; } = "main";

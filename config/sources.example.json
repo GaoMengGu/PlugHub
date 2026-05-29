@@ -7,9 +7,9 @@
   "repositories": [
     {
       "id": "plughub-public-packages",
-      "provider": "github",
+      "provider": "gitee",
       "visibility": "public",
-      "repository": "GaoMengGu/PlugHub_Packages",
+      "repository": "https://gitee.com/GaoMengGu/PlugHub_Packages",
       "ref": "main",
       "manifestPath": "package.json",
       "apiKey": "",
@@ -26,10 +26,20 @@
       "enabled": false
     },
     {
-      "id": "gitee-public-packages",
-      "provider": "gitee",
+      "id": "github-public-packages",
+      "provider": "github",
       "visibility": "public",
-      "repository": "your-gitee-org/plughub-packages",
+      "repository": "GaoMengGu/PlugHub_Packages",
+      "ref": "main",
+      "manifestPath": "package.json",
+      "apiKey": "",
+      "enabled": false
+    },
+    {
+      "id": "gitee-private-packages",
+      "provider": "gitee",
+      "visibility": "private",
+      "repository": "https://gitee.com/your-gitee-org/private-plughub-packages",
       "ref": "master",
       "manifestPath": "package.json",
       "apiKey": "",

@@ -93,7 +93,7 @@ CI 发布构建使用 `NuGet` 引用模式，只把 Revit API 当作编译引用
 - 新增外部插件包时，安装或复制到 `packages`；Revit 启动只扫描 `packages`。
 - `moduleSources` 兼容保留但默认为空，不用于配置启动时仓库拉取。
 - 仓库配置写在 `repositories`。`provider` 支持 `github` 和 `gitee`；公开仓库使用 `visibility: "public"`；私有仓库使用 `visibility: "private"` 并提供 `apiKey`。
-- 默认公开仓库指向 `GaoMengGu/PlugHub_Packages`。仓库不会在 Revit 启动时拉取或加载，只有用户在设置页选择“浏览仓库插件包”时才访问远端；浏览使用 sparse checkout，只取包清单、DLL 和图标等包资产。
+- 默认公开仓库使用 Gitee，指向 `https://gitee.com/GaoMengGu/PlugHub_Packages`。仓库不会在 Revit 启动时拉取或加载，只有用户在设置页选择“浏览仓库插件包”时才访问远端；浏览使用 sparse checkout，只取包清单、DLL 和图标等包资产。
 - 仓库根 `package.json` 如果包含多个 module，设置页应展示为多个插件行；安装时 PlugHub 会按选中 module 拆成单插件本地包。
 - 安装和更新会把选中插件的单模块清单及其引用的 DLL/资源复制到 `packages/<插件ID>`，不会复制整个仓库；卸载只删除 `packages` 下对应已安装目录。
 - 如果 DLL 正被 Revit 占用，更新和卸载不会直接失败：PlugHub 会先移除本地清单中的模块声明，写入 `repository-cache/.package-install/pending-operations.json`，并在下次启动、模块发现之前删除或替换对应插件目录。
@@ -112,6 +112,8 @@ CI 发布构建使用 `NuGet` 引用模式，只把 Revit API 当作编译引用
 本地开发可用 self-signed 证书；公开分发前需要评估公开可信证书或 SignPath Foundation 等开源签名方案。详细说明见 [signing.md](signing.md)。
 
 发布 `V*` tag 时，GitHub Actions 会运行 release workflow，使用 NuGet 编译引用构建 Revit 2020 包，并用 cosign 为 DLL 和 zip 产物生成 Sigstore 签名 bundle。
+
+`main` 分支更新时，GitHub Actions 会运行 Gitee 同步 workflow，将当前 `main` 推送到 `https://gitee.com/GaoMengGu/PlugHub`。该 workflow 依赖仓库 secrets：`GITEE_PRIVATE_KEY`、`GITEE_TOKEN`、`GITEE_USER`。
 
 版本预留在 `build\Directory.Build.props` 中维护：`RevitVersion` 控制输出路径和 addin 目录，`RevitApiReferenceMode` 控制 `Installed` / `NuGet` 引用模式，`RevitApiNuGetVersion` 控制 CI 编译引用包版本。后续增加 2018、2022、2024 适配时，应复用这些属性。
 

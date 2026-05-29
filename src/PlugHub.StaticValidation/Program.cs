@@ -68,6 +68,7 @@ namespace PlugHub.StaticValidation
                 "README.md",
                 "AGENTS.md",
                 ".github/workflows/release.yml",
+                ".github/workflows/sync-gitee.yml",
                 "PlugHub.sln",
                 "PlugHub.slnx",
                 "src/PlugHub.Contracts/PlugHub.Contracts.csproj",
@@ -170,6 +171,11 @@ namespace PlugHub.StaticValidation
             Require(Repositories(modules).Any(repository => StringValue(repository, "visibility") == "public"), "repositories must include a public repository example.");
             Require(Repositories(modules).Any(repository => StringValue(repository, "visibility") == "private" && repository.ContainsKey("apiKey")), "repositories must include a private repository example with apiKey.");
             Require(Repositories(modules).Any(repository => StringValue(repository, "provider") == "gitee"), "repositories must include a Gitee repository example.");
+            Require(Repositories(modules).Any(repository =>
+                StringValue(repository, "provider") == "gitee"
+                && StringValue(repository, "visibility") == "public"
+                && StringValue(repository, "repository") == "https://gitee.com/GaoMengGu/PlugHub_Packages"
+                && StringValue(repository, "enabled") == "True"), "default public repository must be the enabled Gitee PlugHub_Packages URL.");
             Require(StringValue(ObjectValue(modules, "conflictPolicy"), "duplicateFeatureId") == "fail-feature", "duplicate feature policy must be fail-feature.");
 
             var seenFeatureIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -358,7 +364,7 @@ namespace PlugHub.StaticValidation
             var modulesText = ReadText("config/sources.example.json");
             Require(modulesText.Contains("\"repositories\""), "modules config must include repository catalog settings.");
             Require(!modulesText.Contains("\"autoUpdate\""), "repository catalog settings must not expose startup autoUpdate.");
-            Require(modulesText.Contains("\"repository\": \"GaoMengGu/PlugHub_Packages\""), "default github source must point at GaoMengGu/PlugHub_Packages.");
+            Require(modulesText.Contains("\"provider\": \"gitee\"") && modulesText.Contains("\"repository\": \"https://gitee.com/GaoMengGu/PlugHub_Packages\""), "default repository must point at the public Gitee PlugHub_Packages URL.");
             Require(modulesText.Contains("\"manifestPath\": \"package.json\""), "module source examples must point at package.json.");
 
             var revitText = ReadAllCSharp("src/PlugHub.Revit2020");
@@ -527,14 +533,15 @@ namespace PlugHub.StaticValidation
             var sourceResolver = ReadText("src/PlugHub.Framework/Sources/ModuleSourceResolver.cs");
             var packageRepositoryService = ReadText("src/PlugHub.Framework/Packages/PackageRepositoryService.cs");
             var workflow = ReadText(".github/workflows/release.yml");
+            var giteeWorkflow = ReadText(".github/workflows/sync-gitee.yml");
             var buildScript = ReadText("scripts/build-revit2020.ps1");
             var readme = ReadText("README.md");
 
-            Require(modulesText.Contains("\"repository\": \"GaoMengGu/PlugHub_Packages\""), "default github source must point at GaoMengGu/PlugHub_Packages.");
+            Require(modulesText.Contains("\"provider\": \"gitee\"") && modulesText.Contains("\"repository\": \"https://gitee.com/GaoMengGu/PlugHub_Packages\""), "default package repository must point at the public Gitee PlugHub_Packages URL.");
             Require(modulesText.Contains("\"packageDirectories\": [") && modulesText.Contains("\"packages\""), "installed package discovery must point at packages.");
             Require(!modulesText.Contains("packages/github/GaoMengGu_PlugHub_Packages"), "repository caches must not live under packages.");
             Require(!modulesText.Contains("GaoMengGu/PlugHub_Modules"), "default github source must not point at PlugHub_Modules.");
-            Require(settingsWindow.Contains("GaoMengGu/PlugHub_Packages"), "settings repository creation must default to PlugHub_Packages.");
+            Require(settingsWindow.Contains("DefaultRepositoryProvider = \"gitee\"") && settingsWindow.Contains("https://gitee.com/GaoMengGu/PlugHub_Packages"), "settings repository creation must default to the public Gitee PlugHub_Packages URL.");
 
             Require(!sourceResolver.Contains("RunGit") && !sourceResolver.Contains("AutoUpdate") && !sourceResolver.Contains("AddGitHubModules"), "runtime source resolver must not pull or load repository packages at startup.");
             Require(settingsWindow.Contains("BuildRepositoriesTab") && settingsWindow.Contains("LoadRepositoryRows"), "settings must present sources as repositories.");
@@ -560,6 +567,10 @@ namespace PlugHub.StaticValidation
             Require(!settingsWindow.Contains("LoadDiagnosticRows(FrameworkRuntimeState.Current);\r\n            LoadSourceRows();"), "settings save must not reload stale runtime diagnostics after saving configuration.");
 
             Require(workflow.Contains("-UseRelativeAddinAssembly"), "release workflow must build a package with relative addin assembly path.");
+            Require(giteeWorkflow.Contains("branches:") && giteeWorkflow.Contains("- main"), "Gitee sync workflow must run for main pushes.");
+            Require(giteeWorkflow.Contains("workflow_dispatch"), "Gitee sync workflow must support manual dispatch.");
+            Require(giteeWorkflow.Contains("GITEE_PRIVATE_KEY") && giteeWorkflow.Contains("GITEE_TOKEN") && giteeWorkflow.Contains("GITEE_USER"), "Gitee sync workflow must validate configured Gitee secrets.");
+            Require(giteeWorkflow.Contains("git@gitee.com:GaoMengGu/PlugHub.git") && giteeWorkflow.Contains("git push gitee HEAD:main"), "Gitee sync workflow must push main to GaoMengGu/PlugHub on Gitee.");
             Require(buildScript.Contains("[switch]$UseRelativeAddinAssembly") && buildScript.Contains("PlugHub.Revit2020.dll"), "build script must support relative release addin assembly paths.");
             Require(workflow.Contains("*.pdb") && workflow.Contains("*.sigstore.json") && !workflow.Contains("Compress-Archive -Path \"dist\\Revit2020\\*\""), "release zip must exclude pdb and sigstore files.");
 
