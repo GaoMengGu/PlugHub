@@ -16,7 +16,7 @@
       "excludeCategories": [],
       "groups": [],
       "sort": ["group.order", "feature.order", "feature.name", "feature.id"],
-      "emptyStateText": "PlugHub 工作台没有可用功能。请在 packages/dropins、指定本地文件夹或 GitHub 来源中添加插件包。"
+      "emptyStateText": "PlugHub 工作台没有可用功能。请把插件包安装到 packages，或在设置的仓库页浏览并安装插件包。"
     }
   ]
 }

@@ -47,6 +47,8 @@ $StaleOutputPaths = @(
     (Join-Path $OutputDir "PlugHub.BuiltinModule.pdb"),
     (Join-Path $OutputDir "config\modules.json"),
     (Join-Path $OutputDir "config\plugin-sources.json"),
+    (Join-Path $OutputDir ("packages\" + "dropins")),
+    (Join-Path $OutputDir ("packages\" + "github")),
     (Join-Path $OutputDir ("modules\" + "samples")),
     (Join-Path $OutputDir ("modules\" + "dropins")),
     (Join-Path $OutputDir "modules")

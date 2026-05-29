@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using System.Windows;
 using System.Windows.Controls;
@@ -12,6 +13,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using PlugHub.Contracts.Modules;
 using PlugHub.Framework.Configuration;
+using PlugHub.Framework.Packages;
 using PlugHub.Framework.Runtime;
 
 namespace PlugHub.Revit2020
@@ -21,27 +23,25 @@ namespace PlugHub.Revit2020
         private const string SourcesFileName = "sources.json";
         private const string DefaultPackageManifestName = "package.json";
         private const string AdjacentPackageManifestPattern = "*.package.json";
-        private const string DefaultGitHubSourceId = "plughub-packages";
         private const string DefaultGitHubRepository = "GaoMengGu/PlugHub_Packages";
-        private const string DefaultGitHubCachePath = "packages/github/GaoMengGu_PlugHub_Packages";
-        private const string LegacyGitHubSourceId = "plughub-modules";
-        private const string LegacyGitHubRepository = "GaoMengGu/PlugHub_Modules";
-        private const string LegacyGitHubCacheSegment = "GaoMengGu_PlugHub_Modules";
 
         private readonly string _configDirectory;
         private FrameworkConfiguration _configuration;
         private readonly JavaScriptSerializer _serializer = new JavaScriptSerializer { MaxJsonLength = int.MaxValue, RecursionLimit = 128 };
+        private readonly PackageRepositoryService _packageRepositoryService = new PackageRepositoryService();
         private readonly DataGrid _pluginPackagesGrid = CreateGrid();
         private readonly DataGrid _featuresGrid = CreateGrid();
         private readonly DataGrid _groupsGrid = CreateGrid();
-        private readonly DataGrid _sourcesGrid = CreateGrid();
+        private readonly DataGrid _repositoriesGrid = CreateGrid();
+        private readonly DataGrid _repositoryPackagesGrid = CreateGrid();
         private readonly DataGrid _diagnosticsGrid = CreateGrid();
         private readonly TextBlock _statusText = new TextBlock();
         private List<ModuleManifestDocument> _moduleDocuments = new List<ModuleManifestDocument>();
         private ObservableCollection<ModuleRow> _moduleRows = new ObservableCollection<ModuleRow>();
         private ObservableCollection<FeatureRow> _featureRows = new ObservableCollection<FeatureRow>();
         private ObservableCollection<GroupRow> _groupRows = new ObservableCollection<GroupRow>();
-        private ObservableCollection<SourceRow> _sourceRows = new ObservableCollection<SourceRow>();
+        private ObservableCollection<RepositoryRow> _repositoryRows = new ObservableCollection<RepositoryRow>();
+        private ObservableCollection<RepositoryPackageRow> _repositoryPackageRows = new ObservableCollection<RepositoryPackageRow>();
         private int _dragSourceRowIndex = -1;
         private DataGrid? _dragSourceGrid;
 
@@ -49,7 +49,6 @@ namespace PlugHub.Revit2020
         {
             _configDirectory = configDirectory ?? throw new ArgumentNullException(nameof(configDirectory));
             _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
-            NormalizeGitHubSourceDefaults(_configuration.Modules);
             _moduleDocuments = LoadModuleDocuments(_configuration);
 
             Title = "PlugHub 设置";
@@ -94,8 +93,8 @@ namespace PlugHub.Revit2020
             tabs.Items.Add(BuildPluginPackagesTab());
             tabs.Items.Add(BuildFeaturesTab());
             tabs.Items.Add(BuildGroupsTab());
-            tabs.Items.Add(BuildSourcesTab());
-            tabs.Items.Add(BuildDiagnosticsTab());
+            tabs.Items.Add(BuildRepositoriesTab());
+            tabs.Items.Add(BuildLogsTab());
             Grid.SetRow(tabs, 1);
             root.Children.Add(tabs);
 
@@ -135,16 +134,36 @@ namespace PlugHub.Revit2020
             return BuildTab("分组", _groupsGrid);
         }
 
-        private TabItem BuildSourcesTab()
+        private TabItem BuildRepositoriesTab()
         {
-            _sourcesGrid.ContextMenu = BuildSourceMenu();
-            return BuildTab("来源", _sourcesGrid);
+            _repositoriesGrid.ContextMenu = BuildRepositoryMenu();
+            _repositoryPackagesGrid.ContextMenu = BuildRepositoryPackageMenu();
+
+            var layout = new Grid();
+            layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0.48, GridUnitType.Star) });
+            layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0.52, GridUnitType.Star) });
+
+            var repositoriesHeader = SectionHeader("仓库");
+            Grid.SetRow(repositoriesHeader, 0);
+            layout.Children.Add(repositoriesHeader);
+            Grid.SetRow(_repositoriesGrid, 1);
+            layout.Children.Add(_repositoriesGrid);
+
+            var packagesHeader = SectionHeader("仓库插件包");
+            Grid.SetRow(packagesHeader, 2);
+            layout.Children.Add(packagesHeader);
+            Grid.SetRow(_repositoryPackagesGrid, 3);
+            layout.Children.Add(_repositoryPackagesGrid);
+
+            return BuildTab("仓库", layout);
         }
 
-        private TabItem BuildDiagnosticsTab()
+        private TabItem BuildLogsTab()
         {
             _diagnosticsGrid.IsReadOnly = true;
-            return BuildTab("诊断", _diagnosticsGrid);
+            return BuildTab("日志", _diagnosticsGrid);
         }
 
         private static TabItem BuildTab(string title, UIElement content)
@@ -177,6 +196,17 @@ namespace PlugHub.Revit2020
             return button;
         }
 
+        private static TextBlock SectionHeader(string text)
+        {
+            return new TextBlock
+            {
+                Text = text,
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(8, 8, 8, 6),
+                Foreground = new SolidColorBrush(Color.FromRgb(45, 56, 72))
+            };
+        }
+
         private static DataGrid CreateGrid()
         {
             return new DataGrid
@@ -200,9 +230,12 @@ namespace PlugHub.Revit2020
             LoadPluginPackageRows();
             LoadGroupRows();
             LoadFeatureRows();
-            LoadSourceRows(FrameworkRuntimeState.Current);
+            LoadRepositoryRows();
+            LoadRepositoryPackageRows(new List<RepositoryPackageDescriptor>());
             LoadDiagnosticRows(FrameworkRuntimeState.Current);
             RefreshStatus("已加载配置。设置窗口会保存根配置和独立模块清单；Ribbon 布局、图标和按钮大小需重启 Revit 重绘。");
+            LoadCachedRepositoryPackages();
+            StartRepositoryUpdateCheck();
         }
 
         private void LoadPluginPackageRows()
@@ -326,36 +359,141 @@ namespace PlugHub.Revit2020
             _featuresGrid.ItemsSource = _featureRows;
         }
 
-        private void LoadSourceRows(FrameworkRuntimeSnapshot? snapshot)
+        private void LoadRepositoryRows()
         {
-            _sourcesGrid.Columns.Clear();
-            _sourcesGrid.Columns.Add(TextColumn(nameof(SourceRow.Id), "来源 ID", false, 1.4));
-            _sourcesGrid.Columns.Add(CheckColumn(nameof(SourceRow.Enabled), "启用"));
-            _sourcesGrid.Columns.Add(CheckColumn(nameof(SourceRow.AutoUpdate), "拉取"));
-            _sourcesGrid.Columns.Add(ComboColumn(nameof(SourceRow.Type), "类型", new[] { "localFolder", "github" }, 1.0));
-            _sourcesGrid.Columns.Add(TextColumn(nameof(SourceRow.Path), "文件夹/缓存", false, 1.7));
-            _sourcesGrid.Columns.Add(TextColumn(nameof(SourceRow.Repository), "GitHub 仓库", false, 1.5));
-            _sourcesGrid.Columns.Add(TextColumn(nameof(SourceRow.Ref), "分支", false, 0.8));
-            _sourcesGrid.Columns.Add(TextColumn(nameof(SourceRow.ManifestPath), "清单", false, 1.1));
-            _sourcesGrid.Columns.Add(TextColumn(nameof(SourceRow.Status), "状态", true, 1.4));
+            _repositoriesGrid.Columns.Clear();
+            _repositoriesGrid.Columns.Add(CheckColumn(nameof(RepositoryRow.Enabled), "启用"));
+            _repositoriesGrid.Columns.Add(ComboColumn(nameof(RepositoryRow.Visibility), "可见性", new[] { "public", "private" }, 0.9));
+            _repositoriesGrid.Columns.Add(TextColumn(nameof(RepositoryRow.Repository), "仓库", false, 1.7));
+            _repositoriesGrid.Columns.Add(TextColumn(nameof(RepositoryRow.Ref), "分支", false, 0.7));
+            _repositoriesGrid.Columns.Add(TextColumn(nameof(RepositoryRow.ApiKey), "私有 ApiKey", false, 1.1));
+            _repositoriesGrid.Columns.Add(TextColumn(nameof(RepositoryRow.Status), "状态", true, 1.4));
 
-            var diagnostics = DiagnosticsBySourceId(snapshot);
-            _sourceRows = new ObservableCollection<SourceRow>((_configuration.Modules.ModuleSources ?? new List<ModuleSourceConfiguration>())
-                .Select(source => new SourceRow
+            _repositoryRows = new ObservableCollection<RepositoryRow>((_configuration.Modules.Repositories ?? new List<PackageRepositoryConfiguration>())
+                .Select(repository => new RepositoryRow
                 {
-                    Id = source.Id,
-                    Enabled = source.Enabled,
-                    AutoUpdate = source.AutoUpdate,
-                    Type = NormalizeSourceType(source.Type),
-                    Path = source.Path,
-                    Repository = source.Repository,
-                    Ref = string.IsNullOrWhiteSpace(source.Ref) ? "main" : source.Ref,
-                    ManifestPath = string.IsNullOrWhiteSpace(source.ManifestPath) ? DefaultPackageManifestName : source.ManifestPath,
-                    Status = diagnostics.TryGetValue(source.Id ?? string.Empty, out var diagnostic)
-                        ? diagnostic
-                        : source.Enabled ? "就绪，重启 Revit 后重新加载" : "停用"
+                    Id = repository.Id,
+                    Enabled = repository.Enabled,
+                    Provider = string.IsNullOrWhiteSpace(repository.Provider) ? "github" : repository.Provider,
+                    Visibility = string.Equals(repository.Visibility, "private", StringComparison.OrdinalIgnoreCase) ? "private" : "public",
+                    Repository = repository.Repository,
+                    Ref = string.IsNullOrWhiteSpace(repository.Ref) ? "main" : repository.Ref,
+                    ManifestPath = string.IsNullOrWhiteSpace(repository.ManifestPath) ? DefaultPackageManifestName : repository.ManifestPath,
+                    ApiKey = repository.ApiKey,
+                    Status = repository.Enabled ? "可浏览" : "停用"
                 }));
-            _sourcesGrid.ItemsSource = _sourceRows;
+            _repositoriesGrid.ItemsSource = _repositoryRows;
+        }
+
+        private void LoadRepositoryPackageRows(IEnumerable<RepositoryPackageDescriptor> packages)
+        {
+            _repositoryPackagesGrid.Columns.Clear();
+            _repositoryPackagesGrid.Columns.Add(TextColumn(nameof(RepositoryPackageRow.RepositoryId), "仓库", true, 1.0));
+            _repositoryPackagesGrid.Columns.Add(TextColumn(nameof(RepositoryPackageRow.PackageId), "插件包 ID", true, 1.4));
+            _repositoryPackagesGrid.Columns.Add(TextColumn(nameof(RepositoryPackageRow.DisplayName), "插件包", true, 1.8));
+            _repositoryPackagesGrid.Columns.Add(TextColumn(nameof(RepositoryPackageRow.Version), "版本", true, 0.8));
+            _repositoryPackagesGrid.Columns.Add(TextColumn(nameof(RepositoryPackageRow.InstallState), "安装状态", true, 0.9));
+
+            _repositoryPackageRows = new ObservableCollection<RepositoryPackageRow>((packages ?? new List<RepositoryPackageDescriptor>())
+                .Select(package => RepositoryPackageRow.FromDescriptor(package, IsLoadedInCurrentRuntime(package.PackageId, package.ModuleId))));
+            _repositoryPackagesGrid.ItemsSource = _repositoryPackageRows;
+        }
+
+        private void LoadCachedRepositoryPackages()
+        {
+            var repositories = EnabledRepositoriesWithCache().ToList();
+            if (repositories.Count == 0) return;
+
+            var packages = new List<RepositoryPackageDescriptor>();
+            var messages = new List<DiagnosticMessage>();
+            foreach (var repository in repositories)
+            {
+                var cachedPackages = _packageRepositoryService.BrowseCached(BaseDirectory(), repository.ToConfiguration(), out var diagnostics);
+                packages.AddRange(cachedPackages);
+                messages.AddRange(diagnostics);
+                repository.Status = cachedPackages.Count > 0 ? "已从本地缓存加载 " + cachedPackages.Count + " 个插件" : "本地缓存无插件";
+            }
+
+            if (packages.Count > 0)
+            {
+                LoadRepositoryPackageRows(packages);
+                RefreshStatus("已从本地仓库缓存加载 " + packages.Count + " 个插件，正在后台检查更新。");
+            }
+
+            if (messages.Count > 0)
+            {
+                LoadDiagnosticRowsFromMessages(messages);
+            }
+
+            _repositoriesGrid.Items.Refresh();
+        }
+
+        private void StartRepositoryUpdateCheck()
+        {
+            var repositories = EnabledRepositoriesWithCache()
+                .Select(row => row.ToConfiguration())
+                .ToList();
+            if (repositories.Count == 0) return;
+
+            var baseDirectory = BaseDirectory();
+            Task.Run(() =>
+            {
+                var packages = new List<RepositoryPackageDescriptor>();
+                var messages = new List<DiagnosticMessage>();
+                try
+                {
+                    foreach (var repository in repositories)
+                    {
+                        var repositoryPackages = _packageRepositoryService.Browse(baseDirectory, repository, out var diagnostics);
+                        packages.AddRange(repositoryPackages);
+                        messages.AddRange(diagnostics);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    messages.Add(new DiagnosticMessage
+                    {
+                        Severity = DiagnosticSeverity.Warning,
+                        Code = "PH-REPOSITORY-BACKGROUND",
+                        ModuleId = "repository",
+                        Message = ex.Message
+                    });
+                }
+
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    if (packages.Count > 0)
+                    {
+                        LoadRepositoryPackageRows(packages);
+                    }
+
+                    if (messages.Count > 0)
+                    {
+                        LoadDiagnosticRowsFromMessages(messages);
+                    }
+
+                    foreach (var row in _repositoryRows)
+                    {
+                        var count = packages.Count(package => string.Equals(package.RepositoryId, row.Id, StringComparison.OrdinalIgnoreCase));
+                        if (count > 0)
+                        {
+                            row.Status = "后台检查完成，" + count + " 个插件";
+                        }
+                    }
+
+                    _repositoriesGrid.Items.Refresh();
+                    RefreshStatus("仓库后台更新检查完成。");
+                }));
+            });
+        }
+
+        private IEnumerable<RepositoryRow> EnabledRepositoriesWithCache()
+        {
+            var baseDirectory = BaseDirectory();
+            return _repositoryRows
+                .Where(row => row.Enabled)
+                .Where(row => _packageRepositoryService.HasRepositoryCache(baseDirectory, row.ToConfiguration()))
+                .ToList();
         }
 
         private void LoadDiagnosticRows(FrameworkRuntimeSnapshot? snapshot)
@@ -383,7 +521,39 @@ namespace PlugHub.Revit2020
                     Severity = "Info",
                     Code = "PH-OK",
                     Scope = "runtime",
-                    Message = "当前没有诊断消息。"
+                    Message = "当前没有日志消息。"
+                });
+            }
+
+            _diagnosticsGrid.ItemsSource = rows;
+        }
+
+        private void LoadDiagnosticRowsFromMessages(IReadOnlyList<DiagnosticMessage> messages)
+        {
+            _diagnosticsGrid.Columns.Clear();
+            _diagnosticsGrid.Columns.Add(TextColumn(nameof(DiagnosticRow.Severity), "级别", true, 0.8));
+            _diagnosticsGrid.Columns.Add(TextColumn(nameof(DiagnosticRow.Code), "代码", true, 1.1));
+            _diagnosticsGrid.Columns.Add(TextColumn(nameof(DiagnosticRow.Scope), "对象", true, 1.4));
+            _diagnosticsGrid.Columns.Add(TextColumn(nameof(DiagnosticRow.Message), "消息", true, 4.6));
+
+            var rows = (messages ?? new List<DiagnosticMessage>())
+                .Select(message => new DiagnosticRow
+                {
+                    Severity = message.Severity.ToString(),
+                    Code = message.Code,
+                    Scope = message.ModuleId,
+                    Message = message.Message
+                })
+                .ToList();
+
+            if (rows.Count == 0)
+            {
+                rows.Add(new DiagnosticRow
+                {
+                    Severity = "Info",
+                    Code = "PH-REPOSITORY-OK",
+                    Scope = "repository",
+                    Message = "仓库浏览完成。"
                 });
             }
 
@@ -404,7 +574,7 @@ namespace PlugHub.Revit2020
                     Severity = "Info",
                     Code = "PH-SAVED",
                     Scope = "settings",
-                    Message = "配置已保存。来源和 Ribbon 布局会在重启 Revit 后重新加载；此处不显示保存前的运行时诊断。"
+                    Message = "配置已保存。仓库设置和 Ribbon 布局会在重启 Revit 后重新加载；此处不显示保存前的运行时日志。"
                 }
             };
         }
@@ -415,7 +585,7 @@ namespace PlugHub.Revit2020
             ApplyPluginPackageRows();
             ApplyGroupRows();
             ApplyFeatureRows();
-            ApplySourceRows();
+            ApplyRepositoryRows();
 
             Directory.CreateDirectory(_configDirectory);
             SaveModuleDocuments();
@@ -423,11 +593,11 @@ namespace PlugHub.Revit2020
             SaveJson(Path.Combine(_configDirectory, "feature-combinations.json"), _configuration.FeatureCombinations);
 
             LoadPostSaveDiagnosticRows();
-            LoadSourceRows(null);
-            RefreshStatus("已保存配置。插件包、分组、功能和来源设置已写回对应清单；Ribbon 布局、图标、按钮大小需重启 Revit 重绘。");
+            LoadRepositoryRows();
+            RefreshStatus("已保存配置。插件包、分组、功能和仓库设置已写回对应清单；Ribbon 布局、图标、按钮大小需重启 Revit 重绘。");
             MessageBox.Show(
                 this,
-                "配置已保存。\n\n插件包、分组、功能和来源设置已写回对应清单。Ribbon 布局、图标、按钮大小仍需重启 Revit 重绘。",
+                "配置已保存。\n\n插件包、分组、功能和仓库设置已写回对应清单。Ribbon 布局、图标、按钮大小仍需重启 Revit 重绘。",
                 "PlugHub 设置",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
@@ -438,7 +608,6 @@ namespace PlugHub.Revit2020
             try
             {
                 _configuration = FrameworkConfigurationLoader.LoadFromDirectory(_configDirectory);
-                NormalizeGitHubSourceDefaults(_configuration.Modules);
                 _moduleDocuments = LoadModuleDocuments(_configuration);
                 LoadRows();
                 RefreshStatus("已从配置文件重新加载。");
@@ -506,23 +675,22 @@ namespace PlugHub.Revit2020
             }
         }
 
-        private void ApplySourceRows()
+        private void ApplyRepositoryRows()
         {
-            _configuration.Modules.ModuleSources = _sourceRows
+            _configuration.Modules.Repositories = _repositoryRows
                 .Where(row => !string.IsNullOrWhiteSpace(row.Id))
-                .Select(row => new ModuleSourceConfiguration
+                .Select(row => new PackageRepositoryConfiguration
                 {
                     Id = row.Id.Trim(),
-                    Type = NormalizeSourceType(row.Type),
-                    Path = row.Path ?? string.Empty,
+                    Provider = string.IsNullOrWhiteSpace(row.Provider) ? "github" : row.Provider.Trim(),
+                    Visibility = string.Equals(row.Visibility, "private", StringComparison.OrdinalIgnoreCase) ? "private" : "public",
                     Repository = row.Repository ?? string.Empty,
                     Ref = string.IsNullOrWhiteSpace(row.Ref) ? "main" : row.Ref.Trim(),
                     ManifestPath = string.IsNullOrWhiteSpace(row.ManifestPath) ? DefaultPackageManifestName : row.ManifestPath.Trim(),
-                    Enabled = row.Enabled,
-                    AutoUpdate = row.AutoUpdate
+                    ApiKey = row.ApiKey ?? string.Empty,
+                    Enabled = row.Enabled
                 })
                 .ToList();
-            NormalizeGitHubSourceDefaults(_configuration.Modules);
         }
 
         private void SaveJson(string path, object value)
@@ -550,7 +718,8 @@ namespace PlugHub.Revit2020
                 }
             }
 
-            foreach (var source in configuration.Modules.ModuleSources ?? new List<ModuleSourceConfiguration>())
+            foreach (var source in (configuration.Modules.ModuleSources ?? new List<ModuleSourceConfiguration>())
+                .Where(source => source.Enabled && string.Equals(source.Type, "localFolder", StringComparison.OrdinalIgnoreCase)))
             {
                 var sourceDirectory = ResolveSourceDirectory(baseDirectory, source);
                 if (IsDefaultManifestPath(source.ManifestPath))
@@ -580,7 +749,6 @@ namespace PlugHub.Revit2020
 
         private void SaveModuleDocuments()
         {
-            NormalizeGitHubSourceDefaults(_configuration.Modules);
             foreach (var document in _moduleDocuments)
             {
                 SaveJson(document.Path, document.Modules);
@@ -606,9 +774,14 @@ namespace PlugHub.Revit2020
                 return null;
             }
 
-            if (root == null || !root.ContainsKey("schemaVersion") || !root.ContainsKey("modules")) return null;
+            if (root == null || !ContainsKey(root, "schemaVersion") || !ContainsKey(root, "modules")) return null;
 
             return _serializer.Deserialize<ModulesConfiguration>(File.ReadAllText(path));
+        }
+
+        private static bool ContainsKey(Dictionary<string, object> source, string key)
+        {
+            return source.Keys.Any(item => string.Equals(item, key, StringComparison.OrdinalIgnoreCase));
         }
 
         private static void AddModuleDocument(ICollection<ModuleManifestDocument> documents, ISet<string> seenPaths, string path, ModulesConfiguration modules)
@@ -659,71 +832,13 @@ namespace PlugHub.Revit2020
             if (source == null) return baseDirectory;
             if (!string.IsNullOrWhiteSpace(source.Path)) return ResolvePath(baseDirectory, source.Path);
 
-            if (string.Equals(source.Type, "github", StringComparison.OrdinalIgnoreCase))
-            {
-                var repository = string.IsNullOrWhiteSpace(source.Repository) ? source.Id : source.Repository;
-                return Path.Combine(baseDirectory, "packages/github", SafePathSegment(repository));
-            }
-
             return baseDirectory;
-        }
-
-        private static void NormalizeGitHubSourceDefaults(ModulesConfiguration modules)
-        {
-            if (modules?.ModuleSources == null) return;
-            foreach (var source in modules.ModuleSources)
-            {
-                NormalizeGitHubSourceDefaults(source);
-            }
-        }
-
-        private static void NormalizeGitHubSourceDefaults(ModuleSourceConfiguration source)
-        {
-            if (source == null || !string.Equals(source.Type, "github", StringComparison.OrdinalIgnoreCase)) return;
-
-            var usesLegacyDefault = string.Equals(source.Id, LegacyGitHubSourceId, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(source.Repository, LegacyGitHubRepository, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(source.Repository, DefaultGitHubRepository, StringComparison.OrdinalIgnoreCase)
-                || IsLegacyGitHubCachePath(source.Path);
-            if (!usesLegacyDefault) return;
-
-            if (string.IsNullOrWhiteSpace(source.Id) || string.Equals(source.Id, LegacyGitHubSourceId, StringComparison.OrdinalIgnoreCase))
-            {
-                source.Id = DefaultGitHubSourceId;
-            }
-
-            if (string.IsNullOrWhiteSpace(source.Repository)
-                || string.Equals(source.Repository, LegacyGitHubRepository, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(source.Repository, DefaultGitHubRepository, StringComparison.OrdinalIgnoreCase))
-            {
-                source.Repository = DefaultGitHubRepository;
-            }
-
-            if (string.IsNullOrWhiteSpace(source.Path) || IsLegacyGitHubCachePath(source.Path))
-            {
-                source.Path = DefaultGitHubCachePath;
-            }
-        }
-
-        private static bool IsLegacyGitHubCachePath(string path)
-        {
-            return !string.IsNullOrWhiteSpace(path)
-                && path.Replace(" ", string.Empty).IndexOf(LegacyGitHubCacheSegment, StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static bool IsDefaultManifestPath(string manifestPath)
         {
             return string.IsNullOrWhiteSpace(manifestPath)
                 || string.Equals(manifestPath.Trim(), DefaultPackageManifestName, StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static string SafePathSegment(string value)
-        {
-            var chars = (value ?? string.Empty)
-                .Select(ch => char.IsLetterOrDigit(ch) || ch == '-' || ch == '_' || ch == '.' ? ch : '_')
-                .ToArray();
-            var segment = new string(chars).Trim('_');
-            return string.IsNullOrWhiteSpace(segment) ? "github-source" : segment;
         }
 
         private static DataGridTextColumn TextColumn(string propertyName, string header, bool readOnly, double starWidth)
@@ -820,15 +935,28 @@ namespace PlugHub.Revit2020
             return menu;
         }
 
-        private ContextMenu BuildSourceMenu()
+        private ContextMenu BuildRepositoryMenu()
         {
             var menu = new ContextMenu();
-            menu.Items.Add(MenuItem("启用", (sender, args) => SetSelectedSourceEnabled(true)));
-            menu.Items.Add(MenuItem("禁用", (sender, args) => SetSelectedSourceEnabled(false)));
+            menu.Items.Add(MenuItem("启用", (sender, args) => SetSelectedRepositoryEnabled(true)));
+            menu.Items.Add(MenuItem("禁用", (sender, args) => SetSelectedRepositoryEnabled(false)));
             menu.Items.Add(new Separator());
-            menu.Items.Add(MenuItem("新增本地文件夹", (sender, args) => AddSource("localFolder")));
-            menu.Items.Add(MenuItem("新增 GitHub 仓库", (sender, args) => AddSource("github")));
-            menu.Items.Add(MenuItem("删除来源", (sender, args) => RemoveSelectedSource()));
+            menu.Items.Add(MenuItem("浏览仓库插件包", (sender, args) => BrowseSelectedRepository()));
+            menu.Items.Add(new Separator());
+            menu.Items.Add(MenuItem("新增 GitHub 公开仓库", (sender, args) => AddRepository("github", "public")));
+            menu.Items.Add(MenuItem("新增 GitHub 私有仓库", (sender, args) => AddRepository("github", "private")));
+            menu.Items.Add(MenuItem("新增 Gitee 公开仓库", (sender, args) => AddRepository("gitee", "public")));
+            menu.Items.Add(MenuItem("新增 Gitee 私有仓库", (sender, args) => AddRepository("gitee", "private")));
+            menu.Items.Add(MenuItem("删除仓库", (sender, args) => RemoveSelectedRepository()));
+            return menu;
+        }
+
+        private ContextMenu BuildRepositoryPackageMenu()
+        {
+            var menu = new ContextMenu();
+            menu.Items.Add(MenuItem("安装插件包", (sender, args) => InstallSelectedRepositoryPackage()));
+            menu.Items.Add(MenuItem("更新插件包", (sender, args) => UpdateSelectedRepositoryPackage()));
+            menu.Items.Add(MenuItem("卸载插件包", (sender, args) => UninstallSelectedRepositoryPackage()));
             return menu;
         }
 
@@ -891,32 +1019,108 @@ namespace PlugHub.Revit2020
             SetSelectedFeatureIcon(iconPath);
         }
 
-        private void SetSelectedSourceEnabled(bool enabled)
+        private void SetSelectedRepositoryEnabled(bool enabled)
         {
-            if (_sourcesGrid.SelectedItem is SourceRow row)
+            if (_repositoriesGrid.SelectedItem is RepositoryRow row)
             {
                 row.Enabled = enabled;
-                row.Status = enabled ? "待保存" : "停用";
-                _sourcesGrid.Items.Refresh();
+                row.Status = enabled ? "可浏览" : "停用";
+                _repositoriesGrid.Items.Refresh();
             }
         }
 
-        private void AddSource(string type)
+        private void AddRepository(string provider, string visibility)
         {
-            var normalizedType = NormalizeSourceType(type);
-            var id = UniqueSourceId(_sourceRows, normalizedType == "github" ? "github-source" : "local-source");
-            _sourceRows.Add(new SourceRow
+            var normalizedProvider = string.Equals(provider, "gitee", StringComparison.OrdinalIgnoreCase) ? "gitee" : "github";
+            var normalizedVisibility = string.Equals(visibility, "private", StringComparison.OrdinalIgnoreCase) ? "private" : "public";
+            var id = UniqueRepositoryId(_repositoryRows, normalizedProvider + "-" + normalizedVisibility + "-repository");
+            _repositoryRows.Add(new RepositoryRow
             {
                 Id = id,
                 Enabled = true,
-                AutoUpdate = normalizedType == "github",
-                Type = normalizedType,
-                Path = normalizedType == "github" ? DefaultGitHubCachePath : "packages/" + id,
-                Repository = normalizedType == "github" ? DefaultGitHubRepository : string.Empty,
+                Provider = normalizedProvider,
+                Visibility = normalizedVisibility,
+                Repository = normalizedVisibility == "public" && normalizedProvider == "github" ? DefaultGitHubRepository : string.Empty,
                 Ref = "main",
                 ManifestPath = DefaultPackageManifestName,
+                ApiKey = string.Empty,
                 Status = "待保存"
             });
+        }
+
+        private void BrowseSelectedRepository()
+        {
+            EndGridEdits();
+            ApplyRepositoryRows();
+
+            if (!(_repositoriesGrid.SelectedItem is RepositoryRow row)) return;
+            var repository = row.ToConfiguration();
+            var baseDirectory = Directory.GetParent(_configDirectory)?.FullName ?? _configDirectory;
+            var packages = _packageRepositoryService.Browse(baseDirectory, repository, out var diagnostics);
+
+            row.Status = diagnostics.Any()
+                ? diagnostics.Last().Message
+                : "已浏览 " + packages.Count + " 个插件包";
+            _repositoriesGrid.Items.Refresh();
+
+            LoadRepositoryPackageRows(packages);
+            LoadDiagnosticRowsFromMessages(diagnostics);
+            RefreshStatus(row.Status);
+        }
+
+        private void InstallSelectedRepositoryPackage()
+        {
+            RunRepositoryPackageOperation(package => _packageRepositoryService.Install(BaseDirectory(), package));
+        }
+
+        private void UpdateSelectedRepositoryPackage()
+        {
+            RunRepositoryPackageOperation(package => _packageRepositoryService.Update(BaseDirectory(), package));
+        }
+
+        private void UninstallSelectedRepositoryPackage()
+        {
+            if (!(_repositoryPackagesGrid.SelectedItem is RepositoryPackageRow row)) return;
+            RunRepositoryPackageOperation(package => _packageRepositoryService.Uninstall(BaseDirectory(), package));
+        }
+
+        private void RunRepositoryPackageOperation(Func<RepositoryPackageDescriptor, PackageRepositoryOperationResult> operation)
+        {
+            EndGridEdits();
+            if (!(_repositoryPackagesGrid.SelectedItem is RepositoryPackageRow row)) return;
+
+            var result = operation(row.ToDescriptor());
+            RefreshRepositoryPackageInstallState(row.PackageId, row.InstallDirectory);
+            _repositoryPackagesGrid.Items.Refresh();
+
+            _moduleDocuments = LoadModuleDocuments(_configuration);
+            LoadPluginPackageRows();
+            LoadGroupRows();
+            LoadFeatureRows();
+            RefreshStatus(result.Message);
+        }
+
+        private void RefreshRepositoryPackageInstallState(string packageId, string installDirectory)
+        {
+            foreach (var row in _repositoryPackageRows.Where(item =>
+                string.Equals(item.PackageId, packageId, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(item.InstallDirectory, installDirectory, StringComparison.OrdinalIgnoreCase)))
+            {
+                var refreshed = _packageRepositoryService.RefreshInstallState(BaseDirectory(), row.ToDescriptor());
+                row.IsInstalled = refreshed.IsInstalled;
+                row.InstalledVersion = refreshed.InstalledVersion;
+                row.PendingOperation = refreshed.PendingOperation;
+                row.InstallState = RepositoryPackageRow.InstallStateFor(row.IsInstalled, row.Version, row.InstalledVersion, row.PendingOperation, IsLoadedInCurrentRuntime(row.PackageId, row.ModuleId));
+            }
+        }
+
+        private bool IsLoadedInCurrentRuntime(string packageId, string moduleId)
+        {
+            var id = string.IsNullOrWhiteSpace(moduleId) ? packageId : moduleId;
+            if (string.IsNullOrWhiteSpace(id)) return false;
+
+            return (FrameworkRuntimeState.Current?.Configuration.EffectiveModules.Modules ?? new List<ModuleConfiguration>())
+                .Any(module => string.Equals(module.Id, id, StringComparison.OrdinalIgnoreCase));
         }
 
         private void AddCustomGroup()
@@ -1142,11 +1346,11 @@ namespace PlugHub.Revit2020
             return module.Id ?? string.Empty;
         }
 
-        private void RemoveSelectedSource()
+        private void RemoveSelectedRepository()
         {
-            if (_sourcesGrid.SelectedItem is SourceRow row)
+            if (_repositoriesGrid.SelectedItem is RepositoryRow row)
             {
-                _sourceRows.Remove(row);
+                _repositoryRows.Remove(row);
             }
         }
 
@@ -1313,7 +1517,8 @@ namespace PlugHub.Revit2020
             CommitGrid(_pluginPackagesGrid);
             CommitGrid(_featuresGrid);
             CommitGrid(_groupsGrid);
-            CommitGrid(_sourcesGrid);
+            CommitGrid(_repositoriesGrid);
+            CommitGrid(_repositoryPackagesGrid);
         }
 
         private static void CommitGrid(DataGrid grid)
@@ -1329,7 +1534,7 @@ namespace PlugHub.Revit2020
 
         private string ToPluginRelativePath(string path)
         {
-            var baseDirectory = Directory.GetParent(_configDirectory)?.FullName ?? _configDirectory;
+            var baseDirectory = BaseDirectory();
             var fullPath = Path.GetFullPath(path);
             if (fullPath.StartsWith(baseDirectory, StringComparison.OrdinalIgnoreCase))
             {
@@ -1337,6 +1542,11 @@ namespace PlugHub.Revit2020
             }
 
             return fullPath;
+        }
+
+        private string BaseDirectory()
+        {
+            return Directory.GetParent(_configDirectory)?.FullName ?? _configDirectory;
         }
 
         private static T? FindAncestor<T>(DependencyObject? current) where T : DependencyObject
@@ -1370,12 +1580,7 @@ namespace PlugHub.Revit2020
             return string.Equals(value, "small", StringComparison.OrdinalIgnoreCase) ? "small" : "large";
         }
 
-        private static string NormalizeSourceType(string value)
-        {
-            return string.Equals(value, "github", StringComparison.OrdinalIgnoreCase) ? "github" : "localFolder";
-        }
-
-        private static string UniqueSourceId(IEnumerable<SourceRow> rows, string prefix)
+        private static string UniqueRepositoryId(IEnumerable<RepositoryRow> rows, string prefix)
         {
             var existing = new HashSet<string>(rows.Select(row => row.Id), StringComparer.OrdinalIgnoreCase);
             var index = 1;
@@ -1481,17 +1686,103 @@ namespace PlugHub.Revit2020
             public string DisplayText { get; set; } = string.Empty;
         }
 
-        private sealed class SourceRow
+        private sealed class RepositoryRow
         {
             public string Id { get; set; } = string.Empty;
             public bool Enabled { get; set; }
-            public bool AutoUpdate { get; set; }
-            public string Type { get; set; } = "localFolder";
-            public string Path { get; set; } = string.Empty;
+            public string Provider { get; set; } = "github";
+            public string Visibility { get; set; } = "public";
             public string Repository { get; set; } = string.Empty;
             public string Ref { get; set; } = "main";
             public string ManifestPath { get; set; } = DefaultPackageManifestName;
+            public string ApiKey { get; set; } = string.Empty;
             public string Status { get; set; } = string.Empty;
+
+            public PackageRepositoryConfiguration ToConfiguration()
+            {
+                return new PackageRepositoryConfiguration
+                {
+                    Id = Id ?? string.Empty,
+                    Enabled = Enabled,
+                    Provider = string.IsNullOrWhiteSpace(Provider) ? "github" : Provider,
+                    Visibility = string.Equals(Visibility, "private", StringComparison.OrdinalIgnoreCase) ? "private" : "public",
+                    Repository = Repository ?? string.Empty,
+                    Ref = string.IsNullOrWhiteSpace(Ref) ? "main" : Ref.Trim(),
+                    ManifestPath = string.IsNullOrWhiteSpace(ManifestPath) ? DefaultPackageManifestName : ManifestPath.Trim(),
+                    ApiKey = ApiKey ?? string.Empty
+                };
+            }
+        }
+
+        private sealed class RepositoryPackageRow
+        {
+            public string RepositoryId { get; set; } = string.Empty;
+            public string PackageId { get; set; } = string.Empty;
+            public string ModuleId { get; set; } = string.Empty;
+            public string DisplayName { get; set; } = string.Empty;
+            public string Version { get; set; } = string.Empty;
+            public string ManifestPath { get; set; } = string.Empty;
+            public string SourceDirectory { get; set; } = string.Empty;
+            public string InstallDirectory { get; set; } = string.Empty;
+            public string InstalledVersion { get; set; } = string.Empty;
+            public string PendingOperation { get; set; } = string.Empty;
+            public bool IsInstalled { get; set; }
+            public string InstallState { get; set; } = string.Empty;
+
+            public static RepositoryPackageRow FromDescriptor(RepositoryPackageDescriptor descriptor, bool isLoadedInCurrentRuntime)
+            {
+                return new RepositoryPackageRow
+                {
+                    RepositoryId = descriptor.RepositoryId,
+                    PackageId = descriptor.PackageId,
+                    ModuleId = descriptor.ModuleId,
+                    DisplayName = descriptor.DisplayName,
+                    Version = descriptor.Version,
+                    ManifestPath = descriptor.ManifestPath,
+                    SourceDirectory = descriptor.SourceDirectory,
+                    InstallDirectory = descriptor.InstallDirectory,
+                    InstalledVersion = descriptor.InstalledVersion,
+                    PendingOperation = descriptor.PendingOperation,
+                    IsInstalled = descriptor.IsInstalled,
+                    InstallState = InstallStateFor(descriptor.IsInstalled, descriptor.Version, descriptor.InstalledVersion, descriptor.PendingOperation, isLoadedInCurrentRuntime)
+                };
+            }
+
+            public RepositoryPackageDescriptor ToDescriptor()
+            {
+                return new RepositoryPackageDescriptor
+                {
+                    RepositoryId = RepositoryId ?? string.Empty,
+                    PackageId = PackageId ?? string.Empty,
+                    ModuleId = ModuleId ?? string.Empty,
+                    DisplayName = DisplayName ?? string.Empty,
+                    Version = Version ?? string.Empty,
+                    ManifestPath = ManifestPath ?? string.Empty,
+                    SourceDirectory = SourceDirectory ?? string.Empty,
+                    InstallDirectory = InstallDirectory ?? string.Empty,
+                    InstalledVersion = InstalledVersion ?? string.Empty,
+                    PendingOperation = PendingOperation ?? string.Empty,
+                    IsInstalled = IsInstalled
+                };
+            }
+
+            public static string InstallStateFor(bool isInstalled, string version, string installedVersion, string pendingOperation, bool isLoadedInCurrentRuntime)
+            {
+                if (string.Equals(pendingOperation, "delete", StringComparison.OrdinalIgnoreCase)) return "待重启卸载";
+                if (string.Equals(pendingOperation, "update", StringComparison.OrdinalIgnoreCase)) return "待重启更新";
+                if (string.Equals(pendingOperation, "restart", StringComparison.OrdinalIgnoreCase) && isInstalled) return "已安装待重启";
+                if (!isInstalled && isLoadedInCurrentRuntime) return "待重启卸载";
+                if (!isInstalled) return "未安装";
+                if (!isLoadedInCurrentRuntime) return "已安装待重启";
+                if (!string.IsNullOrWhiteSpace(version)
+                    && !string.IsNullOrWhiteSpace(installedVersion)
+                    && !string.Equals(version, installedVersion, StringComparison.OrdinalIgnoreCase))
+                {
+                    return "可更新";
+                }
+
+                return "已安装";
+            }
         }
 
         private sealed class DiagnosticRow

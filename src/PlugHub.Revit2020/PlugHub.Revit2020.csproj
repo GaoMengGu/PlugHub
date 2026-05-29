@@ -59,13 +59,13 @@
   <Target Name="StagePlugHubOutput" AfterTargets="Build">
     <MakeDir Directories="$(PlugHubOutputDir)" />
     <MakeDir Directories="$(PlugHubOutputDir)\config" />
-    <MakeDir Directories="$(PlugHubOutputDir)\packages\dropins" />
+    <MakeDir Directories="$(PlugHubOutputDir)\packages" />
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(PlugHubOutputDir)" />
     <Copy SourceFiles="@(ReferenceCopyLocalPaths)" DestinationFolder="$(PlugHubOutputDir)" SkipUnchangedFiles="true" />
     <Copy SourceFiles="..\..\manifests\PlugHub.addin.template" DestinationFiles="$(PlugHubOutputDir)\PlugHub.addin" />
     <Copy SourceFiles="..\..\config\sources.example.json" DestinationFiles="$(PlugHubOutputDir)\config\sources.json" />
     <Copy SourceFiles="..\..\config\views.example.json" DestinationFiles="$(PlugHubOutputDir)\config\views.json" />
     <Copy SourceFiles="..\..\config\feature-combinations.example.json" DestinationFiles="$(PlugHubOutputDir)\config\feature-combinations.json" />
-    <WriteLinesToFile File="$(PlugHubOutputDir)\packages\dropins\README.md" Lines="Put plugin package folders, package.json manifests, or *.package.json manifests here to let PlugHub discover them during startup." Overwrite="true" />
+    <WriteLinesToFile File="$(PlugHubOutputDir)\packages\README.md" Lines="Put installed plugin package folders, package.json manifests, or *.package.json manifests here to let PlugHub discover them during startup." Overwrite="true" />
   </Target>
 </Project>

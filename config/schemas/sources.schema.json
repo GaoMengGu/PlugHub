@@ -12,13 +12,29 @@
         "required": ["id", "type", "enabled"],
         "properties": {
           "id": {"type": "string"},
-          "type": {"enum": ["localFolder", "github"]},
+          "type": {"enum": ["localFolder"]},
           "path": {"type": "string"},
           "repository": {"type": "string"},
           "ref": {"type": "string"},
           "manifestPath": {"type": "string"},
-          "enabled": {"type": "boolean"},
-          "autoUpdate": {"type": "boolean"}
+          "enabled": {"type": "boolean"}
+        }
+      }
+    },
+    "repositories": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "provider", "visibility", "repository", "enabled"],
+        "properties": {
+          "id": {"type": "string"},
+          "provider": {"enum": ["github", "gitee"]},
+          "visibility": {"enum": ["public", "private"]},
+          "repository": {"type": "string"},
+          "ref": {"type": "string"},
+          "manifestPath": {"type": "string"},
+          "apiKey": {"type": "string"},
+          "enabled": {"type": "boolean"}
         }
       }
     },

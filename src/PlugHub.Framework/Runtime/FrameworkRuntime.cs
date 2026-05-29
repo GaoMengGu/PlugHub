@@ -7,6 +7,7 @@ using PlugHub.Framework.Composition;
 using PlugHub.Framework.Configuration;
 using PlugHub.Framework.Diagnostics;
 using PlugHub.Framework.Discovery;
+using PlugHub.Framework.Packages;
 using PlugHub.Framework.Registry;
 using PlugHub.Framework.Sources;
 
@@ -17,6 +18,7 @@ namespace PlugHub.Framework.Runtime
         private readonly FrameworkConfigurationLoader _configurationLoader = new FrameworkConfigurationLoader();
         private readonly ModuleDiscoveryService _moduleDiscovery = new ModuleDiscoveryService();
         private readonly ModuleSourceResolver _moduleSourceResolver = new ModuleSourceResolver();
+        private readonly PackageRepositoryService _packageRepositoryService = new PackageRepositoryService();
         private readonly FeatureRegistry _featureRegistry = new FeatureRegistry();
         private readonly DiagnosticsSink _diagnostics = new DiagnosticsSink();
         private readonly FeatureViewComposer _composer = new FeatureViewComposer();
@@ -29,6 +31,8 @@ namespace PlugHub.Framework.Runtime
 
         public FrameworkRuntimeSnapshot Load(string baseDirectory, string configDirectory)
         {
+            _diagnostics.AddRange(_packageRepositoryService.ApplyPendingOperations(baseDirectory));
+
             var configuration = _configurationLoader.Load(configDirectory);
             var sourceResult = _moduleSourceResolver.Resolve(baseDirectory, configuration.Modules);
             configuration.Modules = sourceResult.Modules;

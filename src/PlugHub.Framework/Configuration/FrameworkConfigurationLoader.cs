@@ -133,6 +133,17 @@ namespace PlugHub.Framework.Configuration
                     Enabled = source.Enabled,
                     AutoUpdate = source.AutoUpdate
                 }).ToList(),
+                Repositories = (modules.Repositories ?? new List<PackageRepositoryConfiguration>()).Select(repository => new PackageRepositoryConfiguration
+                {
+                    Id = repository.Id,
+                    Provider = repository.Provider,
+                    Visibility = repository.Visibility,
+                    Repository = repository.Repository,
+                    Ref = repository.Ref,
+                    ManifestPath = repository.ManifestPath,
+                    ApiKey = repository.ApiKey,
+                    Enabled = repository.Enabled
+                }).ToList(),
                 ConflictPolicy = new ConflictPolicyConfiguration
                 {
                     DuplicateFeatureId = modules.ConflictPolicy.DuplicateFeatureId,

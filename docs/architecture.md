@@ -5,7 +5,7 @@
 ```text
 Revit 2020
   -> PlugHub.Revit2020        # IExternalApplication、Ribbon、WPF UI、Revit 命令路由
-  -> PlugHub.Framework        # 配置、来源解析、发现、注册、组合、诊断、运行时快照
+  -> PlugHub.Framework        # 配置、本地包解析、仓库安装服务、发现、注册、组合、日志、运行时快照
   -> PlugHub.Contracts        # 模块和功能契约
 
 PlugHub.StaticValidation      # 静态验证入口
@@ -24,8 +24,8 @@ PlugHub.StaticValidation      # 静态验证入口
 1. `ExternalApplicationEntry.OnStartup` 定位插件目录和 `config` 目录。
 2. `FrameworkRuntime.Load` 加载运行时配置。
 3. `FrameworkConfigurationLoader` 读取 `sources.json`、`views.json`、`feature-combinations.json`。
-4. `ModuleSourceResolver` 合并根配置、`packageDirectories`、本地来源和 GitHub 来源。
-5. `ModuleDiscoveryService` 根据 `assembly` 和 `type` 做模块发现与诊断。
+4. `ModuleSourceResolver` 合并根配置和本地 `packageDirectories`。
+5. `ModuleDiscoveryService` 根据 `assembly` 和 `type` 做模块发现并产生日志。
 6. `FeatureRegistry` 注册 enabled 且 visible 的模块功能，处理重复模块和重复 feature。
 7. `FeatureViewComposer` 按 `workspace` 的 group、category、tag 和 sort 组合功能。
 8. `FeatureRibbonBuilder` 创建 `PlugHub` Ribbon tab、panel 和按钮。
@@ -35,16 +35,17 @@ PlugHub.StaticValidation      # 静态验证入口
 
 ### `sources.json`
 
-负责框架层的插件包来源，不是插件包自身清单。
+负责框架层的已安装插件包和可浏览仓库，不是插件包自身清单。
 
-- `packageDirectories`：自动扫描的投放目录，当前默认保留 `packages/dropins`。
-- `moduleSources`：显式来源，可配置本地文件夹或 GitHub 仓库。默认 GitHub 来源是 `GaoMengGu/PlugHub_Packages`。
+- `packageDirectories`：自动扫描的安装目录，当前默认只保留 `packages`。Revit 启动只从这里发现插件包。
+- `moduleSources`：兼容保留，默认为空；不再配置启动时拉取或加载的仓库来源。
+- `repositories`：设置页可浏览的插件包仓库。`provider` 支持 GitHub 和 Gitee；公开仓库无需凭据，私有仓库需要 `apiKey`；仓库内容只有在用户选择安装或更新后才会复制到 `packages`。
 - `modules`：根配置内联插件包列表，当前默认为空，框架不随包提供业务模块。
 - `conflictPolicy`：重复模块、重复功能、缺失模块类型等冲突策略。
 
 ### `package.json` / `*.package.json`
 
-外部插件包目录推荐使用 `package.json` 作为插件包清单。平铺投放单个 DLL 时，可使用 `<DllName>.package.json` 作为邻接清单。一个来源目录可以包含多个插件包文件夹或多个邻接清单；框架会递归扫描 `packageDirectories` 中的 `package.json` 和 `*.package.json`，显式来源则按 `manifestPath` 读取指定清单。
+外部插件包目录推荐使用 `package.json` 作为插件包清单。平铺投放单个 DLL 时，可使用 `<DllName>.package.json` 作为邻接清单。`packages` 中可以包含多个插件包文件夹或多个邻接清单；框架会递归扫描 `packageDirectories` 中的 `package.json` 和 `*.package.json`。仓库浏览得到的包清单不会直接参与启动加载，只有安装到 `packages` 后才会进入发现流程。
 
 模块关键字段：
 
@@ -77,7 +78,7 @@ PlugHub.StaticValidation      # 静态验证入口
 
 ### `feature-combinations.json`
 
-兼容保留。当前入口治理主要依赖 `sources.json`、插件包清单、来源配置和 workspace group。
+兼容保留。当前入口治理主要依赖 `sources.json`、已安装插件包清单、仓库安装结果和 workspace group。
 
 ## 设置窗口
 
@@ -86,21 +87,21 @@ PlugHub.StaticValidation      # 静态验证入口
 - 插件包：显示外部清单发现的 module，允许整体启用、禁用、隐藏、改显示名和排序；不在 Revit 设置页新建业务模块。
 - 功能：显示/隐藏、显示名、所属分组、按钮大小、图标路径和拖拽/右键排序；不在 Revit 设置页新建空功能。
 - 分组：集中管理 Revit Ribbon panel 的显示名和顺序，支持通过右键菜单新增或删除未使用的自定义分组，功能通过「所属分组」决定进入哪个 panel。
-- 来源：启用/禁用本地文件夹或 GitHub 来源，维护路径、仓库、分支和清单路径。GitHub 包仓库按 `package.json` 和 `*.package.json` 扫描 PlugHub 包清单，普通仓库级 `package.json` 会被忽略。
-- 诊断：只读展示当前运行时诊断。
+- 仓库：启用/禁用公开或私有 GitHub/Gitee 仓库，维护仓库、分支和私有仓库 `apiKey`；用户可手动浏览仓库中的 `package.json` 和 `*.package.json`。一个清单中的多个 module 会作为多个插件行展示，安装和更新由 PlugHub 拆成单插件本地包，只复制所选插件的清单及其引用的 DLL/资源到本地 `packages`。高级字段如 provider 和清单路径保留在配置中，设置页默认不暴露。
+- 日志：只读展示当前运行时日志。
 
-设置页只保存配置，不执行 Git 拉取、程序集加载或运行时刷新。Ribbon 结构类变更保存后需要重启 Revit。
+设置页保存配置时不执行 Git 拉取、程序集加载或运行时刷新。只有用户在仓库页显式选择“浏览仓库插件包”时才访问仓库；仓库访问使用 sparse checkout，只取包清单、DLL 和图标等包资产，不拉取源码目录。安装和更新只是复制选中插件的单模块清单和必要文件到 `packages`，卸载只删除 `packages` 中对应已安装目录。新增、更新或卸载已加载 DLL 后需要重启 Revit；如果 DLL 被占用，PlugHub 会先改写清单让模块不再被发现，并把删除或替换文件的动作记录为下次启动前执行的待处理操作。
 
 ## 模块契约
 
-模块实现 `IPlugHubModule`，通过 `Describe()` 返回 `ModuleDescriptor` 和 `FeatureDescriptor`。框架会将运行时描述与配置清单合并，用于发现、校验、诊断和 Ribbon 组合。
+模块实现 `IPlugHubModule`，通过 `Describe()` 返回 `ModuleDescriptor` 和 `FeatureDescriptor`。框架会将运行时描述与配置清单合并，用于发现、校验、日志和 Ribbon 组合。
 
-业务功能如果需要调用 Revit API，应在外部业务模块中实现 `IExternalCommand`，并通过 feature 的 `commandAssembly` / `commandType` 指向该命令。外部来源中的相对 `commandAssembly` 和 `iconPath` 按模块清单所在目录解析。Revit 适配层负责路由，Framework 不直接执行 Revit API。
+业务功能如果需要调用 Revit API，应在外部业务模块中实现 `IExternalCommand`，并通过 feature 的 `commandAssembly` / `commandType` 指向该命令。已安装插件包中的相对 `commandAssembly` 和 `iconPath` 按模块清单所在目录解析。Revit 适配层负责路由，Framework 不直接执行 Revit API。
 
 ## 关键设计决策
 
 - 不保留样例模块、空白模块、占位功能或内置业务功能；默认配置不暴露任何业务按钮。
 - 不使用 DockablePane 承载设置页，避免关闭和保存时造成 Revit UI 状态复杂化。
-- 不在 Ribbon 暴露「刷新配置」「状态」「诊断摘要」等重复入口；固定保留「设置」入口。
+- 不在 Ribbon 暴露「刷新配置」「状态」「日志摘要」等重复入口；固定保留「设置」入口。
 - 默认图标和一组内置可选图标由 `DefaultRibbonIconProvider` 代码生成，避免依赖额外资源文件。
 - 构建脚本会清理旧样例模块和旧内置模块产物，防止 `dist\Revit2020` 中残留已删除内容。

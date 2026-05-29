@@ -34,7 +34,11 @@ namespace PlugHub.StaticValidation
                 ValidateSettingsCreationAndSortingSpecification();
                 ValidateDefaultIconSpecification();
                 ValidatePackageSourceAndReleaseBehavior();
-                ValidateLegacyGitHubSourceMigrationBehavior();
+                ValidateRepositoryInstallFlowBehavior();
+                ValidateRepositoryPackageGranularityAndInstallPayload();
+                ValidateRuntimeLoadsSerializedInstalledPackageManifest();
+                ValidateRepositoryInstallFailureDoesNotCreateOrRemovePackages();
+                ValidateLockedPackageOperationBehavior();
                 ValidateRevitApiReferenceStrategy();
                 ValidateSigningGuidance();
                 ValidateRevitDeploymentConfiguration();
@@ -153,9 +157,12 @@ namespace PlugHub.StaticValidation
             Require(StringValue(views, "defaultView") == "workspace", "default view must be workspace.");
             Require(Views(views).Count() == 1, "PlugHub must expose exactly one workspace view.");
             Require(!SequenceValue(modules, "packageDirectories").Contains(RemovedSamplesDirectory()), "sample modules must be removed from packageDirectories.");
-            Require(SequenceValue(modules, "packageDirectories").Contains("packages/dropins"), "drop-in package directory must be configurable.");
-            Require(ArrayValue(modules, "moduleSources").Count >= 2, "moduleSources must include localFolder and github examples.");
-            Require(ModuleSourcesUsePackageManifest(modules), "module source examples must use package.json as manifestPath.");
+            Require(SequenceValue(modules, "packageDirectories").SequenceEqual(new[] { "packages" }), "runtime package discovery must be limited to the packages folder.");
+            Require(ArrayValue(modules, "moduleSources").Count == 0, "moduleSources must not configure startup repository loading.");
+            Require(Repositories(modules).Count() >= 2, "repositories must include public and private examples.");
+            Require(Repositories(modules).Any(repository => StringValue(repository, "visibility") == "public"), "repositories must include a public repository example.");
+            Require(Repositories(modules).Any(repository => StringValue(repository, "visibility") == "private" && repository.ContainsKey("apiKey")), "repositories must include a private repository example with apiKey.");
+            Require(Repositories(modules).Any(repository => StringValue(repository, "provider") == "gitee"), "repositories must include a Gitee repository example.");
             Require(StringValue(ObjectValue(modules, "conflictPolicy"), "duplicateFeatureId") == "fail-feature", "duplicate feature policy must be fail-feature.");
 
             var seenFeatureIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -275,16 +282,18 @@ namespace PlugHub.StaticValidation
 
             Require(StringValue(views, "defaultView") == "workspace", "PlugHub must use the single workspace view.");
             Require(Views(views).Count() == 1, "PlugHub must expose exactly one workspace view.");
-            Require(ArrayValue(modules, "moduleSources").Count >= 2, "moduleSources must include localFolder and github examples.");
+            Require(ArrayValue(modules, "moduleSources").Count == 0, "moduleSources must not include startup repository examples.");
+            Require(Repositories(modules).Count() >= 2, "repositories must include public and private repository examples.");
             Require(!SequenceValue(modules, "packageDirectories").Contains(RemovedSamplesDirectory()), "sample modules must be removed from built-in runtime config.");
-            Require(SequenceValue(modules, "packageDirectories").Contains("packages/dropins"), "drop-in package folder must be available for automatic package loading.");
+            Require(SequenceValue(modules, "packageDirectories").SequenceEqual(new[] { "packages" }), "installed packages folder must be the only automatic package loading root.");
 
             var configurationModels = ReadText("src/PlugHub.Framework/Configuration/ConfigurationModels.cs");
             Require(configurationModels.Contains("DisplayName"), "modules config model must support displayName.");
             Require(configurationModels.Contains("IconPath"), "modules config model must support iconPath.");
+            Require(configurationModels.Contains("PackageRepositoryConfiguration") && configurationModels.Contains("ApiKey"), "modules config model must support package repositories with apiKey.");
             var modulesText = ReadText("config/sources.example.json");
-            Require(modulesText.Contains("\"type\": \"github\""), "modules config must include a github module source example.");
-            Require(modulesText.Contains("\"autoUpdate\""), "github module source example must expose autoUpdate.");
+            Require(modulesText.Contains("\"repositories\""), "modules config must include repository catalog settings.");
+            Require(!modulesText.Contains("\"autoUpdate\""), "repository catalog settings must not expose startup autoUpdate.");
             Require(modulesText.Contains("\"repository\": \"GaoMengGu/PlugHub_Packages\""), "default github source must point at GaoMengGu/PlugHub_Packages.");
             Require(modulesText.Contains("\"manifestPath\": \"package.json\""), "module source examples must point at package.json.");
 
@@ -318,31 +327,29 @@ namespace PlugHub.StaticValidation
             Require(ribbonBuilder.Contains("LoadFeatureIcon") && ribbonBuilder.Contains("LargeImage"), "configured feature icons must be applied to Revit ribbon buttons.");
             Require(ribbonBuilder.Contains("FrameworkSettingsCommand"), "framework Ribbon panel must expose settings command.");
 
-            foreach (var token in new[] { "class FrameworkSettingsWindow", ": Window", "TabControl", "DataGrid", "BuildPluginPackagesTab", "BuildFeaturesTab", "BuildGroupsTab", "BuildSourcesTab", "BuildDiagnosticsTab", "SourceRow", "GroupRow", "ReloadFromDisk", "AutoUpdate", "ContextMenu", "DragDrop", "Microsoft.Win32.OpenFileDialog" })
+            foreach (var token in new[] { "class FrameworkSettingsWindow", ": Window", "TabControl", "DataGrid", "BuildPluginPackagesTab", "BuildFeaturesTab", "BuildGroupsTab", "BuildRepositoriesTab", "BuildLogsTab", "RepositoryRow", "RepositoryPackageRow", "GroupRow", "ReloadFromDisk", "ContextMenu", "DragDrop", "Microsoft.Win32.OpenFileDialog" })
             {
                 Require(settingsWindow.Contains(token), "WPF settings UI token missing: " + token);
             }
 
-            foreach (var forbidden in new[] { "FrameworkRuntimeState.Refresh", "UpdateGitHubCache", "ProcessStartInfo", "Assembly.LoadFrom" })
+            foreach (var forbidden in new[] { "FrameworkRuntimeState.Refresh", "Assembly.LoadFrom" })
             {
                 Require(!settingsWindow.Contains(forbidden), "settings window must only save configuration and must not run runtime work: " + forbidden);
             }
 
             Require(statusWindow.Contains("class FrameworkStatusWindow") && statusWindow.Contains(": Window"), "status and feature fallback UI must use a WPF status window.");
-            foreach (var token in new[] { "ShowRefreshResult", "ShowRuntimeStatus", "ShowDiagnostics", "showDiagnostics" })
+            foreach (var token in new[] { "ShowRefreshResult", "ShowRuntimeStatus", "ShowLogs", "showLogs" })
             {
-                Require(statusWindow.Contains(token), "status window must separate refresh, status, and diagnostics concerns: " + token);
+                Require(statusWindow.Contains(token), "status window must separate refresh, status, and log concerns: " + token);
             }
-            Require(configurationModels.Contains("bool AutoUpdate"), "module source configuration must expose autoUpdate.");
+            Require(configurationModels.Contains("PackageRepositoryConfiguration"), "module configuration must expose repository catalog settings.");
             Require(sourceResolver.Contains("AddPackageDirectoryModules"), "package directories must be scanned for drop-in package manifests.");
             Require(sourceResolver.Contains("FindModuleManifests"), "module directory resolver must discover manifests automatically.");
             Require(sourceResolver.Contains("\"package.json\"") && sourceResolver.Contains("\"*.package.json\""), "module directory resolver must discover package.json and DLL-adjacent *.package.json manifests.");
-            Require(sourceResolver.Contains("UpdateGitHubCache") && sourceResolver.Contains("ProcessStartInfo"), "github module sources must support clone/fetch into a local cache.");
-            Require(sourceResolver.Contains("AddGitHubModules"), "github module sources must be resolved from a local cache directory.");
-            Require(sourceResolver.Contains("packages/github"), "github source resolver must use a predictable local cache folder.");
+            Require(!sourceResolver.Contains("ProcessStartInfo") && !sourceResolver.Contains("packages/github"), "startup resolver must not access repository caches or run git.");
             Require(!revitProject.Contains("System.Windows.Forms") && !revitProject.Contains("WindowsFormsIntegration"), "Revit adapter should not reference WinForms after moving settings and feature UI to WPF.");
             Require(!revitProject.Contains("PlugHubModuleFiles"), "Revit build must not depend on a source modules folder.");
-            Require(revitProject.Contains("packages\\dropins"), "Revit build must create a runtime package drop-in folder.");
+            Require(revitProject.Contains("packages\\README.md"), "Revit build must create the runtime packages folder.");
         }
 
         private static void ValidateSettingsRibbonCleanupSpecification()
@@ -432,21 +439,31 @@ namespace PlugHub.StaticValidation
             var modulesText = ReadText("config/sources.example.json");
             var settingsWindow = ReadText("src/PlugHub.Revit2020/FrameworkSettingsWindow.cs");
             var sourceResolver = ReadText("src/PlugHub.Framework/Sources/ModuleSourceResolver.cs");
+            var packageRepositoryService = ReadText("src/PlugHub.Framework/Packages/PackageRepositoryService.cs");
             var workflow = ReadText(".github/workflows/release.yml");
             var buildScript = ReadText("scripts/build-revit2020.ps1");
             var readme = ReadText("README.md");
 
             Require(modulesText.Contains("\"repository\": \"GaoMengGu/PlugHub_Packages\""), "default github source must point at GaoMengGu/PlugHub_Packages.");
-            Require(modulesText.Contains("packages/github/GaoMengGu_PlugHub_Packages"), "default github cache path must use PlugHub_Packages.");
+            Require(modulesText.Contains("\"packageDirectories\": [") && modulesText.Contains("\"packages\""), "installed package discovery must point at packages.");
+            Require(!modulesText.Contains("packages/github/GaoMengGu_PlugHub_Packages"), "repository caches must not live under packages.");
             Require(!modulesText.Contains("GaoMengGu/PlugHub_Modules"), "default github source must not point at PlugHub_Modules.");
-            Require(settingsWindow.Contains("GaoMengGu/PlugHub_Packages"), "settings source creation must default to PlugHub_Packages.");
+            Require(settingsWindow.Contains("GaoMengGu/PlugHub_Packages"), "settings repository creation must default to PlugHub_Packages.");
 
-            Require(sourceResolver.Contains("AddGitHubPackageManifests"), "github package sources must scan package manifests instead of only reading repository-root package.json.");
-            Require(sourceResolver.Contains("FindModuleManifests(sourceDirectory)") && sourceResolver.Contains("ignoreNonPlugHubManifest"), "github package scanning must ignore non-PlugHub package.json files.");
-            Require(sourceResolver.Contains("RemoteHasChanged") && sourceResolver.Contains("ls-remote") && sourceResolver.Contains("rev-parse HEAD"), "github updates must skip pull when the remote ref has not changed.");
-            Require(sourceResolver.Contains("--filter=blob:none") && sourceResolver.Contains("sparse-checkout"), "github clone must avoid downloading the whole repository when possible.");
-            Require(sourceResolver.Contains("NormalizeGitHubSourceDefaults") && sourceResolver.Contains("GaoMengGu_PlugHub_Modules"), "github source resolver must migrate legacy PlugHub_Modules default cache paths.");
-            Require(settingsWindow.Contains("NormalizeGitHubSourceDefaults") && settingsWindow.Contains("LoadPostSaveDiagnosticRows"), "settings window must migrate legacy github sources and avoid showing stale runtime diagnostics immediately after save.");
+            Require(!sourceResolver.Contains("RunGit") && !sourceResolver.Contains("AutoUpdate") && !sourceResolver.Contains("AddGitHubModules"), "runtime source resolver must not pull or load repository packages at startup.");
+            Require(settingsWindow.Contains("BuildRepositoriesTab") && settingsWindow.Contains("LoadRepositoryRows"), "settings must present sources as repositories.");
+            Require(settingsWindow.Contains("BrowseSelectedRepository") && settingsWindow.Contains("InstallSelectedRepositoryPackage"), "settings must browse repositories and install selected packages.");
+            Require(settingsWindow.Contains("UpdateSelectedRepositoryPackage") && settingsWindow.Contains("UninstallSelectedRepositoryPackage"), "settings must support repository package update and uninstall.");
+            Require(settingsWindow.Contains("LoadCachedRepositoryPackages") && settingsWindow.Contains("StartRepositoryUpdateCheck") && settingsWindow.Contains("Task.Run"), "settings must show cached repository packages and check for updates in the background.");
+            Require(settingsWindow.Contains("BuildLogsTab") && settingsWindow.Contains("\"日志\"") && !settingsWindow.Contains("BuildDiagnosticsTab"), "settings must present diagnostics as logs.");
+            Require(settingsWindow.Contains("ApiKey") && settingsWindow.Contains("private") && settingsWindow.Contains("公开") && settingsWindow.Contains("私有"), "settings must support public and private repositories with apiKey.");
+            Require(settingsWindow.Contains("AddRepository(\"gitee\", \"public\")") && !settingsWindow.Contains("确定卸载插件包") && !settingsWindow.Contains("result.Success ? MessageBoxImage.Information"), "repository package install and uninstall must report status inline without pop-up result prompts, and settings must expose Gitee creation.");
+            Require(packageRepositoryService.Contains("--sparse") && packageRepositoryService.Contains("sparse-checkout") && packageRepositoryService.Contains("SparseCheckoutPatterns"), "repository browsing must use sparse checkout instead of pulling the whole repository.");
+            Require(packageRepositoryService.Contains("\"gitee\"") && packageRepositoryService.Contains("https://gitee.com/") && packageRepositoryService.Contains("oauth2:"), "repository browsing must support Gitee HTTPS repositories with apiKey credentials.");
+            Require(packageRepositoryService.Contains("InstallPackagePayload") && packageRepositoryService.Contains("WriteSingleModuleManifest") && !packageRepositoryService.Contains("CopyDirectory("), "repository install must split selected plugins and must not copy the whole repository directory.");
+            Require(packageRepositoryService.Contains("ApplyPendingOperations") && packageRepositoryService.Contains("pending-operations.json") && packageRepositoryService.Contains("PendingPackageOperation.Restart"), "repository package operations must defer locked DLL deletion and replacement and mark normal installs as restart-required.");
+            Require(settingsWindow.Contains("已安装待重启") && settingsWindow.Contains("PendingOperation") && settingsWindow.Contains("IsLoadedInCurrentRuntime"), "repository package status must distinguish installed from installed-pending-restart.");
+            Require(ReadText("src/PlugHub.Framework/Runtime/FrameworkRuntime.cs").Contains("ApplyPendingOperations"), "runtime startup must apply deferred package operations before module discovery.");
             Require(!settingsWindow.Contains("LoadDiagnosticRows(FrameworkRuntimeState.Current);\r\n            LoadSourceRows();"), "settings save must not reload stale runtime diagnostics after saving configuration.");
 
             Require(workflow.Contains("-UseRelativeAddinAssembly"), "release workflow must build a package with relative addin assembly path.");
@@ -456,33 +473,62 @@ namespace PlugHub.StaticValidation
             Require(readme.Contains("个人使用") && readme.Contains("不得商用"), "README must state the non-commercial personal-use license restriction.");
         }
 
-        private static void ValidateLegacyGitHubSourceMigrationBehavior()
+        private static void ValidateRepositoryInstallFlowBehavior()
         {
             var tempRoot = Path.Combine(Path.GetTempPath(), "PlugHub.StaticValidation", Guid.NewGuid().ToString("N"));
             try
             {
-                var packageDirectory = Path.Combine(tempRoot, "packages", "github", "GaoMengGu_PlugHub_Packages");
+                var packageDirectory = Path.Combine(tempRoot, "packages", "installed-demo");
+                var repositoryCacheDirectory = Path.Combine(tempRoot, "repository-cache", "GaoMengGu_PlugHub_Packages");
                 Directory.CreateDirectory(packageDirectory);
+                Directory.CreateDirectory(repositoryCacheDirectory);
                 File.WriteAllText(
                     Path.Combine(packageDirectory, "package.json"),
-                    "{\"schemaVersion\":\"1.0\",\"modules\":[{\"id\":\"demo-package\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
+                    "{\"schemaVersion\":\"1.0\",\"modules\":[{\"id\":\"installed-package\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
+                File.WriteAllText(
+                    Path.Combine(repositoryCacheDirectory, "package.json"),
+                    "{\"schemaVersion\":\"1.0\",\"modules\":[{\"id\":\"repository-only-package\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
 
                 var modules = new PlugHub.Framework.Configuration.ModulesConfiguration
                 {
                     SchemaVersion = "1.0",
-                    PackageDirectories = new List<string>(),
+                    PackageDirectories = new List<string> { "packages" },
                     ModuleSources = new List<PlugHub.Framework.Configuration.ModuleSourceConfiguration>
                     {
                         new PlugHub.Framework.Configuration.ModuleSourceConfiguration
                         {
-                            Id = "plughub-modules",
+                            Id = "legacy-startup-repository",
                             Type = "github",
-                            Path = "packages/github/GaoMengGu_PlugHub_Modules",
+                            Path = "repository-cache/GaoMengGu_PlugHub_Packages",
                             Repository = "GaoMengGu/PlugHub_Packages",
                             Ref = "main",
                             ManifestPath = "package.json",
                             Enabled = true,
-                            AutoUpdate = false
+                            AutoUpdate = true
+                        }
+                    },
+                    Repositories = new List<PlugHub.Framework.Configuration.PackageRepositoryConfiguration>
+                    {
+                        new PlugHub.Framework.Configuration.PackageRepositoryConfiguration
+                        {
+                            Id = "public-packages",
+                            Provider = "github",
+                            Visibility = "public",
+                            Repository = "GaoMengGu/PlugHub_Packages",
+                            Ref = "main",
+                            ManifestPath = "package.json",
+                            Enabled = true
+                        },
+                        new PlugHub.Framework.Configuration.PackageRepositoryConfiguration
+                        {
+                            Id = "private-packages",
+                            Provider = "github",
+                            Visibility = "private",
+                            Repository = "example/private-packages",
+                            Ref = "main",
+                            ManifestPath = "package.json",
+                            ApiKey = "test-key",
+                            Enabled = false
                         }
                     },
                     ConflictPolicy = new PlugHub.Framework.Configuration.ConflictPolicyConfiguration(),
@@ -490,13 +536,306 @@ namespace PlugHub.StaticValidation
                 };
 
                 var result = new PlugHub.Framework.Sources.ModuleSourceResolver().Resolve(tempRoot, modules);
-                var source = result.Modules.ModuleSources.FirstOrDefault();
-                Require(source != null, "legacy github source migration must preserve a module source.");
-                Require(source!.Id == "plughub-packages", "legacy github source id must migrate to plughub-packages.");
-                Require(source.Repository == "GaoMengGu/PlugHub_Packages", "legacy github source repository must migrate to PlugHub_Packages.");
-                Require(source.Path == "packages/github/GaoMengGu_PlugHub_Packages", "legacy github source cache path must migrate to PlugHub_Packages.");
-                Require(result.Modules.Modules.Any(module => module.Id == "demo-package"), "legacy github source migration must load manifests from the new package cache.");
-                Require(!result.Diagnostics.Any(message => message.Message.Contains("GaoMengGu_PlugHub_Modules")), "legacy github source migration must not report diagnostics for the old cache path.");
+                Require(result.Modules.Repositories.Count == 2, "repository catalog configuration must be preserved during runtime source resolution.");
+                Require(result.Modules.Repositories.Any(repository => repository.Visibility == "private" && repository.ApiKey == "test-key"), "private repository apiKey must be preserved.");
+                Require(result.Modules.Modules.Any(module => module.Id == "installed-package"), "startup must load packages installed under packages.");
+                Require(!result.Modules.Modules.Any(module => module.Id == "repository-only-package"), "startup must not load packages directly from repository cache.");
+                Require(!result.Diagnostics.Any(message => message.Code == "PH-SOURCE-GIT"), "startup resolution must not run repository git operations.");
+            }
+            finally
+            {
+                if (Directory.Exists(tempRoot))
+                {
+                    Directory.Delete(tempRoot, true);
+                }
+            }
+        }
+
+        private static void ValidateLockedPackageOperationBehavior()
+        {
+            var tempRoot = Path.Combine(Path.GetTempPath(), "PlugHub.StaticValidation", Guid.NewGuid().ToString("N"));
+            try
+            {
+                var installedDirectory = Path.Combine(tempRoot, "packages", "locked-update");
+                var sourceDirectory = Path.Combine(tempRoot, "repository-cache", "locked-update");
+                Directory.CreateDirectory(installedDirectory);
+                Directory.CreateDirectory(sourceDirectory);
+
+                var installedDll = Path.Combine(installedDirectory, "LockedUpdate.dll");
+                File.WriteAllText(installedDll, "locked");
+                File.WriteAllText(Path.Combine(installedDirectory, "package.json"), "{\"schemaVersion\":\"1.0\",\"version\":\"1.0.0\",\"modules\":[{\"id\":\"locked-update\",\"assembly\":\"LockedUpdate.dll\",\"type\":\"Demo.LockedUpdateModule\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
+                File.WriteAllText(Path.Combine(sourceDirectory, "LockedUpdate.dll"), "replacement");
+                File.WriteAllText(Path.Combine(sourceDirectory, "package.json"), "{\"schemaVersion\":\"1.0\",\"version\":\"2.0.0\",\"modules\":[{\"id\":\"locked-update\",\"assembly\":\"LockedUpdate.dll\",\"type\":\"Demo.LockedUpdateModule\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
+
+                var descriptor = new PlugHub.Framework.Packages.RepositoryPackageDescriptor
+                {
+                    RepositoryId = "test-repository",
+                    PackageId = "locked-update",
+                    ModuleId = "locked-update",
+                    DisplayName = "Locked Update",
+                    ManifestPath = Path.Combine(sourceDirectory, "package.json"),
+                    SourceDirectory = sourceDirectory,
+                    InstallDirectory = installedDirectory,
+                    IsInstalled = true
+                };
+
+                using (File.Open(installedDll, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+                {
+                    var service = new PlugHub.Framework.Packages.PackageRepositoryService();
+                    var updateResult = service.Update(tempRoot, descriptor);
+
+                    Require(updateResult.Success, "updating a locked Revit package must queue a deferred update instead of failing: " + updateResult.Message);
+                    Require(updateResult.Message.Contains("重启") && updateResult.Message.Contains("更新"), "locked update message must tell the user the update is queued for Revit restart.");
+                    Require(File.Exists(installedDll), "locked package files must remain in place until Revit restarts.");
+                    Require(!File.ReadAllText(Path.Combine(installedDirectory, "package.json")).Contains("locked-update"), "locked update must remove the old module declaration before restart.");
+                    Require(Directory.GetFiles(Path.Combine(tempRoot, "repository-cache"), "pending-operations.json", SearchOption.AllDirectories).Any(), "locked update must write a pending operation marker.");
+                }
+
+                var updateDiagnostics = new PlugHub.Framework.Packages.PackageRepositoryService().ApplyPendingOperations(tempRoot);
+                Require(!updateDiagnostics.Any(message => message.Severity == PlugHub.Contracts.Modules.DiagnosticSeverity.Error), "pending locked update must apply on next startup: " + string.Join("; ", updateDiagnostics.Select(item => item.Message)));
+                Require(File.ReadAllText(installedDll) == "replacement", "pending locked update must replace the DLL after restart.");
+                Require(File.ReadAllText(Path.Combine(installedDirectory, "package.json")).Contains("locked-update"), "pending locked update must restore the selected module manifest.");
+
+                var uninstallDirectory = Path.Combine(tempRoot, "packages", "locked-uninstall");
+                Directory.CreateDirectory(uninstallDirectory);
+                var uninstallDll = Path.Combine(uninstallDirectory, "LockedUninstall.dll");
+                File.WriteAllText(uninstallDll, "locked");
+                File.WriteAllText(Path.Combine(uninstallDirectory, "package.json"), "{\"schemaVersion\":\"1.0\",\"modules\":[{\"id\":\"locked-uninstall\",\"assembly\":\"LockedUninstall.dll\",\"type\":\"Demo.LockedUninstallModule\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
+                var uninstallDescriptor = new PlugHub.Framework.Packages.RepositoryPackageDescriptor
+                {
+                    RepositoryId = "test-repository",
+                    PackageId = "locked-uninstall",
+                    ModuleId = "locked-uninstall",
+                    DisplayName = "Locked Uninstall",
+                    InstallDirectory = uninstallDirectory,
+                    IsInstalled = true
+                };
+
+                using (File.Open(uninstallDll, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+                {
+                    var service = new PlugHub.Framework.Packages.PackageRepositoryService();
+                    var uninstallResult = service.Uninstall(tempRoot, uninstallDescriptor);
+                    Require(uninstallResult.Success, "uninstalling a locked Revit package must queue a deferred delete instead of failing: " + uninstallResult.Message);
+                    Require(uninstallResult.Message.Contains("重启") && uninstallResult.Message.Contains("卸载"), "locked uninstall message must tell the user the delete is queued for Revit restart.");
+                    Require(File.Exists(uninstallDll), "locked package files must remain in place until Revit restarts.");
+                    Require(!File.ReadAllText(Path.Combine(uninstallDirectory, "package.json")).Contains("locked-uninstall"), "locked uninstall must remove the module declaration before restart.");
+
+                    var resolvedWhileLocked = new PlugHub.Framework.Sources.ModuleSourceResolver().Resolve(
+                        tempRoot,
+                        new PlugHub.Framework.Configuration.ModulesConfiguration
+                        {
+                            SchemaVersion = "1.0",
+                            PackageDirectories = new List<string> { "packages" },
+                            ModuleSources = new List<PlugHub.Framework.Configuration.ModuleSourceConfiguration>(),
+                            ConflictPolicy = new PlugHub.Framework.Configuration.ConflictPolicyConfiguration(),
+                            Modules = new List<PlugHub.Framework.Configuration.ModuleConfiguration>()
+                        });
+                    Require(!resolvedWhileLocked.Modules.Modules.Any(module => module.Id == "locked-uninstall"), "queued locked uninstall must stop the plugin from being discovered after refresh.");
+                }
+
+                var uninstallDiagnostics = new PlugHub.Framework.Packages.PackageRepositoryService().ApplyPendingOperations(tempRoot);
+                Require(!uninstallDiagnostics.Any(message => message.Severity == PlugHub.Contracts.Modules.DiagnosticSeverity.Error), "pending locked uninstall must apply on next startup: " + string.Join("; ", uninstallDiagnostics.Select(item => item.Message)));
+                Require(!Directory.Exists(uninstallDirectory), "pending locked uninstall must delete package files after restart.");
+            }
+            finally
+            {
+                if (Directory.Exists(tempRoot))
+                {
+                    Directory.Delete(tempRoot, true);
+                }
+            }
+        }
+
+        private static void ValidateRepositoryPackageGranularityAndInstallPayload()
+        {
+            var tempRoot = Path.Combine(Path.GetTempPath(), "PlugHub.StaticValidation", Guid.NewGuid().ToString("N"));
+            try
+            {
+                var repositoryRoot = Path.Combine(tempRoot, "repository-cache", "public-packages");
+                Directory.CreateDirectory(Path.Combine(repositoryRoot, "dist"));
+                Directory.CreateDirectory(Path.Combine(repositoryRoot, "src", "ShouldNotInstall"));
+                File.WriteAllText(Path.Combine(repositoryRoot, "README.md"), "repository readme");
+                File.WriteAllText(Path.Combine(repositoryRoot, "src", "ShouldNotInstall", "Source.cs"), "source");
+                File.WriteAllText(Path.Combine(repositoryRoot, "dist", "Duct.dll"), "duct");
+                File.WriteAllText(Path.Combine(repositoryRoot, "dist", "Family.dll"), "family");
+                File.WriteAllText(
+                    Path.Combine(repositoryRoot, "package.json"),
+                    "{\"schemaVersion\":\"1.0\",\"modules\":[{\"id\":\"duct-package\",\"assembly\":\"dist/Duct.dll\",\"type\":\"Demo.DuctModule\",\"displayName\":\"Duct\",\"enabled\":true,\"visible\":true,\"features\":[{\"id\":\"duct.switch\",\"name\":\"Switch\",\"category\":\"mep\",\"group\":\"duct\",\"order\":1,\"defaultState\":\"Visible\",\"commandAssembly\":\"dist/Duct.dll\",\"commandType\":\"Demo.DuctCommand\"}]},{\"id\":\"family-package\",\"assembly\":\"dist/Family.dll\",\"type\":\"Demo.FamilyModule\",\"displayName\":\"Family\",\"enabled\":true,\"visible\":true,\"features\":[{\"id\":\"family.batch\",\"name\":\"Batch\",\"category\":\"family\",\"group\":\"family\",\"order\":1,\"defaultState\":\"Visible\",\"commandAssembly\":\"dist/Family.dll\",\"commandType\":\"Demo.FamilyCommand\"}]}]}");
+
+                var service = new PlugHub.Framework.Packages.PackageRepositoryService();
+                var packages = service.BrowseCached(tempRoot, "public-packages", repositoryRoot, out var diagnostics);
+                Require(!diagnostics.Any(), "cached repository package browse should not emit diagnostics: " + string.Join("; ", diagnostics.Select(item => item.Message)));
+                Require(packages.Count == 2, "repository root package.json with two modules must browse as two plugin rows.");
+                Require(packages.Select(package => package.PackageId).Distinct(StringComparer.OrdinalIgnoreCase).Count() == 2, "plugin rows from the same package.json must install independently by module id.");
+                Require(packages.Select(package => package.InstallDirectory).Distinct(StringComparer.OrdinalIgnoreCase).Count() == 2, "plugin rows from the same package.json must use independent install directories.");
+
+                var ductPackage = packages.Single(package => package.ModuleId == "duct-package");
+                var familyPackage = packages.Single(package => package.ModuleId == "family-package");
+                var installResult = service.Install(tempRoot, ductPackage);
+                Require(installResult.Success, "repository package install should succeed: " + installResult.Message);
+
+                var ductInstallDirectory = Path.Combine(tempRoot, "packages", "duct-package");
+                var familyInstallDirectory = Path.Combine(tempRoot, "packages", "family-package");
+                Require(File.Exists(Path.Combine(ductInstallDirectory, "package.json")), "installed plugin must write a package-local manifest.");
+                Require(!Directory.Exists(familyInstallDirectory), "installing one plugin must not install another module from the same repository manifest.");
+                Require(Directory.GetFiles(Path.Combine(tempRoot, "packages"), "package.json", SearchOption.AllDirectories).Length == 1, "installing one plugin must create only one package.json under packages.");
+                Require(File.Exists(Path.Combine(ductInstallDirectory, "dist", "Duct.dll")), "installed plugin must copy its configured assembly.");
+                Require(!File.Exists(Path.Combine(ductInstallDirectory, "dist", "Family.dll")), "installed plugin must not copy another plugin assembly.");
+                Require(!File.Exists(Path.Combine(ductInstallDirectory, "README.md")), "installed plugin must not copy repository-level files.");
+                Require(!Directory.Exists(Path.Combine(ductInstallDirectory, "src")), "installed plugin must not copy repository source folders.");
+
+                var resolved = new PlugHub.Framework.Sources.ModuleSourceResolver().Resolve(
+                    tempRoot,
+                    new PlugHub.Framework.Configuration.ModulesConfiguration
+                    {
+                        SchemaVersion = "1.0",
+                        PackageDirectories = new List<string> { "packages" },
+                        ModuleSources = new List<PlugHub.Framework.Configuration.ModuleSourceConfiguration>(),
+                        ConflictPolicy = new PlugHub.Framework.Configuration.ConflictPolicyConfiguration(),
+                        Modules = new List<PlugHub.Framework.Configuration.ModuleConfiguration>()
+                    });
+
+                Require(resolved.Modules.Modules.Count(module => module.Id == "duct-package") == 1, "installed repository plugin must be discoverable from packages on next startup.");
+                Require(!resolved.Modules.Modules.Any(module => module.Id == "family-package"), "uninstalled sibling plugin from the same repository manifest must not load on startup.");
+                Require(resolved.Modules.Modules.All(module => !string.IsNullOrWhiteSpace(module.ResolvedBaseDirectory)), "installed package modules must have a resolved base directory for relative DLL loading.");
+
+                Directory.CreateDirectory(Path.Combine(familyInstallDirectory, "dist"));
+                File.Copy(Path.Combine(repositoryRoot, "dist", "Duct.dll"), Path.Combine(familyInstallDirectory, "dist", "Duct.dll"));
+                File.Copy(Path.Combine(repositoryRoot, "dist", "Family.dll"), Path.Combine(familyInstallDirectory, "dist", "Family.dll"));
+                File.Copy(Path.Combine(repositoryRoot, "package.json"), Path.Combine(familyInstallDirectory, "package.json"));
+
+                var uninstallResult = service.Uninstall(tempRoot, ductPackage);
+                Require(uninstallResult.Success, "uninstalling an installed plugin should succeed: " + uninstallResult.Message);
+                var resolvedAfterUninstall = new PlugHub.Framework.Sources.ModuleSourceResolver().Resolve(
+                    tempRoot,
+                    new PlugHub.Framework.Configuration.ModulesConfiguration
+                    {
+                        SchemaVersion = "1.0",
+                        PackageDirectories = new List<string> { "packages" },
+                        ModuleSources = new List<PlugHub.Framework.Configuration.ModuleSourceConfiguration>(),
+                        ConflictPolicy = new PlugHub.Framework.Configuration.ConflictPolicyConfiguration(),
+                        Modules = new List<PlugHub.Framework.Configuration.ModuleConfiguration>()
+                    });
+                Require(!resolvedAfterUninstall.Modules.Modules.Any(module => module.Id == "duct-package"), "uninstalled repository plugin must not load after restart even when an old package-level manifest also declared it.");
+                Require(resolvedAfterUninstall.Modules.Modules.Any(module => module.Id == "family-package"), "uninstalling one plugin from a legacy multi-plugin manifest must preserve the sibling plugin.");
+                Require(File.ReadAllText(Path.Combine(familyInstallDirectory, "package.json")).Contains("family-package"), "legacy sibling package manifest must keep the remaining module.");
+                Require(!File.ReadAllText(Path.Combine(familyInstallDirectory, "package.json")).Contains("duct-package"), "legacy sibling package manifest must remove the uninstalled module.");
+
+                var familyUninstallResult = service.Uninstall(tempRoot, familyPackage);
+                Require(familyUninstallResult.Success, "uninstalling the sibling plugin should succeed: " + familyUninstallResult.Message);
+                var resolvedAfterFamilyUninstall = new PlugHub.Framework.Sources.ModuleSourceResolver().Resolve(
+                    tempRoot,
+                    new PlugHub.Framework.Configuration.ModulesConfiguration
+                    {
+                        SchemaVersion = "1.0",
+                        PackageDirectories = new List<string> { "packages" },
+                        ModuleSources = new List<PlugHub.Framework.Configuration.ModuleSourceConfiguration>(),
+                        ConflictPolicy = new PlugHub.Framework.Configuration.ConflictPolicyConfiguration(),
+                        Modules = new List<PlugHub.Framework.Configuration.ModuleConfiguration>()
+                    });
+                Require(!resolvedAfterFamilyUninstall.Modules.Modules.Any(module => module.Id == "duct-package" || module.Id == "family-package"), "uninstalling all plugins from a legacy multi-plugin manifest must remove them from restart loading.");
+
+                var familyInstallResult = service.Install(tempRoot, familyPackage);
+                Require(familyInstallResult.Success, "installing the sibling plugin should succeed: " + familyInstallResult.Message);
+                Require(File.Exists(Path.Combine(familyInstallDirectory, "package.json")), "sibling plugin install must write its own package-local manifest.");
+            }
+            finally
+            {
+                if (Directory.Exists(tempRoot))
+                {
+                    Directory.Delete(tempRoot, true);
+                }
+            }
+        }
+
+        private static void ValidateRuntimeLoadsSerializedInstalledPackageManifest()
+        {
+            var tempRoot = Path.Combine(Path.GetTempPath(), "PlugHub.StaticValidation", Guid.NewGuid().ToString("N"));
+            try
+            {
+                var packageDirectory = Path.Combine(tempRoot, "packages", "serialized-package");
+                Directory.CreateDirectory(packageDirectory);
+                File.WriteAllText(Path.Combine(packageDirectory, "Serialized.dll"), "serialized");
+
+                var serializedModules = new PlugHub.Framework.Configuration.ModulesConfiguration
+                {
+                    SchemaVersion = "1.0",
+                    PackageDirectories = new List<string>(),
+                    ModuleSources = new List<PlugHub.Framework.Configuration.ModuleSourceConfiguration>(),
+                    ConflictPolicy = new PlugHub.Framework.Configuration.ConflictPolicyConfiguration(),
+                    Modules = new List<PlugHub.Framework.Configuration.ModuleConfiguration>
+                    {
+                        new PlugHub.Framework.Configuration.ModuleConfiguration
+                        {
+                            Id = "serialized-package",
+                            Assembly = "Serialized.dll",
+                            Type = "Demo.SerializedModule",
+                            Enabled = true,
+                            Visible = true,
+                            Features = new List<PlugHub.Framework.Configuration.FeatureConfiguration>()
+                        }
+                    }
+                };
+                File.WriteAllText(Path.Combine(packageDirectory, "package.json"), Json.Serialize(serializedModules));
+
+                var resolved = new PlugHub.Framework.Sources.ModuleSourceResolver().Resolve(
+                    tempRoot,
+                    new PlugHub.Framework.Configuration.ModulesConfiguration
+                    {
+                        SchemaVersion = "1.0",
+                        PackageDirectories = new List<string> { "packages" },
+                        ModuleSources = new List<PlugHub.Framework.Configuration.ModuleSourceConfiguration>(),
+                        ConflictPolicy = new PlugHub.Framework.Configuration.ConflictPolicyConfiguration(),
+                        Modules = new List<PlugHub.Framework.Configuration.ModuleConfiguration>()
+                    });
+
+                Require(resolved.Modules.Modules.Any(module => module.Id == "serialized-package"), "runtime must load installed package manifests after settings serialization rewrites JSON casing.");
+            }
+            finally
+            {
+                if (Directory.Exists(tempRoot))
+                {
+                    Directory.Delete(tempRoot, true);
+                }
+            }
+        }
+
+        private static void ValidateRepositoryInstallFailureDoesNotCreateOrRemovePackages()
+        {
+            var tempRoot = Path.Combine(Path.GetTempPath(), "PlugHub.StaticValidation", Guid.NewGuid().ToString("N"));
+            try
+            {
+                var sourceDirectory = Path.Combine(tempRoot, "repository-cache", "broken-package");
+                Directory.CreateDirectory(sourceDirectory);
+                File.WriteAllText(
+                    Path.Combine(sourceDirectory, "package.json"),
+                    "{\"schemaVersion\":\"1.0\",\"modules\":[{\"id\":\"broken-package\",\"assembly\":\"dist/Missing.dll\",\"type\":\"Demo.BrokenModule\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
+
+                var descriptor = new PlugHub.Framework.Packages.RepositoryPackageDescriptor
+                {
+                    RepositoryId = "test-repository",
+                    PackageId = "broken-package",
+                    ModuleId = "broken-package",
+                    DisplayName = "Broken Package",
+                    ManifestPath = Path.Combine(sourceDirectory, "package.json"),
+                    SourceDirectory = sourceDirectory,
+                    InstallDirectory = Path.Combine(tempRoot, "packages", "broken-package")
+                };
+
+                var service = new PlugHub.Framework.Packages.PackageRepositoryService();
+                var installResult = service.Install(tempRoot, descriptor);
+                Require(!installResult.Success, "installing a package with missing payload must fail.");
+                Require(!Directory.Exists(descriptor.InstallDirectory), "failed install must not leave a partial package directory under packages.");
+
+                Directory.CreateDirectory(descriptor.InstallDirectory);
+                File.WriteAllText(Path.Combine(descriptor.InstallDirectory, "Existing.dll"), "existing");
+                File.WriteAllText(
+                    Path.Combine(descriptor.InstallDirectory, "package.json"),
+                    "{\"schemaVersion\":\"1.0\",\"modules\":[{\"id\":\"broken-package\",\"assembly\":\"Existing.dll\",\"type\":\"Demo.BrokenModule\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
+
+                var updateResult = service.Update(tempRoot, descriptor);
+                Require(!updateResult.Success, "updating a package with missing payload must fail.");
+                Require(File.Exists(Path.Combine(descriptor.InstallDirectory, "Existing.dll")), "failed update must keep the previously installed package files.");
             }
             finally
             {
@@ -564,7 +903,7 @@ namespace PlugHub.StaticValidation
                 "config/sources.json",
                 "config/views.json",
                 "config/feature-combinations.json",
-                "packages/dropins/README.md"
+                "packages/README.md"
             };
 
             var missing = required
@@ -581,6 +920,8 @@ namespace PlugHub.StaticValidation
                 "PlugHub.BuiltinModule.pdb",
                 ("config/" + "modules.json").Replace('/', Path.DirectorySeparatorChar),
                 ("config/" + "plugin-sources.json").Replace('/', Path.DirectorySeparatorChar),
+                ("packages/" + "dropins").Replace('/', Path.DirectorySeparatorChar),
+                ("packages/" + "github").Replace('/', Path.DirectorySeparatorChar),
                 ("modules/" + "samples").Replace('/', Path.DirectorySeparatorChar),
                 ("modules/" + "dropins").Replace('/', Path.DirectorySeparatorChar),
                 "modules"
@@ -694,6 +1035,11 @@ namespace PlugHub.StaticValidation
             return ArrayValue(root, "moduleSources")
                 .Cast<Dictionary<string, object>>()
                 .All(source => StringValue(source, "manifestPath") == "package.json");
+        }
+
+        private static IEnumerable<Dictionary<string, object>> Repositories(Dictionary<string, object> root)
+        {
+            return ArrayValue(root, "repositories").Cast<Dictionary<string, object>>();
         }
 
         private static IEnumerable<Dictionary<string, object>> Views(Dictionary<string, object> root)

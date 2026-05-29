@@ -12,19 +12,19 @@ namespace PlugHub.Revit2020
 {
     internal sealed class FrameworkStatusWindow : Window
     {
-        public FrameworkStatusWindow(string title, string summary, IEnumerable<DiagnosticMessage> diagnostics, bool showDiagnostics)
+        public FrameworkStatusWindow(string title, string summary, IEnumerable<DiagnosticMessage> diagnostics, bool showLogs)
         {
             Title = string.IsNullOrWhiteSpace(title) ? "PlugHub 状态" : title;
             Width = 760;
-            Height = showDiagnostics ? 560 : 340;
+            Height = showLogs ? 560 : 340;
             MinWidth = 620;
-            MinHeight = showDiagnostics ? 420 : 260;
+            MinHeight = showLogs ? 420 : 260;
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
             Background = new SolidColorBrush(Color.FromRgb(247, 249, 252));
 
             var root = new Grid { Margin = new Thickness(16) };
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            if (showDiagnostics)
+            if (showLogs)
             {
                 root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
             }
@@ -51,7 +51,7 @@ namespace PlugHub.Revit2020
             root.Children.Add(header);
 
             var buttonRow = 1;
-            if (showDiagnostics)
+            if (showLogs)
             {
                 var diagnosticsGrid = new DataGrid
                 {
@@ -93,7 +93,7 @@ namespace PlugHub.Revit2020
 
         public static void ShowDialog(string title, string summary, IEnumerable<DiagnosticMessage> diagnostics)
         {
-            ShowDiagnostics(title, summary, diagnostics);
+            ShowLogs(title, summary, diagnostics);
         }
 
         public static void ShowRefreshResult(FrameworkRuntimeSnapshot snapshot)
@@ -103,10 +103,10 @@ namespace PlugHub.Revit2020
             var diagnostics = snapshot.Diagnostics ?? Array.Empty<DiagnosticMessage>();
             var summary =
                 "刷新完成。\n\n" +
-                "已重新读取配置、模块来源和执行拦截状态。\n" +
+                "已重新读取配置、已安装插件包和执行拦截状态。\n" +
                 "模块数: " + snapshot.Configuration.EffectiveModules.Modules.Count + "\n" +
                 "工作台功能数: " + snapshot.Composition.Features.Count + "\n" +
-                "诊断消息: " + diagnostics.Count + "\n\n" +
+                "日志消息: " + diagnostics.Count + "\n\n" +
                 "Ribbon 布局、图标和按钮大小仍需重启 Revit 重绘。";
 
             RevitWindowOwner.ShowDialog(new FrameworkStatusWindow("PlugHub 刷新配置", summary, diagnostics, diagnostics.Any()));
@@ -117,7 +117,7 @@ namespace PlugHub.Revit2020
             RevitWindowOwner.ShowDialog(new FrameworkStatusWindow("PlugHub 状态", BuildRuntimeStatus(snapshot), Array.Empty<DiagnosticMessage>(), false));
         }
 
-        public static void ShowDiagnostics(string title, string summary, IEnumerable<DiagnosticMessage> diagnostics)
+        public static void ShowLogs(string title, string summary, IEnumerable<DiagnosticMessage> diagnostics)
         {
             RevitWindowOwner.ShowDialog(new FrameworkStatusWindow(title, summary, diagnostics, true));
         }
@@ -138,8 +138,8 @@ namespace PlugHub.Revit2020
                 "Config: " + FrameworkRuntimeState.ConfigDirectory + "\n" +
                 "Modules: " + snapshot.Configuration.EffectiveModules.Modules.Count + "\n" +
                 "Features in workspace: " + snapshot.Composition.Features.Count + "\n" +
-                "Diagnostics: " + snapshot.Diagnostics.Count + "\n\n" +
-                "需要查看明细时，请打开设置窗口的「诊断」页。";
+                "Logs: " + snapshot.Diagnostics.Count + "\n\n" +
+                "需要查看明细时，请打开设置窗口的「日志」页。";
         }
 
         private static DataGridTextColumn TextColumn(string propertyName, string header, double width, bool star = false)
@@ -171,7 +171,7 @@ namespace PlugHub.Revit2020
                     Severity = "Info",
                     Code = "PH-OK",
                     Scope = "runtime",
-                    Message = "当前没有诊断消息。"
+                    Message = "当前没有日志消息。"
                 });
             }
 

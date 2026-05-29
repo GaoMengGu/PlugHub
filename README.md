@@ -1,22 +1,25 @@
 # PlugHub
 
-PlugHub 是面向 Revit 2020 的模块化插件框架。它提供统一 Ribbon 入口、模块发现、功能开关、排序组合、诊断和设置界面，用于承载后续 Revit 功能模块。
+PlugHub 是面向 Revit 2020 的模块化插件框架。它提供统一 Ribbon 入口、模块发现、功能开关、排序组合、日志和设置界面，用于承载后续 Revit 功能模块。
 
 ## 核心能力
 
 - 单一 `PlugHub` Ribbon tab 和 `workspace` 工作台。
-- 通过 JSON 配置管理模块来源、插件包、功能、分组、显示名、图标、按钮大小和排序。
-- 支持 `packages/dropins` 投放目录、指定本地文件夹和 GitHub 仓库来源。
+- 通过 JSON 配置管理已安装插件包、仓库、功能、分组、显示名、图标、按钮大小和排序。
+- 启动时只扫描本地 `packages` 目录；仓库只在设置页中浏览，由用户选择安装、更新或卸载。
 - 设置入口采用 Ribbon 按钮，设置窗口采用 WPF。
 - 框架层隔离 Revit API，不包含内置业务功能；具体业务命令由外部模块实现。
 
-## 模块来源
+## 插件包和仓库
 
 默认配置不包含任何业务模块。模块可通过以下方式接入：
 
-- 复制插件包文件夹到 `packages/dropins`，包内使用 `package.json`。
+- 复制插件包文件夹到 `packages`，包内使用 `package.json`。
 - 平铺投放 DLL 时，使用 `<DllName>.package.json` 作为邻接清单。
-- 在 `config\sources.json` 中配置指定本地文件夹或 GitHub 仓库来源。
+- 在设置页的「仓库」中配置 GitHub 或 Gitee 的公开/私有仓库，私有仓库填写 `apiKey`；浏览仓库后选择插件安装到 `packages`。同一个 `package.json` 中的多个 module 会显示为多个插件行，安装时由 PlugHub 拆成单插件本地包。
+- 浏览仓库只取包清单、DLL 和图标等包资产；安装只复制选中插件的单模块清单和引用文件，不复制整个仓库。
+- 如果 Revit 正在占用已加载 DLL，更新和卸载会先移除本地 `package.json` 中的模块声明，并写入待处理操作；下次启动 PlugHub 会在模块发现前删除或替换文件。
+- Revit 启动时不会拉取仓库，也不会直接从仓库缓存加载插件包。
 
 ## 验证
 

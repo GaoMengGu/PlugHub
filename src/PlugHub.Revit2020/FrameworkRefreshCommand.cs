@@ -21,7 +21,7 @@ namespace PlugHub.Revit2020
             catch (Exception ex)
             {
                 message = ex.Message;
-                FrameworkStatusWindow.ShowDiagnostics(
+                FrameworkStatusWindow.ShowLogs(
                     "PlugHub 刷新配置",
                     "刷新失败：" + ex.Message,
                     new[]

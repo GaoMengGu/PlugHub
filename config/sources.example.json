@@ -1,26 +1,39 @@
 {
   "schemaVersion": "1.0",
   "packageDirectories": [
-    "packages/dropins"
+    "packages"
   ],
-  "moduleSources": [
+  "moduleSources": [],
+  "repositories": [
     {
-      "id": "local-company-tools",
-      "type": "localFolder",
-      "path": "packages/company",
-      "manifestPath": "package.json",
-      "enabled": false,
-      "autoUpdate": false
-    },
-    {
-      "id": "plughub-packages",
-      "type": "github",
+      "id": "plughub-public-packages",
+      "provider": "github",
+      "visibility": "public",
       "repository": "GaoMengGu/PlugHub_Packages",
       "ref": "main",
-      "path": "packages/github/GaoMengGu_PlugHub_Packages",
       "manifestPath": "package.json",
-      "enabled": false,
-      "autoUpdate": false
+      "apiKey": "",
+      "enabled": true
+    },
+    {
+      "id": "company-private-packages",
+      "provider": "github",
+      "visibility": "private",
+      "repository": "your-org/private-plughub-packages",
+      "ref": "main",
+      "manifestPath": "package.json",
+      "apiKey": "",
+      "enabled": false
+    },
+    {
+      "id": "gitee-public-packages",
+      "provider": "gitee",
+      "visibility": "public",
+      "repository": "your-gitee-org/plughub-packages",
+      "ref": "master",
+      "manifestPath": "package.json",
+      "apiKey": "",
+      "enabled": false
     }
   ],
   "conflictPolicy": {

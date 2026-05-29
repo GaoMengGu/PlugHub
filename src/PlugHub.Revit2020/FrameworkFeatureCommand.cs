@@ -32,7 +32,7 @@ namespace PlugHub.Revit2020
             if (!decision.Allowed)
             {
                 message = decision.Message;
-                FrameworkStatusWindow.ShowDiagnostics(
+                FrameworkStatusWindow.ShowLogs(
                     "PlugHub 功能已禁用",
                     decision.Message,
                     new[]
@@ -61,7 +61,7 @@ namespace PlugHub.Revit2020
             if (!File.Exists(assemblyPath))
             {
                 message = "Command assembly was not found: " + assemblyPath;
-                FrameworkStatusWindow.ShowDiagnostics(
+                FrameworkStatusWindow.ShowLogs(
                     "PlugHub 功能执行失败",
                     message,
                     new[]
@@ -81,7 +81,7 @@ namespace PlugHub.Revit2020
             if (commandType == null || !typeof(IExternalCommand).IsAssignableFrom(commandType))
             {
                 message = "Command type was not found or does not implement IExternalCommand: " + feature.CommandType;
-                FrameworkStatusWindow.ShowDiagnostics(
+                FrameworkStatusWindow.ShowLogs(
                     "PlugHub 功能执行失败",
                     message,
                     new[]

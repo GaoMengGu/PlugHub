@@ -77,7 +77,8 @@ CI 发布构建使用 `NuGet` 引用模式，只把 Revit API 当作编译引用
 - Ribbon 中出现 `PlugHub` tab。
 - 固定出现 `框架` panel 和「设置」按钮。
 - 未配置外部模块时不出现业务 panel。
-- 配置本地插件包文件夹或 GitHub 插件包来源后，出现对应外部模块 panel。
+- 把插件包安装到 `packages` 后，出现对应外部模块 panel。
+- 在设置页仓库中浏览公开或私有仓库，选择安装、更新、卸载后，插件包文件只落到 `packages`；新增、替换或删除 DLL 后重启 Revit 再验收 Ribbon。
 - 「设置」打开 WPF 窗口，关闭后 Revit 可继续操作。
 - 插件包和功能显示名、开关、所属分组、图标、大小、排序保存后能写回配置。
 - 自定义分组通过分组页右键菜单新增或删除；删除前必须先移走该分组下的功能。
@@ -88,10 +89,13 @@ CI 发布构建使用 `NuGet` 引用模式，只把 Revit API 当作编译引用
 
 ## 配置变更注意事项
 
-- 新增外部插件包时，优先放到 `packages/dropins` 或配置 `moduleSources`。
-- 本地来源使用 `type: "localFolder"`，GitHub 来源使用 `type: "github"`。
-- 默认 GitHub 来源指向 `GaoMengGu/PlugHub_Packages`，本地缓存目录为 `packages/github/GaoMengGu_PlugHub_Packages`。
-- GitHub 来源会解析到本地缓存目录；启用 `autoUpdate` 后运行时才会尝试 Git 操作。更新前会先比对远端引用，未变化时跳过 fetch/pull；首次 clone 使用浅克隆和 sparse checkout，尽量只下载包清单、DLL 和图标资产。
+- 新增外部插件包时，安装或复制到 `packages`；Revit 启动只扫描 `packages`。
+- `moduleSources` 兼容保留但默认为空，不用于配置启动时仓库拉取。
+- 仓库配置写在 `repositories`。`provider` 支持 `github` 和 `gitee`；公开仓库使用 `visibility: "public"`；私有仓库使用 `visibility: "private"` 并提供 `apiKey`。
+- 默认公开仓库指向 `GaoMengGu/PlugHub_Packages`。仓库不会在 Revit 启动时拉取或加载，只有用户在设置页选择“浏览仓库插件包”时才访问远端；浏览使用 sparse checkout，只取包清单、DLL 和图标等包资产。
+- 仓库根 `package.json` 如果包含多个 module，设置页应展示为多个插件行；安装时 PlugHub 会按选中 module 拆成单插件本地包。
+- 安装和更新会把选中插件的单模块清单及其引用的 DLL/资源复制到 `packages/<插件ID>`，不会复制整个仓库；卸载只删除 `packages` 下对应已安装目录。
+- 如果 DLL 正被 Revit 占用，更新和卸载不会直接失败：PlugHub 会先移除本地清单中的模块声明，写入 `repository-cache/.package-install/pending-operations.json`，并在下次启动、模块发现之前删除或替换对应插件目录。
 - 外部插件包文件夹推荐使用 `package.json`；平铺投放 DLL 时使用 `<DllName>.package.json`；框架来源配置文件名统一为 `config\sources.json`。
 - 功能如果没有 `commandAssembly` / `commandType`，Ribbon 按钮会回落到框架状态窗口。
 - workspace 未配置 group 时，Composer 会按 feature 的 `group`、`category` 或 `moduleId` 生成 fallback panel。
@@ -116,5 +120,5 @@ CI 发布构建使用 `NuGet` 引用模式，只把 Revit API 当作编译引用
 - 不要恢复已删除的样例模块、内置业务模块、占位功能、视图集或旧 Ribbon 入口。
 - 不要把 `bin/`、`obj/`、`dist/` 等构建产物纳入提交。
 - 修改验证器时，先确认失败场景能被捕获，再让实现转绿。
-- 修改设置页时，不要在 WPF 设置窗口中执行 Git 拉取、程序集加载或运行时刷新。
+- 修改设置页时，不要在保存配置、Revit 启动或运行时刷新中执行 Git 拉取、程序集加载；仓库访问必须由用户在仓库页显式触发。
 - 涉及 Revit 行为时，明确区分静态验证、本机构建和 Revit 实机测试。

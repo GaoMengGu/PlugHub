@@ -14,6 +14,7 @@ namespace PlugHub.Framework.Configuration
         public string SchemaVersion { get; set; } = string.Empty;
         public List<string> PackageDirectories { get; set; } = new List<string>();
         public List<ModuleSourceConfiguration> ModuleSources { get; set; } = new List<ModuleSourceConfiguration>();
+        public List<PackageRepositoryConfiguration> Repositories { get; set; } = new List<PackageRepositoryConfiguration>();
         public ConflictPolicyConfiguration ConflictPolicy { get; set; } = new ConflictPolicyConfiguration();
         public List<ModuleConfiguration> Modules { get; set; } = new List<ModuleConfiguration>();
     }
@@ -28,6 +29,18 @@ namespace PlugHub.Framework.Configuration
         public string ManifestPath { get; set; } = string.Empty;
         public bool Enabled { get; set; }
         public bool AutoUpdate { get; set; }
+    }
+
+    public sealed class PackageRepositoryConfiguration
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Provider { get; set; } = "github";
+        public string Visibility { get; set; } = "public";
+        public string Repository { get; set; } = string.Empty;
+        public string Ref { get; set; } = "main";
+        public string ManifestPath { get; set; } = string.Empty;
+        public string ApiKey { get; set; } = string.Empty;
+        public bool Enabled { get; set; }
     }
 
     public sealed class ConflictPolicyConfiguration
