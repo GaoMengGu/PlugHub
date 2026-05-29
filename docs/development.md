@@ -24,6 +24,7 @@ dotnet run --project src\PlugHub.StaticValidation\PlugHub.StaticValidation.cspro
 验证器覆盖：
 
 - 必需项目文件、配置文件和内部文档入口。
+- `tests` 目录只在存在真实测试项目时保留；当前自动验证入口是 `src\PlugHub.StaticValidation`。
 - Contracts / Framework 不引用 Revit API。
 - 默认配置不包含业务模块或业务功能。
 - workspace 在没有外部模块时不暴露业务按钮。

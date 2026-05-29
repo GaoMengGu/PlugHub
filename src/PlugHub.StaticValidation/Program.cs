@@ -25,6 +25,7 @@ namespace PlugHub.StaticValidation
                 ValidateCoreContracts();
                 ValidateRevitRibbonAdapter();
                 ValidateRuntimeConfigurationLoader();
+                ValidateFrameworkRuntimeLoadIsolation();
                 ValidateExternalModuleCommandResolution();
                 ValidateFrameworkContainsNoBundledModules();
                 ValidatePlugHubV2Specification();
@@ -105,6 +106,11 @@ namespace PlugHub.StaticValidation
             Require(!File.Exists(FullPath("config/modules.example.json")), "framework source config must be named sources.example.json, not modules.example.json.");
             Require(!File.Exists(FullPath("config/plugin-sources.example.json")), "framework source config must be named sources.example.json, not plugin-sources.example.json.");
             Require(!Directory.Exists(FullPath("modules")), "source workspace must not keep a modules drop-in directory; build output creates package drop-ins.");
+            if (Directory.Exists(FullPath("tests")))
+            {
+                var testProjects = Directory.GetFiles(FullPath("tests"), "*.csproj", SearchOption.AllDirectories);
+                Require(testProjects.Length > 0, "tests directory must contain real test projects; move validation notes into docs/development.md instead of keeping a placeholder tests folder.");
+            }
         }
 
         private static void ValidateDocumentationStructure()
@@ -246,6 +252,63 @@ namespace PlugHub.StaticValidation
             {
                 Require(frameworkText.Contains(token), "missing runtime configuration loader token: " + token);
             }
+        }
+
+        private static void ValidateFrameworkRuntimeLoadIsolation()
+        {
+            var runtimeText = ReadText("src/PlugHub.Framework/Runtime/FrameworkRuntime.cs");
+            Require(!runtimeText.Contains("private readonly FeatureRegistry _featureRegistry"), "FrameworkRuntime.Load must not reuse a FeatureRegistry across loads.");
+            Require(!runtimeText.Contains("private readonly DiagnosticsSink _diagnostics"), "FrameworkRuntime.Load must not reuse a DiagnosticsSink across loads.");
+            Require(runtimeText.Contains("var diagnostics = new DiagnosticsSink()") && runtimeText.Contains("var featureRegistry = new FeatureRegistry()"), "FrameworkRuntime.Load must create fresh load-scoped diagnostics and feature registry instances.");
+
+            var tempRoot = Path.Combine(Path.GetTempPath(), "PlugHub.StaticValidation", Guid.NewGuid().ToString("N"));
+            try
+            {
+                var baseDirectory = tempRoot;
+                var configDirectory = Path.Combine(baseDirectory, "config");
+                var packageDirectory = Path.Combine(baseDirectory, "packages", "runtime-isolation");
+                Directory.CreateDirectory(configDirectory);
+                Directory.CreateDirectory(packageDirectory);
+
+                WriteRuntimeIsolationConfiguration(configDirectory);
+                WriteRuntimeIsolationManifest(packageDirectory, "first-feature");
+
+                var runtime = new PlugHub.Framework.Runtime.FrameworkRuntime();
+                var firstSnapshot = runtime.Load(baseDirectory, configDirectory);
+                Require(firstSnapshot.Features.Count == 1 && firstSnapshot.Features[0].Id == "first-feature", "runtime isolation setup must load the first manifest feature.");
+
+                WriteRuntimeIsolationManifest(packageDirectory, "second-feature");
+                var secondSnapshot = runtime.Load(baseDirectory, configDirectory);
+                Require(secondSnapshot.Features.Count == 1 && secondSnapshot.Features[0].Id == "second-feature", "FrameworkRuntime.Load must not keep stale features when the same runtime instance is loaded again.");
+                Require(!secondSnapshot.Diagnostics.Any(message => message.Code == "RT-MODULE-DUPLICATE"), "FrameworkRuntime.Load must not keep stale module ids when the same runtime instance is loaded again.");
+            }
+            finally
+            {
+                if (Directory.Exists(tempRoot))
+                {
+                    Directory.Delete(tempRoot, true);
+                }
+            }
+        }
+
+        private static void WriteRuntimeIsolationConfiguration(string configDirectory)
+        {
+            File.WriteAllText(
+                Path.Combine(configDirectory, "sources.json"),
+                "{\"schemaVersion\":\"1.0\",\"packageDirectories\":[\"packages\"],\"moduleSources\":[],\"repositories\":[],\"conflictPolicy\":{\"duplicateFeatureId\":\"fail-feature\",\"duplicateModuleId\":\"fail-module\",\"missingModuleType\":\"warn\"},\"modules\":[]}");
+            File.WriteAllText(
+                Path.Combine(configDirectory, "views.json"),
+                "{\"schemaVersion\":\"1.0\",\"defaultView\":\"workspace\",\"views\":[{\"id\":\"workspace\",\"name\":\"PlugHub\",\"ribbon\":{\"tabName\":\"PlugHub\",\"fallbackPanelName\":\"External\"},\"groups\":[],\"sort\":[\"group.order\",\"feature.order\",\"feature.name\",\"feature.id\"]}]}");
+            File.WriteAllText(
+                Path.Combine(configDirectory, "feature-combinations.json"),
+                "{\"schemaVersion\":\"1.0\",\"defaultPreset\":\"\",\"presets\":[]}");
+        }
+
+        private static void WriteRuntimeIsolationManifest(string packageDirectory, string featureId)
+        {
+            File.WriteAllText(
+                Path.Combine(packageDirectory, "package.json"),
+                "{\"schemaVersion\":\"1.0\",\"modules\":[{\"id\":\"runtime-isolation-module\",\"enabled\":true,\"visible\":true,\"order\":10,\"features\":[{\"id\":\"" + featureId + "\",\"displayName\":\"" + featureId + "\",\"defaultState\":\"Visible\",\"order\":10}]}]}");
         }
 
         private static void ValidateExternalModuleCommandResolution()
