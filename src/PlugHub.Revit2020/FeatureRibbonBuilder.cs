@@ -106,7 +106,7 @@ namespace PlugHub.Revit2020
             var smallBuffer = new List<PushButtonData>();
             foreach (var feature in features)
             {
-                if (!featureIdToSlot.ContainsKey(feature.FeatureId))
+                if (string.IsNullOrWhiteSpace(feature.FeatureId) || !featureIdToSlot.ContainsKey(feature.FeatureId))
                 {
                     continue;
                 }
