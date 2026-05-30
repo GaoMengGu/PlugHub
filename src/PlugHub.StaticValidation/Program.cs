@@ -261,6 +261,7 @@ namespace PlugHub.StaticValidation
         {
             var ribbonBuilder = ReadText("src/PlugHub.Revit2020/FeatureRibbonBuilder.cs");
             var featureCommand = ReadText("src/PlugHub.Revit2020/FrameworkFeatureCommand.cs");
+            var slotCommandText = ReadText("src/PlugHub.Revit2020/FrameworkFeatureCommandSlots.cs");
             var revitText = ReadAllCSharp("src/PlugHub.Revit2020");
 
             Require(revitText.Contains("class FeatureCommandDispatcher"), "runtime routing must use FeatureCommandDispatcher.");
@@ -271,6 +272,7 @@ namespace PlugHub.StaticValidation
             Require(revitText.Contains("class FrameworkFeatureCommandSlot128"), "runtime routing must define the last feature command slot.");
             Require(revitText.Contains("FrameworkFeatureCommandSlots.CommandTypeFor"), "runtime routing must resolve slot command types through FrameworkFeatureCommandSlots.");
             Require(revitText.Contains("PH-FEATURE-SLOT-LIMIT"), "runtime routing must diagnose visible features that exceed available slots.");
+            Require(CountOccurrences(slotCommandText, "[Transaction(TransactionMode.Manual)]") >= 128, "each feature command slot must declare TransactionMode.Manual on the concrete command type.");
 
             Require(!ribbonBuilder.Contains("new CommandTarget(assemblyPath, feature.CommandType)"), "Revit feature buttons must use framework slots instead of external command assemblies.");
             Require(ribbonBuilder.Contains("FeatureSlotRegistry.Replace"), "Ribbon build must atomically replace feature slot mappings.");
@@ -1107,6 +1109,21 @@ namespace PlugHub.StaticValidation
         private static string ReadAllCSharp(string relativeDirectory)
         {
             return string.Join("\n", Directory.GetFiles(FullPath(relativeDirectory), "*.cs", SearchOption.AllDirectories).Select(File.ReadAllText));
+        }
+
+        private static int CountOccurrences(string text, string value)
+        {
+            if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(value)) return 0;
+
+            var count = 0;
+            var index = 0;
+            while ((index = text.IndexOf(value, index, StringComparison.Ordinal)) >= 0)
+            {
+                count++;
+                index += value.Length;
+            }
+
+            return count;
         }
 
         private static string ReadProductionCSharp()

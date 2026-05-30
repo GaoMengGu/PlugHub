@@ -16,133 +16,261 @@ namespace PlugHub.Revit2020
         }
     }
 
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot001 : FrameworkFeatureCommandSlot { protected override int SlotId => 1; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot002 : FrameworkFeatureCommandSlot { protected override int SlotId => 2; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot003 : FrameworkFeatureCommandSlot { protected override int SlotId => 3; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot004 : FrameworkFeatureCommandSlot { protected override int SlotId => 4; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot005 : FrameworkFeatureCommandSlot { protected override int SlotId => 5; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot006 : FrameworkFeatureCommandSlot { protected override int SlotId => 6; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot007 : FrameworkFeatureCommandSlot { protected override int SlotId => 7; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot008 : FrameworkFeatureCommandSlot { protected override int SlotId => 8; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot009 : FrameworkFeatureCommandSlot { protected override int SlotId => 9; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot010 : FrameworkFeatureCommandSlot { protected override int SlotId => 10; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot011 : FrameworkFeatureCommandSlot { protected override int SlotId => 11; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot012 : FrameworkFeatureCommandSlot { protected override int SlotId => 12; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot013 : FrameworkFeatureCommandSlot { protected override int SlotId => 13; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot014 : FrameworkFeatureCommandSlot { protected override int SlotId => 14; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot015 : FrameworkFeatureCommandSlot { protected override int SlotId => 15; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot016 : FrameworkFeatureCommandSlot { protected override int SlotId => 16; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot017 : FrameworkFeatureCommandSlot { protected override int SlotId => 17; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot018 : FrameworkFeatureCommandSlot { protected override int SlotId => 18; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot019 : FrameworkFeatureCommandSlot { protected override int SlotId => 19; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot020 : FrameworkFeatureCommandSlot { protected override int SlotId => 20; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot021 : FrameworkFeatureCommandSlot { protected override int SlotId => 21; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot022 : FrameworkFeatureCommandSlot { protected override int SlotId => 22; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot023 : FrameworkFeatureCommandSlot { protected override int SlotId => 23; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot024 : FrameworkFeatureCommandSlot { protected override int SlotId => 24; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot025 : FrameworkFeatureCommandSlot { protected override int SlotId => 25; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot026 : FrameworkFeatureCommandSlot { protected override int SlotId => 26; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot027 : FrameworkFeatureCommandSlot { protected override int SlotId => 27; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot028 : FrameworkFeatureCommandSlot { protected override int SlotId => 28; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot029 : FrameworkFeatureCommandSlot { protected override int SlotId => 29; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot030 : FrameworkFeatureCommandSlot { protected override int SlotId => 30; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot031 : FrameworkFeatureCommandSlot { protected override int SlotId => 31; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot032 : FrameworkFeatureCommandSlot { protected override int SlotId => 32; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot033 : FrameworkFeatureCommandSlot { protected override int SlotId => 33; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot034 : FrameworkFeatureCommandSlot { protected override int SlotId => 34; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot035 : FrameworkFeatureCommandSlot { protected override int SlotId => 35; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot036 : FrameworkFeatureCommandSlot { protected override int SlotId => 36; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot037 : FrameworkFeatureCommandSlot { protected override int SlotId => 37; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot038 : FrameworkFeatureCommandSlot { protected override int SlotId => 38; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot039 : FrameworkFeatureCommandSlot { protected override int SlotId => 39; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot040 : FrameworkFeatureCommandSlot { protected override int SlotId => 40; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot041 : FrameworkFeatureCommandSlot { protected override int SlotId => 41; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot042 : FrameworkFeatureCommandSlot { protected override int SlotId => 42; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot043 : FrameworkFeatureCommandSlot { protected override int SlotId => 43; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot044 : FrameworkFeatureCommandSlot { protected override int SlotId => 44; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot045 : FrameworkFeatureCommandSlot { protected override int SlotId => 45; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot046 : FrameworkFeatureCommandSlot { protected override int SlotId => 46; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot047 : FrameworkFeatureCommandSlot { protected override int SlotId => 47; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot048 : FrameworkFeatureCommandSlot { protected override int SlotId => 48; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot049 : FrameworkFeatureCommandSlot { protected override int SlotId => 49; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot050 : FrameworkFeatureCommandSlot { protected override int SlotId => 50; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot051 : FrameworkFeatureCommandSlot { protected override int SlotId => 51; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot052 : FrameworkFeatureCommandSlot { protected override int SlotId => 52; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot053 : FrameworkFeatureCommandSlot { protected override int SlotId => 53; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot054 : FrameworkFeatureCommandSlot { protected override int SlotId => 54; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot055 : FrameworkFeatureCommandSlot { protected override int SlotId => 55; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot056 : FrameworkFeatureCommandSlot { protected override int SlotId => 56; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot057 : FrameworkFeatureCommandSlot { protected override int SlotId => 57; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot058 : FrameworkFeatureCommandSlot { protected override int SlotId => 58; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot059 : FrameworkFeatureCommandSlot { protected override int SlotId => 59; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot060 : FrameworkFeatureCommandSlot { protected override int SlotId => 60; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot061 : FrameworkFeatureCommandSlot { protected override int SlotId => 61; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot062 : FrameworkFeatureCommandSlot { protected override int SlotId => 62; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot063 : FrameworkFeatureCommandSlot { protected override int SlotId => 63; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot064 : FrameworkFeatureCommandSlot { protected override int SlotId => 64; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot065 : FrameworkFeatureCommandSlot { protected override int SlotId => 65; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot066 : FrameworkFeatureCommandSlot { protected override int SlotId => 66; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot067 : FrameworkFeatureCommandSlot { protected override int SlotId => 67; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot068 : FrameworkFeatureCommandSlot { protected override int SlotId => 68; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot069 : FrameworkFeatureCommandSlot { protected override int SlotId => 69; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot070 : FrameworkFeatureCommandSlot { protected override int SlotId => 70; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot071 : FrameworkFeatureCommandSlot { protected override int SlotId => 71; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot072 : FrameworkFeatureCommandSlot { protected override int SlotId => 72; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot073 : FrameworkFeatureCommandSlot { protected override int SlotId => 73; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot074 : FrameworkFeatureCommandSlot { protected override int SlotId => 74; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot075 : FrameworkFeatureCommandSlot { protected override int SlotId => 75; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot076 : FrameworkFeatureCommandSlot { protected override int SlotId => 76; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot077 : FrameworkFeatureCommandSlot { protected override int SlotId => 77; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot078 : FrameworkFeatureCommandSlot { protected override int SlotId => 78; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot079 : FrameworkFeatureCommandSlot { protected override int SlotId => 79; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot080 : FrameworkFeatureCommandSlot { protected override int SlotId => 80; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot081 : FrameworkFeatureCommandSlot { protected override int SlotId => 81; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot082 : FrameworkFeatureCommandSlot { protected override int SlotId => 82; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot083 : FrameworkFeatureCommandSlot { protected override int SlotId => 83; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot084 : FrameworkFeatureCommandSlot { protected override int SlotId => 84; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot085 : FrameworkFeatureCommandSlot { protected override int SlotId => 85; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot086 : FrameworkFeatureCommandSlot { protected override int SlotId => 86; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot087 : FrameworkFeatureCommandSlot { protected override int SlotId => 87; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot088 : FrameworkFeatureCommandSlot { protected override int SlotId => 88; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot089 : FrameworkFeatureCommandSlot { protected override int SlotId => 89; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot090 : FrameworkFeatureCommandSlot { protected override int SlotId => 90; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot091 : FrameworkFeatureCommandSlot { protected override int SlotId => 91; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot092 : FrameworkFeatureCommandSlot { protected override int SlotId => 92; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot093 : FrameworkFeatureCommandSlot { protected override int SlotId => 93; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot094 : FrameworkFeatureCommandSlot { protected override int SlotId => 94; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot095 : FrameworkFeatureCommandSlot { protected override int SlotId => 95; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot096 : FrameworkFeatureCommandSlot { protected override int SlotId => 96; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot097 : FrameworkFeatureCommandSlot { protected override int SlotId => 97; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot098 : FrameworkFeatureCommandSlot { protected override int SlotId => 98; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot099 : FrameworkFeatureCommandSlot { protected override int SlotId => 99; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot100 : FrameworkFeatureCommandSlot { protected override int SlotId => 100; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot101 : FrameworkFeatureCommandSlot { protected override int SlotId => 101; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot102 : FrameworkFeatureCommandSlot { protected override int SlotId => 102; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot103 : FrameworkFeatureCommandSlot { protected override int SlotId => 103; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot104 : FrameworkFeatureCommandSlot { protected override int SlotId => 104; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot105 : FrameworkFeatureCommandSlot { protected override int SlotId => 105; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot106 : FrameworkFeatureCommandSlot { protected override int SlotId => 106; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot107 : FrameworkFeatureCommandSlot { protected override int SlotId => 107; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot108 : FrameworkFeatureCommandSlot { protected override int SlotId => 108; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot109 : FrameworkFeatureCommandSlot { protected override int SlotId => 109; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot110 : FrameworkFeatureCommandSlot { protected override int SlotId => 110; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot111 : FrameworkFeatureCommandSlot { protected override int SlotId => 111; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot112 : FrameworkFeatureCommandSlot { protected override int SlotId => 112; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot113 : FrameworkFeatureCommandSlot { protected override int SlotId => 113; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot114 : FrameworkFeatureCommandSlot { protected override int SlotId => 114; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot115 : FrameworkFeatureCommandSlot { protected override int SlotId => 115; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot116 : FrameworkFeatureCommandSlot { protected override int SlotId => 116; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot117 : FrameworkFeatureCommandSlot { protected override int SlotId => 117; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot118 : FrameworkFeatureCommandSlot { protected override int SlotId => 118; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot119 : FrameworkFeatureCommandSlot { protected override int SlotId => 119; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot120 : FrameworkFeatureCommandSlot { protected override int SlotId => 120; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot121 : FrameworkFeatureCommandSlot { protected override int SlotId => 121; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot122 : FrameworkFeatureCommandSlot { protected override int SlotId => 122; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot123 : FrameworkFeatureCommandSlot { protected override int SlotId => 123; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot124 : FrameworkFeatureCommandSlot { protected override int SlotId => 124; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot125 : FrameworkFeatureCommandSlot { protected override int SlotId => 125; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot126 : FrameworkFeatureCommandSlot { protected override int SlotId => 126; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot127 : FrameworkFeatureCommandSlot { protected override int SlotId => 127; }
+    [Transaction(TransactionMode.Manual)]
     public sealed class FrameworkFeatureCommandSlot128 : FrameworkFeatureCommandSlot { protected override int SlotId => 128; }
 
     internal static class FrameworkFeatureCommandSlots
