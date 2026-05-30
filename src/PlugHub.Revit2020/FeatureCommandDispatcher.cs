@@ -51,17 +51,19 @@ namespace PlugHub.Revit2020
                 return Result.Failed;
             }
 
+            IExternalCommand command;
             try
             {
-                var command = CommandAssemblyLoader.Create(assemblyPath, feature.CommandType);
-                return command.Execute(commandData, ref message, elements);
+                command = CommandAssemblyLoader.Create(assemblyPath, feature.CommandType);
             }
             catch (Exception ex)
             {
                 message = ex.Message;
-                ShowFailure("PlugHub 功能执行失败", message, "PH-COMMAND-LOAD", feature.ModuleId, DiagnosticSeverity.Error);
+                ShowFailure("PlugHub 功能执行失败", message, "PH-COMMAND-TYPE", feature.ModuleId, DiagnosticSeverity.Error);
                 return Result.Failed;
             }
+
+            return command.Execute(commandData, ref message, elements);
         }
 
         private static string ResolveAssemblyPath(string commandAssembly)
