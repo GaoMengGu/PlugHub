@@ -24,6 +24,7 @@ namespace PlugHub.StaticValidation
                 ValidateComposerShape();
                 ValidateCoreContracts();
                 ValidateRevitRibbonAdapter();
+                ValidateRuntimeRoutingSpecification();
                 ValidateRuntimeConfigurationLoader();
                 ValidateFrameworkRuntimeLoadIsolation();
                 ValidateExternalModuleCommandResolution();
@@ -245,10 +246,39 @@ namespace PlugHub.StaticValidation
         private static void ValidateRevitRibbonAdapter()
         {
             var adapterText = ReadAllCSharp("src/PlugHub.Revit2020");
-            foreach (var token in new[] { "CreateRibbonTab", "CreateRibbonPanel", "PushButtonData", "FeatureRibbonBuilder", "FrameworkFeatureCommand", "ResolveCommandTarget" })
+            if (!adapterText.Contains("FeatureCommandDispatcher") || !adapterText.Contains("FeatureSlotRegistry"))
+            {
+                ValidateRuntimeRoutingSpecification();
+            }
+
+            foreach (var token in new[] { "CreateRibbonTab", "CreateRibbonPanel", "PushButtonData", "FeatureRibbonBuilder", "FrameworkFeatureCommand", "FeatureCommandDispatcher", "FeatureSlotRegistry" })
             {
                 Require(adapterText.Contains(token), "missing Revit adapter token: " + token);
             }
+        }
+
+        private static void ValidateRuntimeRoutingSpecification()
+        {
+            var ribbonBuilder = ReadText("src/PlugHub.Revit2020/FeatureRibbonBuilder.cs");
+            var featureCommand = ReadText("src/PlugHub.Revit2020/FrameworkFeatureCommand.cs");
+            var revitText = ReadAllCSharp("src/PlugHub.Revit2020");
+
+            Require(revitText.Contains("class FeatureCommandDispatcher"), "runtime routing must use FeatureCommandDispatcher.");
+            Require(revitText.Contains("interface ICommandAssemblyLoader"), "runtime routing must isolate command assembly loading behind ICommandAssemblyLoader.");
+            Require(revitText.Contains("class Net48DirectCommandAssemblyLoader"), "runtime routing must keep the net48 direct loader explicit.");
+            Require(revitText.Contains("class FeatureSlotRegistry"), "runtime routing must use a feature slot registry.");
+            Require(revitText.Contains("class FrameworkFeatureCommandSlot001"), "runtime routing must define the first feature command slot.");
+            Require(revitText.Contains("class FrameworkFeatureCommandSlot128"), "runtime routing must define the last feature command slot.");
+            Require(revitText.Contains("FrameworkFeatureCommandSlots.CommandTypeFor"), "runtime routing must resolve slot command types through FrameworkFeatureCommandSlots.");
+            Require(revitText.Contains("PH-FEATURE-SLOT-LIMIT"), "runtime routing must diagnose visible features that exceed available slots.");
+
+            Require(!ribbonBuilder.Contains("new CommandTarget(assemblyPath, feature.CommandType)"), "Revit feature buttons must use framework slots instead of external command assemblies.");
+            Require(ribbonBuilder.Contains("FeatureSlotRegistry.Replace"), "Ribbon build must atomically replace feature slot mappings.");
+            Require(!featureCommand.Contains("Assembly.LoadFrom"), "FrameworkFeatureCommand must delegate business command loading to ICommandAssemblyLoader.");
+
+            const string commandAssemblyLoaderPath = "src/PlugHub.Revit2020/CommandAssemblyLoader.cs";
+            Require(File.Exists(FullPath(commandAssemblyLoaderPath)), "runtime routing must keep the net48 direct LoadFrom strategy in CommandAssemblyLoader.cs.");
+            Require(ReadText(commandAssemblyLoaderPath).Contains("Assembly.LoadFrom"), "net48 command loader must keep the direct LoadFrom strategy in one file.");
         }
 
         private static void ValidateRuntimeConfigurationLoader()
