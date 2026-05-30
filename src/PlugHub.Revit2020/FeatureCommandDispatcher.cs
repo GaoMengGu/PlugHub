@@ -21,12 +21,18 @@ namespace PlugHub.Revit2020
                 return Result.Cancelled;
             }
 
-            return ExecuteFeature(featureId, commandData, ref message, elements);
+            var decision = new FeatureExecutionGate().CanExecuteFeatureId(featureId);
+            return ExecuteFeatureByDecision(decision, commandData, ref message, elements);
         }
 
         public static Result ExecuteFeature(string featureKey, ExternalCommandData commandData, ref string message, ElementSet elements)
         {
-            var decision = new FeatureExecutionGate().CanExecuteFeatureId(featureKey);
+            var decision = new FeatureExecutionGate().CanExecute(featureKey);
+            return ExecuteFeatureByDecision(decision, commandData, ref message, elements);
+        }
+
+        private static Result ExecuteFeatureByDecision(FeatureExecutionDecision decision, ExternalCommandData commandData, ref string message, ElementSet elements)
+        {
             if (!decision.Allowed)
             {
                 message = decision.Message;
