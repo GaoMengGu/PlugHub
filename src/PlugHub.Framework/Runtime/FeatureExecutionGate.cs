@@ -6,7 +6,17 @@ namespace PlugHub.Framework.Runtime
 {
     public sealed class FeatureExecutionGate
     {
+        public FeatureExecutionDecision CanExecuteFeatureId(string featureId)
+        {
+            return CanExecute(featureId, false);
+        }
+
         public FeatureExecutionDecision CanExecute(string featureIdOrCommandKey)
+        {
+            return CanExecute(featureIdOrCommandKey, true);
+        }
+
+        private FeatureExecutionDecision CanExecute(string featureIdOrCommandKey, bool matchCommandKey)
         {
             var snapshot = FrameworkRuntimeState.Current;
             if (snapshot == null)
@@ -21,7 +31,7 @@ namespace PlugHub.Framework.Runtime
 
             var feature = snapshot.Features.FirstOrDefault(item =>
                 string.Equals(item.Id, featureIdOrCommandKey, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(item.CommandKey, featureIdOrCommandKey, StringComparison.OrdinalIgnoreCase));
+                || (matchCommandKey && string.Equals(item.CommandKey, featureIdOrCommandKey, StringComparison.OrdinalIgnoreCase)));
 
             if (feature == null)
             {

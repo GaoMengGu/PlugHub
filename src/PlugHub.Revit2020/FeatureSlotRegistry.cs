@@ -26,7 +26,8 @@ namespace PlugHub.Revit2020
         {
             lock (Sync)
             {
-                _slotToFeatureId = new Dictionary<int, string>(slotToFeatureId ?? new Dictionary<int, string>());
+                _slotToFeatureId = (slotToFeatureId ?? new Dictionary<int, string>())
+                    .ToDictionary(pair => pair.Key, pair => pair.Value);
                 _skippedFeatureIds = new List<string>(skippedFeatureIds ?? new List<string>());
             }
         }

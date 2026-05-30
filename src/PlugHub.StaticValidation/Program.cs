@@ -261,6 +261,9 @@ namespace PlugHub.StaticValidation
         {
             var ribbonBuilder = ReadText("src/PlugHub.Revit2020/FeatureRibbonBuilder.cs");
             var featureCommand = ReadText("src/PlugHub.Revit2020/FrameworkFeatureCommand.cs");
+            var featureDispatcher = ReadText("src/PlugHub.Revit2020/FeatureCommandDispatcher.cs");
+            var featureSlotRegistry = ReadText("src/PlugHub.Revit2020/FeatureSlotRegistry.cs");
+            var featureExecutionGate = ReadText("src/PlugHub.Framework/Runtime/FeatureExecutionGate.cs");
             var slotCommandText = ReadText("src/PlugHub.Revit2020/FrameworkFeatureCommandSlots.cs");
             var normalizedSlotCommandText = slotCommandText.Replace("\r\n", "\n").Replace("\r", "\n");
             var revitText = ReadAllCSharp("src/PlugHub.Revit2020");
@@ -284,6 +287,10 @@ namespace PlugHub.StaticValidation
             Require(!ribbonBuilder.Contains("new CommandTarget(assemblyPath, feature.CommandType)"), "Revit feature buttons must use framework slots instead of external command assemblies.");
             Require(ribbonBuilder.Contains("FeatureSlotRegistry.Replace"), "Ribbon build must atomically replace feature slot mappings.");
             Require(!featureCommand.Contains("Assembly.LoadFrom"), "FrameworkFeatureCommand must delegate business command loading to ICommandAssemblyLoader.");
+            Require(featureExecutionGate.Contains("CanExecuteFeatureId") && featureExecutionGate.Contains("matchCommandKey"), "FeatureExecutionGate must expose an id-only execution path for slot routing.");
+            Require(featureDispatcher.Contains("CanExecuteFeatureId(featureKey)"), "FeatureCommandDispatcher must validate routed feature ids without matching command keys.");
+            Require(!featureSlotRegistry.Contains("new Dictionary<int, string>(slotToFeatureId ??"), "FeatureSlotRegistry must not construct Dictionary directly from an IReadOnlyDictionary fallback under net48.");
+            Require(featureSlotRegistry.Contains(".ToDictionary(pair => pair.Key, pair => pair.Value)"), "FeatureSlotRegistry.Replace must clone slot mappings through an enumerable-compatible Dictionary shape.");
 
             const string commandAssemblyLoaderPath = "src/PlugHub.Revit2020/CommandAssemblyLoader.cs";
             Require(File.Exists(FullPath(commandAssemblyLoaderPath)), "runtime routing must keep the net48 direct LoadFrom strategy in CommandAssemblyLoader.cs.");

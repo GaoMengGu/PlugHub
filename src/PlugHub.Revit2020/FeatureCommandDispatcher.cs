@@ -26,7 +26,7 @@ namespace PlugHub.Revit2020
 
         public static Result ExecuteFeature(string featureKey, ExternalCommandData commandData, ref string message, ElementSet elements)
         {
-            var decision = new FeatureExecutionGate().CanExecute(featureKey);
+            var decision = new FeatureExecutionGate().CanExecuteFeatureId(featureKey);
             if (!decision.Allowed)
             {
                 message = decision.Message;
