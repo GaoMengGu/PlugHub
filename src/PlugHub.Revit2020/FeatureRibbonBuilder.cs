@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -35,14 +36,32 @@ namespace PlugHub.Revit2020
 
             if (!composition.Features.Any())
             {
+                FeatureSlotRegistry.Replace(new Dictionary<int, string>(), new List<string>());
                 return;
             }
 
-            foreach (var group in composition.Features.GroupBy(f => new { f.GroupId, f.GroupName, f.GroupOrder }).OrderBy(group => group.Key.GroupOrder).ThenBy(group => group.Key.GroupName))
+            var orderedGroups = composition.Features
+                .GroupBy(f => new { f.GroupId, f.GroupName, f.GroupOrder })
+                .OrderBy(group => group.Key.GroupOrder)
+                .ThenBy(group => group.Key.GroupName)
+                .ToList();
+
+            var orderedFeatures = orderedGroups
+                .SelectMany(group => OrderFeaturesForRibbon(group))
+                .ToList();
+            var slotAssignments = BuildSlotAssignments(orderedFeatures);
+            FeatureSlotRegistry.Replace(slotAssignments.SlotToFeatureId, slotAssignments.SkippedFeatureIds);
+
+            foreach (var skippedFeatureId in slotAssignments.SkippedFeatureIds)
+            {
+                Trace.TraceWarning("PH-FEATURE-SLOT-LIMIT: Feature was not assigned a Revit command slot: " + skippedFeatureId);
+            }
+
+            foreach (var group in orderedGroups)
             {
                 var panelName = SafeDisplayName(group.Key.GroupName, fallbackPanelName);
                 var panel = GetOrCreatePanel(application, tabName, panelName);
-                AddFeatureButtons(panel, OrderFeaturesForRibbon(group));
+                AddFeatureButtons(panel, OrderFeaturesForRibbon(group), slotAssignments.FeatureIdToSlot);
             }
         }
 
@@ -82,12 +101,17 @@ namespace PlugHub.Revit2020
             panel.AddItem(data);
         }
 
-        private void AddFeatureButtons(RibbonPanel panel, IEnumerable<FeatureViewModel> features)
+        private void AddFeatureButtons(RibbonPanel panel, IEnumerable<FeatureViewModel> features, IReadOnlyDictionary<string, int> featureIdToSlot)
         {
             var smallBuffer = new List<PushButtonData>();
             foreach (var feature in features)
             {
-                var data = CreateFeatureButtonData(feature);
+                if (!featureIdToSlot.ContainsKey(feature.FeatureId))
+                {
+                    continue;
+                }
+
+                var data = CreateFeatureButtonData(feature, featureIdToSlot);
                 if (IsSmall(feature.ButtonSize))
                 {
                     smallBuffer.Add(data);
@@ -108,26 +132,22 @@ namespace PlugHub.Revit2020
             AddStackedButtons(panel, smallBuffer);
         }
 
-        private void AddFeatureButton(RibbonPanel panel, FeatureViewModel feature)
-        {
-            AddFeatureButton(panel, CreateFeatureButtonData(feature));
-        }
-
         private void AddFeatureButton(RibbonPanel panel, PushButtonData data)
         {
             if (panel.GetItems().Any(item => string.Equals(item.Name, data.Name, StringComparison.OrdinalIgnoreCase))) return;
             panel.AddItem(data);
         }
 
-        private PushButtonData CreateFeatureButtonData(FeatureViewModel feature)
+        private PushButtonData CreateFeatureButtonData(FeatureViewModel feature, IReadOnlyDictionary<string, int> featureIdToSlot)
         {
             var buttonName = SafeInternalName(feature.FeatureId);
-            var commandTarget = ResolveCommandTarget(feature);
+            var slotId = featureIdToSlot[feature.FeatureId];
+            var commandType = FrameworkFeatureCommandSlots.CommandTypeFor(slotId);
             var data = new PushButtonData(
                 buttonName,
                 SafeDisplayName(feature.DisplayName, "Feature"),
-                commandTarget.AssemblyPath,
-                commandTarget.TypeName);
+                _assemblyPath,
+                commandType.FullName);
 
             data.ToolTip = BuildToolTip(feature);
             data.LongDescription = feature.Description;
@@ -243,32 +263,37 @@ namespace PlugHub.Revit2020
             return string.Equals(value, "small", StringComparison.OrdinalIgnoreCase);
         }
 
-        private CommandTarget ResolveCommandTarget(FeatureViewModel feature)
+        private static SlotAssignmentResult BuildSlotAssignments(IReadOnlyList<FeatureViewModel> orderedFeatures)
         {
-            if (feature == null) throw new ArgumentNullException(nameof(feature));
+            var slotToFeatureId = new Dictionary<int, string>();
+            var featureIdToSlot = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var skippedFeatureIds = new List<string>();
 
-            if (!string.IsNullOrWhiteSpace(feature.CommandType))
+            var slotId = 1;
+            foreach (var feature in orderedFeatures ?? new List<FeatureViewModel>())
             {
-                var assemblyPath = ResolveAssemblyPath(feature.CommandAssembly);
-                if (File.Exists(assemblyPath))
+                if (string.IsNullOrWhiteSpace(feature.FeatureId))
                 {
-                    return new CommandTarget(assemblyPath, feature.CommandType);
+                    continue;
                 }
+
+                if (featureIdToSlot.ContainsKey(feature.FeatureId))
+                {
+                    continue;
+                }
+
+                if (slotId > FeatureSlotRegistry.MaxSlots)
+                {
+                    skippedFeatureIds.Add(feature.FeatureId);
+                    continue;
+                }
+
+                slotToFeatureId[slotId] = feature.FeatureId;
+                featureIdToSlot[feature.FeatureId] = slotId;
+                slotId++;
             }
 
-            return new CommandTarget(_assemblyPath, typeof(FrameworkFeatureCommand).FullName);
-        }
-
-        private string ResolveAssemblyPath(string configuredAssembly)
-        {
-            if (string.IsNullOrWhiteSpace(configuredAssembly))
-            {
-                return _assemblyPath;
-            }
-
-            return Path.IsPathRooted(configuredAssembly)
-                ? configuredAssembly
-                : Path.GetFullPath(Path.Combine(_baseDirectory, configuredAssembly));
+            return new SlotAssignmentResult(slotToFeatureId, featureIdToSlot, skippedFeatureIds);
         }
 
         private ImageSource? LoadFeatureIcon(string iconPath, bool large)
@@ -305,16 +330,21 @@ namespace PlugHub.Revit2020
             }
         }
 
-        private sealed class CommandTarget
+        private sealed class SlotAssignmentResult
         {
-            public CommandTarget(string assemblyPath, string? typeName)
+            public SlotAssignmentResult(
+                IReadOnlyDictionary<int, string> slotToFeatureId,
+                IReadOnlyDictionary<string, int> featureIdToSlot,
+                IReadOnlyList<string> skippedFeatureIds)
             {
-                AssemblyPath = assemblyPath ?? throw new ArgumentNullException(nameof(assemblyPath));
-                TypeName = typeName ?? string.Empty;
+                SlotToFeatureId = slotToFeatureId ?? throw new ArgumentNullException(nameof(slotToFeatureId));
+                FeatureIdToSlot = featureIdToSlot ?? throw new ArgumentNullException(nameof(featureIdToSlot));
+                SkippedFeatureIds = skippedFeatureIds ?? throw new ArgumentNullException(nameof(skippedFeatureIds));
             }
 
-            public string AssemblyPath { get; }
-            public string TypeName { get; }
+            public IReadOnlyDictionary<int, string> SlotToFeatureId { get; }
+            public IReadOnlyDictionary<string, int> FeatureIdToSlot { get; }
+            public IReadOnlyList<string> SkippedFeatureIds { get; }
         }
     }
 }
