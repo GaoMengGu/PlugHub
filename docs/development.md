@@ -88,6 +88,8 @@ CI 发布构建使用 `NuGet` 引用模式，只把 Revit API 当作编译引用
 
 不要把静态验证或本机构建表述为实机通过。
 
+在 Revit 2020 中，PlugHub 不承诺已加载业务 DLL 的真正热重载。Ribbon 按钮会绑定到框架 slot 命令，业务 `commandAssembly` 只在用户点击功能时由调度器加载。后续 shadow copy 加载器会以该调度点为入口，避免 Revit 直接锁住安装目录中的业务 DLL。
+
 ## 配置变更注意事项
 
 - 新增外部插件包时，安装或复制到 `packages`；Revit 启动只扫描 `packages`。

@@ -28,8 +28,9 @@ PlugHub.StaticValidation      # 静态验证入口
 5. `ModuleDiscoveryService` 根据 `assembly` 和 `type` 做模块发现并产生日志。
 6. `FeatureRegistry` 注册 enabled 且 visible 的模块功能，处理重复模块和重复 feature。
 7. `FeatureViewComposer` 按 `workspace` 的 group、category、tag 和 sort 组合功能。
-8. `FeatureRibbonBuilder` 创建 `PlugHub` Ribbon tab、panel 和按钮。
-9. `FrameworkRuntimeState` 保存快照，供命令和 WPF 设置页读取。
+8. `FeatureRibbonBuilder` 创建 `PlugHub` Ribbon tab、panel 和按钮；业务功能按钮绑定到 `PlugHub.Revit2020.dll` 内的稳定 slot 命令。
+9. `FeatureSlotRegistry` 保存 slot 到 feature id 的映射；`FrameworkRuntimeState` 保存快照，供命令调度和 WPF 设置页读取。
+10. 用户点击业务按钮时，slot 命令进入 `FeatureCommandDispatcher`，由框架校验状态并在点击时加载实际 `IExternalCommand`。
 
 ## 配置模型
 
@@ -95,7 +96,7 @@ PlugHub.StaticValidation      # 静态验证入口
 
 模块实现 `IPlugHubModule`，通过 `Describe()` 返回 `ModuleDescriptor` 和 `FeatureDescriptor`。框架会将运行时描述与配置清单合并，用于发现、校验、日志和 Ribbon 组合。
 
-业务功能如果需要调用 Revit API，应在外部业务模块中实现 `IExternalCommand`，并通过 feature 的 `commandAssembly` / `commandType` 指向该命令。已安装插件包中的相对 `commandAssembly` 和 `iconPath` 按模块清单所在目录解析。Revit 适配层负责路由，Framework 不直接执行 Revit API。
+业务功能如果需要调用 Revit API，应在外部业务模块中实现 `IExternalCommand`。业务功能仍通过 feature 的 `commandAssembly` / `commandType` 指向实际 `IExternalCommand`，但 Revit Ribbon 不直接绑定该业务程序集。Revit 2020 适配层先进入稳定框架 slot 命令，再由框架调度器在点击时加载业务命令。已安装插件包中的相对 `commandAssembly` 和 `iconPath` 按模块清单所在目录解析。Revit 适配层负责路由，Framework 不直接执行 Revit API。
 
 ## 关键设计决策
 
