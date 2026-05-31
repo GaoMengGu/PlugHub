@@ -104,8 +104,6 @@ namespace PlugHub.Revit2020
                 Background = Brushes.Transparent,
                 BorderBrush = new SolidColorBrush(Color.FromRgb(220, 226, 234))
             };
-            tabs.Items.Add(BuildFeaturesTab());
-            tabs.Items.Add(BuildGroupsTab());
             tabs.Items.Add(BuildRibbonLayoutTab());
             tabs.Items.Add(BuildRepositoriesTab());
             tabs.Items.Add(BuildLogsTab());
@@ -127,60 +125,6 @@ namespace PlugHub.Revit2020
             return root;
         }
 
-        private TabItem BuildFeaturesTab()
-        {
-            _featuresGrid.ContextMenu = BuildFeatureMenu();
-            _featuresGrid.SelectionChanged += (sender, args) => SyncSelectedFeatureEditor();
-            AttachGridBehaviors(_featuresGrid);
-
-            var layout = new Grid();
-            layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-            var editor = BuildSelectedFeatureEditor();
-            Grid.SetRow(editor, 0);
-            layout.Children.Add(editor);
-            Grid.SetRow(_featuresGrid, 1);
-            layout.Children.Add(_featuresGrid);
-            return BuildTab("功能", layout);
-        }
-
-        private UIElement BuildSelectedFeatureEditor()
-        {
-            _selectedFeatureName.Text = "未选择功能";
-            _selectedFeatureName.MinWidth = 180;
-            _selectedFeatureName.VerticalAlignment = VerticalAlignment.Center;
-            _selectedFeatureName.Foreground = new SolidColorBrush(Color.FromRgb(45, 56, 72));
-
-            _selectedFeatureGroupCombo.ItemsSource = _groupOptions;
-            _selectedFeatureGroupCombo.DisplayMemberPath = nameof(GroupOption.DisplayText);
-            _selectedFeatureGroupCombo.SelectedValuePath = nameof(GroupOption.Id);
-            _selectedFeatureGroupCombo.MinWidth = 180;
-            _selectedFeatureGroupCombo.Height = 26;
-            _selectedFeatureGroupCombo.Margin = new Thickness(6, 0, 16, 0);
-            _selectedFeatureGroupCombo.SelectionChanged += (sender, args) => ApplySelectedFeatureGroup();
-
-            _selectedFeatureButtonSizeCombo.ItemsSource = _buttonSizeOptions;
-            _selectedFeatureButtonSizeCombo.MinWidth = 96;
-            _selectedFeatureButtonSizeCombo.Height = 26;
-            _selectedFeatureButtonSizeCombo.Margin = new Thickness(6, 0, 0, 0);
-            _selectedFeatureButtonSizeCombo.SelectionChanged += (sender, args) => ApplySelectedFeatureButtonSize();
-
-            var editor = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                Margin = new Thickness(8, 8, 8, 6),
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            editor.Children.Add(_selectedFeatureName);
-            editor.Children.Add(EditorLabel("所属分组"));
-            editor.Children.Add(_selectedFeatureGroupCombo);
-            editor.Children.Add(EditorLabel("图标大小"));
-            editor.Children.Add(_selectedFeatureButtonSizeCombo);
-
-            SyncSelectedFeatureEditor();
-            return editor;
-        }
-
         private static TextBlock EditorLabel(string text)
         {
             return new TextBlock
@@ -189,18 +133,6 @@ namespace PlugHub.Revit2020
                 VerticalAlignment = VerticalAlignment.Center,
                 Foreground = new SolidColorBrush(Color.FromRgb(72, 84, 101))
             };
-        }
-
-        private TabItem BuildGroupsTab()
-        {
-            _groupsGrid.ContextMenu = BuildGroupMenu();
-            _groupsGrid.CurrentCellChanged += (sender, args) =>
-            {
-                RefreshFeatureGroupOptions();
-                RefreshFeatureCounts();
-            };
-            AttachGridBehaviors(_groupsGrid);
-            return BuildTab("分组", _groupsGrid);
         }
 
         private TabItem BuildRibbonLayoutTab()
@@ -223,8 +155,7 @@ namespace PlugHub.Revit2020
                 Orientation = Orientation.Horizontal,
                 Margin = new Thickness(0, 0, 0, 8)
             };
-            actions.Children.Add(CreateButton("迁移为高级布局", (sender, args) => MigrateBasicRibbonLayout()));
-            actions.Children.Add(CreateButton("恢复基础布局", (sender, args) => RestoreBasicRibbonLayout()));
+            actions.Children.Add(CreateButton("重置默认布局", (sender, args) => ResetDefaultRibbonLayout()));
             actions.Children.Add(CreateButton("新增面板", (sender, args) => AddRibbonPanelNode()));
             actions.Children.Add(CreateButton("添加功能", (sender, args) => AddSelectedFeatureToRibbonLayout()));
             actions.Children.Add(CreateButton("新增下拉", (sender, args) => AddRibbonContainerNode("pulldownButton")));
@@ -251,7 +182,7 @@ namespace PlugHub.Revit2020
             root.Children.Add(grid);
 
             SyncSelectedRibbonNodeEditor();
-            return BuildTab("Ribbon 布局", root);
+            return BuildTab("布局", root);
         }
 
         private static HierarchicalDataTemplate CreateRibbonLayoutItemTemplate()
@@ -448,7 +379,7 @@ namespace PlugHub.Revit2020
             LoadRepositoryPackageRows(new List<RepositoryPackageDescriptor>());
             LoadPendingPackageOperationRows();
             LoadDiagnosticRows(FrameworkRuntimeState.Current);
-            RefreshStatus("已加载配置。设置窗口会保存根配置和独立模块清单；Ribbon 布局、图标和按钮大小需重启 Revit 重绘。");
+            RefreshStatus("已加载配置。布局、图标和按钮大小需重启 Revit 重绘。");
             LoadCachedRepositoryPackages();
             StartRepositoryUpdateCheck();
         }
@@ -600,11 +531,17 @@ namespace PlugHub.Revit2020
             _viewModel.RibbonFeaturePool.Clear();
 
             var ribbon = WorkspaceView().Ribbon ?? new RibbonConfiguration();
-            foreach (var panel in (ribbon.Panels ?? new List<RibbonPanelLayoutConfiguration>())
+            var panels = (ribbon.Panels ?? new List<RibbonPanelLayoutConfiguration>())
                 .OrderBy(panel => panel.Order)
-                .ThenBy(panel => DisplayName(panel.Name, panel.Id, panel.Id), StringComparer.OrdinalIgnoreCase))
+                .ThenBy(panel => DisplayName(panel.Name, panel.Id, panel.Id), StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            var rows = panels.Any()
+                ? panels.Select(RibbonLayoutNodeRow.FromPanel).ToList()
+                : CreateDefaultRibbonLayoutNodes();
+
+            foreach (var row in rows)
             {
-                _viewModel.RibbonLayoutNodes.Add(RibbonLayoutNodeRow.FromPanel(panel));
+                _viewModel.RibbonLayoutNodes.Add(row);
             }
 
             foreach (var row in _viewModel.Features
@@ -868,7 +805,7 @@ namespace PlugHub.Revit2020
                     Severity = "Info",
                     Code = "PH-SAVED",
                     Scope = "settings",
-                    Message = "配置已保存。仓库设置和 Ribbon 布局会在重启 Revit 后重新加载；此处不显示保存前的运行时日志。"
+                    Message = "配置已保存。仓库设置和布局会在重启 Revit 后重新加载；此处不显示保存前的运行时日志。"
                 }
             });
         }
@@ -899,8 +836,6 @@ namespace PlugHub.Revit2020
         private void Save()
         {
             EndGridEdits();
-            ApplyGroupRows();
-            ApplyFeatureRows();
             ApplyRibbonLayoutRows();
             ApplyRepositoryRows();
 
@@ -908,7 +843,7 @@ namespace PlugHub.Revit2020
 
             LoadPostSaveDiagnosticRows();
             LoadRepositoryRows();
-            RefreshStatus("已保存配置。插件包、分组、功能和仓库设置已写回对应清单；Ribbon 布局、图标、按钮大小需重启 Revit 重绘。");
+            RefreshStatus("已保存配置。布局和仓库设置已写回；布局、图标、按钮大小需重启 Revit 重绘。");
         }
 
         private void ReloadFromDisk()
@@ -1036,42 +971,53 @@ namespace PlugHub.Revit2020
             }
         }
 
-        private void MigrateBasicRibbonLayout()
+        private List<RibbonLayoutNodeRow> CreateDefaultRibbonLayoutNodes()
         {
-            _viewModel.RibbonLayoutNodes.Clear();
-            foreach (var group in _viewModel.Groups.OrderBy(group => group.Order).ThenBy(group => group.Name, StringComparer.OrdinalIgnoreCase))
+            var result = new List<RibbonLayoutNodeRow>();
+            var features = _viewModel.Features
+                .Where(feature => feature.Visible && !string.IsNullOrWhiteSpace(feature.FeatureId))
+                .OrderBy(feature => DisplayName(feature.ModuleName, feature.ModuleId, "默认工具"), StringComparer.OrdinalIgnoreCase)
+                .ThenBy(feature => feature.Order)
+                .ThenBy(feature => feature.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(feature => feature.FeatureId, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            foreach (var moduleGroup in features.GroupBy(feature => string.IsNullOrWhiteSpace(feature.ModuleId) ? "default" : feature.ModuleId, StringComparer.OrdinalIgnoreCase))
             {
+                var panelIndex = result.Count + 1;
+                var firstFeature = moduleGroup.First();
                 var panel = new RibbonLayoutNodeRow
                 {
                     NodeType = "panel",
-                    Id = group.Id,
-                    Text = DisplayName(group.Name, group.Id, group.Id),
-                    Order = group.Order
+                    Id = "default-panel-" + panelIndex,
+                    Text = DisplayName(firstFeature.ModuleName, firstFeature.ModuleId, "默认工具"),
+                    Order = panelIndex * 100
                 };
 
-                foreach (var feature in _viewModel.Features
-                    .Where(feature => feature.Visible && string.Equals(feature.Group, group.Id, StringComparison.OrdinalIgnoreCase))
+                foreach (var feature in moduleGroup
                     .OrderBy(feature => feature.Order)
-                    .ThenBy(feature => feature.Name, StringComparer.OrdinalIgnoreCase))
+                    .ThenBy(feature => feature.Name, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(feature => feature.FeatureId, StringComparer.OrdinalIgnoreCase))
                 {
                     panel.Children.Add(CreateRibbonFeatureNode(feature, panel.Children.Count + 1));
                 }
 
-                if (panel.Children.Count > 0)
-                {
-                    _viewModel.RibbonLayoutNodes.Add(panel);
-                }
+                result.Add(panel);
+            }
+
+            return result;
+        }
+
+        private void ResetDefaultRibbonLayout()
+        {
+            _viewModel.RibbonLayoutNodes.Clear();
+            foreach (var row in CreateDefaultRibbonLayoutNodes())
+            {
+                _viewModel.RibbonLayoutNodes.Add(row);
             }
 
             RefreshRibbonLayoutTree();
-            RefreshStatus("已从当前分组生成高级 Ribbon 布局，保存并重启 Revit 后生效。");
-        }
-
-        private void RestoreBasicRibbonLayout()
-        {
-            _viewModel.RibbonLayoutNodes.Clear();
-            RefreshRibbonLayoutTree();
-            RefreshStatus("已恢复为基础分组布局，保存并重启 Revit 后生效。");
+            RefreshStatus("已按当前已安装功能生成默认布局，保存并重启 Revit 后生效。");
         }
 
         private void AddRibbonPanelNode()
@@ -1153,7 +1099,7 @@ namespace PlugHub.Revit2020
             }
 
             RefreshRibbonLayoutTree();
-            RefreshStatus("已添加功能到 Ribbon 布局，保存并重启 Revit 后生效。");
+            RefreshStatus("已添加功能到布局，保存并重启 Revit 后生效。");
         }
 
         private void RemoveSelectedRibbonLayoutNode()
@@ -1161,7 +1107,7 @@ namespace PlugHub.Revit2020
             var row = _ribbonLayoutTree.SelectedItem as RibbonLayoutNodeRow;
             if (row == null)
             {
-                RefreshStatus("请先选择要删除的 Ribbon 布局项。");
+                RefreshStatus("请先选择要删除的布局项。");
                 return;
             }
 
@@ -1177,7 +1123,7 @@ namespace PlugHub.Revit2020
                 if (RemoveRibbonNode(panel, row))
                 {
                     RefreshRibbonLayoutTree();
-                    RefreshStatus("已删除 Ribbon 布局项，保存并重启 Revit 后生效。");
+                    RefreshStatus("已删除布局项，保存并重启 Revit 后生效。");
                     return;
                 }
             }
@@ -1210,7 +1156,7 @@ namespace PlugHub.Revit2020
             var row = _ribbonLayoutTree.SelectedItem as RibbonLayoutNodeRow;
             if (row == null)
             {
-                RefreshStatus("请先选择一个 Ribbon 布局项。");
+                RefreshStatus("请先选择一个布局项。");
                 return;
             }
 
@@ -1221,7 +1167,7 @@ namespace PlugHub.Revit2020
             row.DefaultFeatureId = _selectedRibbonNodeDefaultFeatureIdText.Text ?? string.Empty;
             row.Size = NormalizeButtonSize(Convert.ToString(_selectedRibbonNodeSizeCombo.SelectedItem) ?? row.Size);
             RefreshRibbonLayoutTree();
-            RefreshStatus("已更新 Ribbon 布局项属性，保存并重启 Revit 后生效。");
+            RefreshStatus("已更新布局项属性，保存并重启 Revit 后生效。");
         }
 
         private RibbonLayoutNodeRow? SelectedRibbonContainerOrPanel()
@@ -1655,6 +1601,7 @@ namespace PlugHub.Revit2020
                 _moduleDocuments = _configurationStore.LoadModuleDocuments(_configuration);
                 LoadGroupRows();
                 LoadFeatureRows();
+                LoadRibbonLayoutRows();
                 RefreshStatus(result.Message);
             }
             catch (Exception ex)
@@ -1713,7 +1660,7 @@ namespace PlugHub.Revit2020
             RefreshGroupPositions();
             RefreshFeatureGroupOptions();
             _groupsGrid.SelectedItem = row;
-            RefreshStatus("已新增自定义分组，可在功能页把功能移动到该分组。");
+            RefreshStatus("已新增自定义分组，可在布局页重置默认布局或手动添加功能。");
         }
 
         private void RemoveSelectedGroup()
@@ -1724,7 +1671,7 @@ namespace PlugHub.Revit2020
             var isInUse = _viewModel.Features.Any(feature => string.Equals(feature.Group, row.Id, StringComparison.OrdinalIgnoreCase));
             if (isInUse)
             {
-                RefreshStatus("该分组仍有功能使用。请先在功能页把功能移动到其他分组。");
+                RefreshStatus("该分组仍有功能使用。请先调整布局或功能来源后再删除。");
                 return;
             }
 

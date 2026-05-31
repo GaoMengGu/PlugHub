@@ -91,9 +91,9 @@ dotnet build src\PlugHub.Revit2020\PlugHub.Revit2020.csproj /p:RevitApiReference
 - 把插件包安装到 `packages` 后，出现对应外部模块 panel。
 - 在设置页仓库中浏览公开或私有仓库，选择安装、更新、卸载后，插件包文件只落到 `packages`；新增插件、卸载插件和 Ribbon 结构变化后重启 Revit 再验收 Ribbon。未被占用的业务 DLL 更新会直接替换 `packages` 文件，不应显示为待重启。
 - 「设置」打开 WPF 窗口，关闭后 Revit 可继续操作。
-- 功能显示名、开关、所属分组、图标、大小、排序保存后能写回配置；插件包整体设置不在设置页直接编辑。
-- 自定义分组通过分组页右键菜单新增或删除；删除前必须先移走该分组下的功能。
-- Ribbon 结构、图标和大小调整后，重启 Revit 能看到新布局。
+- 布局页是唯一的 Ribbon 布局调整入口；功能池来自已安装插件包，布局树保存到当前 workspace 的 `ribbon.panels`。
+- 没有已保存布局时，设置页会按框架默认策略从当前已安装功能生成默认布局；用户也可以在布局页手动重置默认布局。
+- 布局页调整 Ribbon 结构、图标和大小后，重启 Revit 能看到新布局。
 - Ribbon 结构包括 panel、PushButton、PulldownButton、SplitButton 和 Stack；设置页保存后不会尝试在当前 Revit 会话中实时替换已有 Ribbon 控件，必须重启 Revit 后验收。
 - 外部模块按钮能进入对应 Revit API 命令，例如分离后的 `Tee/Tap 切换` 和 `批量材质参数`。
 

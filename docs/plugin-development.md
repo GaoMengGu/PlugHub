@@ -41,6 +41,6 @@ PlugHub 插件包通过 `package.json` 或 `*.package.json` 声明模块和功�
 - Revit 2020 不支持通过 ALC 卸载已加载程序集。
 - 更新已加载 DLL 后，仍建议重启 Revit 验收。
 
-## Ribbon 布局边界
+## 布局边界
 
-插件包清单只声明功能，不直接声明用户的高级 Ribbon 容器。高级 Ribbon 布局由用户设置保存，引用已安装 featureId。删除布局项只会移除 Ribbon 引用，不会卸载插件包或删除 feature。
+插件包清单只声明功能，不直接声明用户的高级 Ribbon 容器。高级布局由用户设置保存，引用已安装 featureId。删除布局项只会移除 Ribbon 引用，不会卸载插件包或删除 feature。默认布局由框架根据已安装功能生成，后续可在框架层统一演进插件包 JSON 总体格式。

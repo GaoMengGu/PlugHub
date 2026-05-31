@@ -83,9 +83,9 @@ PlugHub.StaticValidation      # 静态验证入口
 
 ### Ribbon layout
 
-PlugHub 将功能定义和 Ribbon 布局分离。插件包清单中的 feature 仍是可执行命令的权威来源；用户设置中的 Ribbon layout 决定这些 feature 以 PushButton、PulldownButton、SplitButton 或 Stack 的方式显示。
+PlugHub 将功能定义和布局分离。插件包清单中的 feature 仍是可执行命令的权威来源；用户设置中的 Ribbon layout 决定这些 feature 以 PushButton、PulldownButton、SplitButton 或 Stack 的方式显示。
 
-高级布局配置保存在当前 workspace 的 `ribbon.panels` 下。没有 `ribbon.panels` 时，框架继续按 `ViewGroupConfiguration` 和 `FeatureConfiguration.ButtonSize` 使用旧的分组布局。
+高级布局配置保存在当前 workspace 的 `ribbon.panels` 下。没有 `ribbon.panels` 时，框架按当前已安装功能生成默认布局：以插件包为默认 panel，feature 默认生成 PushButton，并按运行时功能顺序排列。这个默认布局属于框架策略，不要求插件包 JSON 预先声明高级容器。
 
 Framework 层只组合中立布局模型，不引用 Revit API。`PlugHub.Revit2020` 负责把中立布局渲染成 Revit Ribbon 控件，并继续通过稳定 slot 命令路由到业务功能。
 
@@ -93,9 +93,7 @@ Framework 层只组合中立布局模型，不引用 Revit API。`PlugHub.Revit2
 
 设置入口是 `FrameworkSettingsCommand`，打开 `FrameworkSettingsWindow`。当前设置页提供：
 
-- 功能：显示/隐藏、显示名、所属分组、按钮大小、图标路径和拖拽/右键排序；不在 Revit 设置页新建空功能，也不提供插件包整体设置页。
-- 分组：集中管理 Revit Ribbon panel 的显示名和顺序，支持通过右键菜单新增或删除未使用的自定义分组，功能通过「所属分组」决定进入哪个 panel。
-- Ribbon 布局：在功能池和布局树之间组合 PushButton、PulldownButton、SplitButton 和 Stack，布局保存到当前 workspace；恢复基础布局只清空高级布局配置，不卸载插件包或删除 feature。
+- 布局：布局页是唯一的 Ribbon 布局调整入口。在功能池和布局树之间组合 PushButton、PulldownButton、SplitButton 和 Stack，布局保存到当前 workspace；重置默认布局会按框架默认策略重新生成布局，不卸载插件包或删除 feature。
 - 仓库：通过 `类型` 列选择 GitHub 或 Gitee，通过 `可见性` 列选择公开或私有，维护仓库、分支和私有仓库 `apiKey`；用户可手动浏览仓库中的 `package.json` 和 `*.package.json`。一个清单中的多个 module 会作为多个插件行展示，安装和更新由 PlugHub 拆成单插件本地包，只复制所选插件的清单及其引用的 DLL/资源到本地 `packages`。右键菜单只提供一个 `新增仓库` 入口，新增后在表格中调整类型和可见性。
 - 日志：只读展示当前运行时日志。
 

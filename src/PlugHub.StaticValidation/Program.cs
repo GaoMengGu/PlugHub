@@ -298,9 +298,11 @@ namespace PlugHub.StaticValidation
             var architecture = ReadText("docs/architecture.md");
             var development = ReadText("docs/development.md");
             var pluginDevelopment = ReadText("docs/plugin-development.md");
-            Require(architecture.Contains("Ribbon layout") || architecture.Contains("Ribbon 布局"), "architecture docs must describe advanced Ribbon layout.");
+            Require(architecture.Contains("Ribbon layout") || architecture.Contains("布局页"), "architecture docs must describe advanced Ribbon layout.");
             Require(architecture.Contains("PulldownButton") && architecture.Contains("SplitButton"), "architecture docs must mention advanced Revit Ribbon controls.");
+            Require(architecture.Contains("布局页是唯一") && !architecture.Contains("- 功能：") && !architecture.Contains("- 分组："), "architecture docs must describe layout as the single Ribbon layout entry.");
             Require(development.Contains("Ribbon 结构") && development.Contains("重启 Revit"), "development docs must state Ribbon layout changes require Revit restart.");
+            Require(development.Contains("布局页") && !development.Contains("分组页"), "development docs must describe layout-page validation instead of feature/group tabs.");
             Require(pluginDevelopment.Contains("插件包只声明功能") || pluginDevelopment.Contains("插件包清单只声明功能"), "plugin development docs must keep package manifests separate from user Ribbon layout.");
         }
 
@@ -1021,7 +1023,7 @@ namespace PlugHub.StaticValidation
             Require(ribbonBuilder.Contains("LoadFeatureIcon") && ribbonBuilder.Contains("LargeImage"), "configured feature icons must be applied to Revit ribbon buttons.");
             Require(ribbonBuilder.Contains("FrameworkSettingsCommand"), "framework Ribbon panel must expose settings command.");
 
-            foreach (var token in new[] { "class FrameworkSettingsWindow", ": Window", "TabControl", "DataGrid", "BuildFeaturesTab", "BuildGroupsTab", "BuildRepositoriesTab", "BuildLogsTab", "RepositoryRow", "RepositoryPackageRow", "GroupRow", "ReloadFromDisk", "ContextMenu", "DragDrop", "Microsoft.Win32.OpenFileDialog" })
+            foreach (var token in new[] { "class FrameworkSettingsWindow", ": Window", "TabControl", "DataGrid", "BuildRibbonLayoutTab", "BuildRepositoriesTab", "BuildLogsTab", "RepositoryRow", "RepositoryPackageRow", "GroupRow", "ReloadFromDisk", "ContextMenu", "DragDrop", "Microsoft.Win32.OpenFileDialog" })
             {
                 Require(settingsWindow.Contains(token), "WPF settings UI token missing: " + token);
             }
@@ -1029,10 +1031,14 @@ namespace PlugHub.StaticValidation
             Require(settingsWindow.Contains("BuildRibbonLayoutTab"), "settings window must expose a Ribbon layout tab.");
             Require(settingsWindow.Contains("LoadRibbonLayoutRows"), "settings window must load ribbon layout rows.");
             Require(settingsWindow.Contains("ApplyRibbonLayoutRows"), "settings window must save ribbon layout rows.");
-            Require(settingsWindow.Contains("MigrateBasicRibbonLayout"), "settings window must migrate basic layout into advanced ribbon layout.");
-            Require(settingsWindow.Contains("RestoreBasicRibbonLayout"), "settings window must restore basic group layout.");
+            Require(settingsWindow.Contains("ResetDefaultRibbonLayout"), "settings window must reset to the framework default layout.");
+            Require(settingsWindow.Contains("CreateDefaultRibbonLayoutNodes"), "settings window must create a framework-owned default layout.");
             Require(settingsWindow.Contains("TreeView"), "settings window must use TreeView for ribbon layout editing.");
-            Require(settingsWindow.Contains("Ribbon 布局"), "settings window must label the ribbon layout tab.");
+            Require(settingsWindow.Contains("BuildTab(\"布局\""), "settings window must label the ribbon layout tab as layout.");
+            Require(!settingsWindow.Contains("tabs.Items.Add(BuildFeaturesTab())"), "settings window must not expose the feature settings tab.");
+            Require(!settingsWindow.Contains("tabs.Items.Add(BuildGroupsTab())"), "settings window must not expose the group settings tab.");
+            Require(!settingsWindow.Contains("迁移为高级布局") && !settingsWindow.Contains("MigrateBasicRibbonLayout"), "settings window must not expose migration-based layout setup.");
+            Require(!settingsWindow.Contains("恢复基础布局") && !settingsWindow.Contains("RestoreBasicRibbonLayout"), "settings window must not expose legacy group layout restore.");
 
             Require(settingsWindow.Contains("SettingsConfigurationStore"), "FrameworkSettingsWindow must use SettingsConfigurationStore.");
             Require(settingsWindow.Contains("ExportLogs"), "FrameworkSettingsWindow must expose log export.");
@@ -1120,9 +1126,9 @@ namespace PlugHub.StaticValidation
         {
             var settingsWindow = ReadText("src/PlugHub.Revit2020/FrameworkSettingsWindow.cs");
 
-            foreach (var token in new[] { "插件包", "分组", "所属分组", "GroupOptionsForFeatureRows", "ApplyGroupRows", "RefreshGroupPositions" })
+            foreach (var token in new[] { "功能池", "布局树", "ResetDefaultRibbonLayout", "CreateDefaultRibbonLayoutNodes", "ApplyRibbonLayoutRows", "RefreshRibbonLayoutTree" })
             {
-                Require(settingsWindow.Contains(token), "settings must manage plugin packages, groups, and feature placement: " + token);
+                Require(settingsWindow.Contains(token), "settings must manage Ribbon layout from the layout tab: " + token);
             }
 
             foreach (var forbidden in new[] { "新建模块", "新建功能", "private void AddModule(", "private void AddFeature(", "CreateModule(", "CreateFeature(", "所属模块", "ModuleIdsForFeatureRows" })
@@ -1131,9 +1137,8 @@ namespace PlugHub.StaticValidation
             }
 
             Require(!settingsWindow.Contains("TextColumn(nameof(ModuleRow.Order)") && !settingsWindow.Contains("TextColumn(nameof(FeatureRow.Order)") && !settingsWindow.Contains("TextColumn(nameof(GroupRow.Order)"), "settings must not expose raw numeric order columns.");
-            Require(settingsWindow.Contains("PositionText") && settingsWindow.Contains("RefreshPluginPackagePositions") && settingsWindow.Contains("RefreshFeaturePositions") && settingsWindow.Contains("RefreshGroupPositions"), "settings must show human-readable position text and maintain drag/up-down sorting.");
-            Require(settingsWindow.Contains("AddCustomGroup") && settingsWindow.Contains("RemoveSelectedGroup"), "settings must allow custom workspace groups to be created and removed.");
-            Require(!settingsWindow.Contains("CreateButton(\"新增分组\"") && !settingsWindow.Contains("CreateButton(\"删除分组\""), "custom group create/delete actions must remain in the right-click menu only.");
+            Require(settingsWindow.Contains("PositionText") && settingsWindow.Contains("RefreshPluginPackagePositions") && settingsWindow.Contains("RefreshFeaturePositions") && settingsWindow.Contains("RefreshGroupPositions"), "settings internal rows must show human-readable position text and maintain runtime ordering.");
+            Require(!settingsWindow.Contains("BuildTab(\"功能\"") && !settingsWindow.Contains("BuildTab(\"分组\""), "settings must not expose separate feature or group tabs.");
             foreach (var rowClass in new[] { "ModuleRow", "FeatureRow", "GroupRow", "RepositoryRow", "RepositoryPackageRow", "DiagnosticRow" })
             {
                 Require(!settingsWindow.Contains("private sealed class " + rowClass), rowClass + " must be extracted from FrameworkSettingsWindow.");
@@ -1177,8 +1182,8 @@ namespace PlugHub.StaticValidation
             var ribbonBuilder = ReadText("src/PlugHub.Revit2020/FeatureRibbonBuilder.cs");
             var ribbonLayoutComposer = ReadText("src/PlugHub.Framework/Composition/RibbonLayoutComposer.cs");
 
-            Require(settingsWindow.Contains("BuildSelectedFeatureEditor") && settingsWindow.Contains("_selectedFeatureGroupCombo") && settingsWindow.Contains("_selectedFeatureButtonSizeCombo"), "feature group and button size editors must be ordinary selected-feature combo boxes.");
-            Require(settingsWindow.Contains("ApplySelectedFeatureGroup") && settingsWindow.Contains("ApplySelectedFeatureButtonSize"), "selected feature combo boxes must write group and button size back to the selected row.");
+            Require(settingsWindow.Contains("LoadFeatureRows") && settingsWindow.Contains("LoadGroupRows"), "settings must load feature and group rows as layout data sources.");
+            Require(settingsWindow.Contains("AddSelectedFeatureToRibbonLayout") && settingsWindow.Contains("BuildRibbonNodePropertyPanel"), "layout tab must add features and edit selected layout nodes.");
             Require(settingsWindow.Contains("RefreshFeaturePositionsByGroup"), "feature ordering must be recalculated per workspace group.");
             Require(settingsWindow.Contains("SortFeatureRowsForRuntimeOrder"), "feature grid must be ordered the same way runtime ribbon composition is ordered.");
             Require(settingsWindow.Contains("IsInteractiveGridEditor"), "row drag behavior must ignore combo boxes, text boxes, check boxes, and buttons.");
