@@ -145,6 +145,31 @@ namespace PlugHub.Framework.Configuration
     {
         public string TabName { get; set; } = "PlugHub";
         public string FallbackPanelName { get; set; } = "Framework";
+        public string LayoutVersion { get; set; } = string.Empty;
+        public List<RibbonPanelLayoutConfiguration> Panels { get; set; } = new List<RibbonPanelLayoutConfiguration>();
+    }
+
+    public sealed class RibbonPanelLayoutConfiguration
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public int Order { get; set; }
+        public List<RibbonItemLayoutConfiguration> Items { get; set; } = new List<RibbonItemLayoutConfiguration>();
+    }
+
+    public sealed class RibbonItemLayoutConfiguration
+    {
+        public string Type { get; set; } = string.Empty;
+        public string Id { get; set; } = string.Empty;
+        public string Text { get; set; } = string.Empty;
+        public string FeatureId { get; set; } = string.Empty;
+        public string DefaultFeatureId { get; set; } = string.Empty;
+        public string Size { get; set; } = string.Empty;
+        public string IconPath { get; set; } = string.Empty;
+        public string TextOverride { get; set; } = string.Empty;
+        public string IconPathOverride { get; set; } = string.Empty;
+        public int Order { get; set; }
+        public List<RibbonItemLayoutConfiguration> Items { get; set; } = new List<RibbonItemLayoutConfiguration>();
     }
 
     public sealed class ViewGroupConfiguration

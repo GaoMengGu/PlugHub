@@ -41,6 +41,7 @@ namespace PlugHub.StaticValidation
                 ValidateCoreContracts();
                 ValidateContractsMultiTargetReadiness();
                 ValidatePackageManifestSchemaAndCompatibility();
+                ValidateRibbonLayoutConfigurationModels();
                 ValidateRevitRibbonAdapter();
                 ValidateRuntimeRoutingSpecification();
                 ValidateRevit2025AlcReadinessSpecification();
@@ -569,6 +570,18 @@ namespace PlugHub.StaticValidation
         private static string ReadInstalledManifest(string path)
         {
             return File.ReadAllText(path).Replace("\\/", "/");
+        }
+
+        private static void ValidateRibbonLayoutConfigurationModels()
+        {
+            var configurationModels = ReadText("src/PlugHub.Framework/Configuration/ConfigurationModels.cs");
+            Require(configurationModels.Contains("public string LayoutVersion { get; set; }"), "RibbonConfiguration must expose LayoutVersion.");
+            Require(configurationModels.Contains("public List<RibbonPanelLayoutConfiguration> Panels { get; set; }"), "RibbonConfiguration must expose Panels.");
+            Require(configurationModels.Contains("public sealed class RibbonPanelLayoutConfiguration"), "Ribbon panel layout configuration must exist.");
+            Require(configurationModels.Contains("public sealed class RibbonItemLayoutConfiguration"), "Ribbon item layout configuration must exist.");
+            Require(configurationModels.Contains("public string Type { get; set; }"), "Ribbon item layout configuration must expose Type.");
+            Require(configurationModels.Contains("public string FeatureId { get; set; }"), "Ribbon item layout configuration must expose FeatureId.");
+            Require(configurationModels.Contains("public string DefaultFeatureId { get; set; }"), "Ribbon item layout configuration must expose DefaultFeatureId.");
         }
 
         private static void ValidateRevitRibbonAdapter()
