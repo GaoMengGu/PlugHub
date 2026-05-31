@@ -316,9 +316,20 @@ namespace PlugHub.Framework.Packages
                     return PackageRepositoryOperationResult.Failed("插件包已写入 packages，但清理旧插件包清单失败。请重启 Revit 后重试: " + cleanupError);
                 }
 
-                QueuePendingOperation(baseDirectory, PendingPackageOperation.Restart(package.PackageId, moduleId, installDirectory));
                 var cleanupMessage = cleanedManifests > 0 ? " 已同步清理旧整包清单中的重复插件声明。" : string.Empty;
-                return PackageRepositoryOperationResult.Succeeded((replaceExisting ? "插件包已更新。请重启 Revit 后加载新版本: " : "插件包已安装。请重启 Revit 后加载: ") + package.PackageId + cleanupMessage);
+                if (replaceExisting)
+                {
+                    if (!targetDirectoryExists || cleanedManifests > 0)
+                    {
+                        QueuePendingOperation(baseDirectory, PendingPackageOperation.Restart(package.PackageId, moduleId, installDirectory));
+                        return PackageRepositoryOperationResult.Succeeded("插件包已更新。请重启 Revit 后加载新版本: " + package.PackageId + cleanupMessage);
+                    }
+
+                    return PackageRepositoryOperationResult.Succeeded("插件包已更新。未检测到安装目录 DLL 占用，后续点击会从更新后的文件加载: " + package.PackageId + cleanupMessage);
+                }
+
+                QueuePendingOperation(baseDirectory, PendingPackageOperation.Restart(package.PackageId, moduleId, installDirectory));
+                return PackageRepositoryOperationResult.Succeeded("插件包已安装。请重启 Revit 后加载: " + package.PackageId + cleanupMessage);
             }
             catch (IOException ex)
             {
@@ -352,7 +363,7 @@ namespace PlugHub.Framework.Packages
                     var packageId = module.Id;
                     var installedDirectory = InstalledPackageDirectory(baseDirectory, packageId);
                     var installedVersion = InstalledPackageVersion(baseDirectory, installedDirectory, module.Id);
-                    var displayName = FirstNonEmpty(module.DisplayName, module.Name, packageId);
+                    var displayName = RepositoryPackageDisplayName(module, packageId);
 
                     return new RepositoryPackageDescriptor
                     {
@@ -1180,6 +1191,25 @@ namespace PlugHub.Framework.Packages
         private static string FirstNonEmpty(params string?[] values)
         {
             return values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
+        }
+
+        private static string RepositoryPackageDisplayName(ModuleConfiguration module, string fallback)
+        {
+            var featureNames = (module.Features ?? new List<FeatureConfiguration>())
+                .OrderBy(feature => feature.Order)
+                .ThenBy(feature => feature.Id, StringComparer.OrdinalIgnoreCase)
+                .Select(feature => FirstNonEmpty(feature.DisplayName, feature.Name, feature.Id))
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(3)
+                .ToList();
+
+            if (featureNames.Count > 0)
+            {
+                return string.Join("、", featureNames);
+            }
+
+            return FirstNonEmpty(module.DisplayName, module.Name, fallback);
         }
 
         private static void AddDiagnostic(ICollection<DiagnosticMessage> diagnostics, string repositoryId, string code, string message)

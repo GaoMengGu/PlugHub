@@ -796,6 +796,36 @@ namespace PlugHub.StaticValidation
             var tempRoot = Path.Combine(Path.GetTempPath(), "PlugHub.StaticValidation", Guid.NewGuid().ToString("N"));
             try
             {
+                var directInstalledDirectory = Path.Combine(tempRoot, "packages", "direct-update");
+                var directSourceDirectory = Path.Combine(tempRoot, "repository-cache", "direct-update");
+                Directory.CreateDirectory(directInstalledDirectory);
+                Directory.CreateDirectory(directSourceDirectory);
+
+                var directInstalledDll = Path.Combine(directInstalledDirectory, "DirectUpdate.dll");
+                File.WriteAllText(directInstalledDll, "old");
+                File.WriteAllText(Path.Combine(directInstalledDirectory, "package.json"), "{\"schemaVersion\":\"1.0\",\"version\":\"1.0.0\",\"modules\":[{\"id\":\"direct-update\",\"assembly\":\"DirectUpdate.dll\",\"type\":\"Demo.DirectUpdateModule\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
+                File.WriteAllText(Path.Combine(directSourceDirectory, "DirectUpdate.dll"), "replacement");
+                File.WriteAllText(Path.Combine(directSourceDirectory, "package.json"), "{\"schemaVersion\":\"1.0\",\"version\":\"2.0.0\",\"modules\":[{\"id\":\"direct-update\",\"assembly\":\"DirectUpdate.dll\",\"type\":\"Demo.DirectUpdateModule\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
+
+                var directDescriptor = new PlugHub.Framework.Packages.RepositoryPackageDescriptor
+                {
+                    RepositoryId = "test-repository",
+                    PackageId = "direct-update",
+                    ModuleId = "direct-update",
+                    DisplayName = "Direct Update",
+                    ManifestPath = Path.Combine(directSourceDirectory, "package.json"),
+                    SourceDirectory = directSourceDirectory,
+                    InstallDirectory = directInstalledDirectory,
+                    IsInstalled = true
+                };
+
+                var directService = new PlugHub.Framework.Packages.PackageRepositoryService();
+                var directUpdateResult = directService.Update(tempRoot, directDescriptor);
+                Require(directUpdateResult.Success, "updating an unlocked package must succeed immediately: " + directUpdateResult.Message);
+                Require(File.ReadAllText(directInstalledDll) == "replacement", "unlocked package update must replace files immediately.");
+                var directRefreshed = directService.RefreshInstallState(tempRoot, directDescriptor);
+                Require(string.IsNullOrWhiteSpace(directRefreshed.PendingOperation), "unlocked package update must not leave a restart pending operation.");
+
                 var installedDirectory = Path.Combine(tempRoot, "packages", "locked-update");
                 var sourceDirectory = Path.Combine(tempRoot, "repository-cache", "locked-update");
                 Directory.CreateDirectory(installedDirectory);
@@ -911,6 +941,7 @@ namespace PlugHub.StaticValidation
 
                 var ductPackage = packages.Single(package => package.ModuleId == "duct-package");
                 var familyPackage = packages.Single(package => package.ModuleId == "family-package");
+                Require(ductPackage.DisplayName == "Switch", "repository package rows must display the feature name instead of the module or group name.");
                 var installResult = service.Install(tempRoot, ductPackage);
                 Require(installResult.Success, "repository package install should succeed: " + installResult.Message);
 
