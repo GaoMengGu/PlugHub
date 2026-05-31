@@ -1,9 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Web.Script.Serialization;
 using PlugHub.Contracts.Modules;
 using PlugHub.Framework.Configuration;
 using PlugHub.Framework.Diagnostics;
@@ -13,87 +11,45 @@ namespace PlugHub.Framework.Packages
     public sealed class PackageRepositoryService
     {
         private const string DefaultPackageManifestName = "package.json";
-        private const string AdjacentPackageManifestPattern = "*.package.json";
         private const string PackagesDirectoryName = "packages";
         private const string PendingOperationsFileName = "pending-operations.json";
 
-        private readonly JavaScriptSerializer _serializer = new JavaScriptSerializer();
         private readonly PendingPackageOperationStore _pendingOperations = new PendingPackageOperationStore();
         private readonly RepositoryCredentialService _credentialService = new RepositoryCredentialService();
+        private readonly PackageManifestReader _manifestReader;
+        private readonly RepositoryBrowser _repositoryBrowser;
+        private readonly PackageInstallService _packageInstallService;
+
+        public PackageRepositoryService()
+        {
+            _manifestReader = new PackageManifestReader();
+            _repositoryBrowser = new RepositoryBrowser(
+                _manifestReader,
+                _credentialService,
+                InstalledPackageVersion,
+                IsModuleInstalled,
+                PendingOperationFor);
+            _packageInstallService = new PackageInstallService(_manifestReader);
+        }
 
         public IReadOnlyList<RepositoryPackageDescriptor> Browse(string baseDirectory, PackageRepositoryConfiguration repository, out IReadOnlyList<DiagnosticMessage> diagnostics)
         {
-            if (string.IsNullOrWhiteSpace(baseDirectory)) throw new ArgumentException("Base directory is required.", nameof(baseDirectory));
-            if (repository == null) throw new ArgumentNullException(nameof(repository));
-
-            var messages = new List<DiagnosticMessage>();
-            diagnostics = messages;
-
-            if (!repository.Enabled)
-            {
-                AddDiagnostic(messages, repository.Id, "PH-REPOSITORY-DISABLED", "Repository is disabled.");
-                return new List<RepositoryPackageDescriptor>();
-            }
-
-            if (string.Equals(repository.Visibility, "private", StringComparison.OrdinalIgnoreCase)
-                && string.IsNullOrWhiteSpace(_credentialService.ResolveApiKey(repository)))
-            {
-                AddDiagnostic(messages, repository.Id, "PH-REPOSITORY-APIKEY", "Private repository requires apiKey.");
-                return new List<RepositoryPackageDescriptor>();
-            }
-
-            var cacheDirectory = RepositoryCacheDirectory(baseDirectory, repository);
-            if (!SyncRepositoryCache(repository, cacheDirectory, messages))
-            {
-                return new List<RepositoryPackageDescriptor>();
-            }
-
-            var packages = BrowseCached(baseDirectory, repository.Id, cacheDirectory, out var browseDiagnostics);
-            diagnostics = messages.Concat(browseDiagnostics).ToList();
-            return packages;
+            return _repositoryBrowser.Browse(baseDirectory, repository, out diagnostics);
         }
 
         public IReadOnlyList<RepositoryPackageDescriptor> BrowseCached(string baseDirectory, string repositoryId, string cacheDirectory, out IReadOnlyList<DiagnosticMessage> diagnostics)
         {
-            if (string.IsNullOrWhiteSpace(baseDirectory)) throw new ArgumentException("Base directory is required.", nameof(baseDirectory));
-            if (string.IsNullOrWhiteSpace(cacheDirectory)) throw new ArgumentException("Cache directory is required.", nameof(cacheDirectory));
-
-            var messages = new List<DiagnosticMessage>();
-            diagnostics = messages;
-
-            var packages = new List<RepositoryPackageDescriptor>();
-            foreach (var manifestPath in FindPackageManifests(cacheDirectory))
-            {
-                packages.AddRange(ReadPackagesFromManifest(manifestPath, repositoryId, baseDirectory));
-            }
-
-            if (packages.Count == 0)
-            {
-                AddDiagnostic(messages, repositoryId, "PH-REPOSITORY-MANIFEST", "No PlugHub package manifests were found in repository.");
-            }
-
-            return packages
-                .GroupBy(package => package.PackageId + "\n" + package.ModuleId, StringComparer.OrdinalIgnoreCase)
-                .Select(group => group.First())
-                .OrderBy(package => package.DisplayName, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(package => package.PackageId, StringComparer.OrdinalIgnoreCase)
-                .ToList();
+            return _repositoryBrowser.BrowseCached(baseDirectory, repositoryId, cacheDirectory, out diagnostics);
         }
 
         public IReadOnlyList<RepositoryPackageDescriptor> BrowseCached(string baseDirectory, PackageRepositoryConfiguration repository, out IReadOnlyList<DiagnosticMessage> diagnostics)
         {
-            if (repository == null) throw new ArgumentNullException(nameof(repository));
-            diagnostics = new List<DiagnosticMessage>();
-            var cacheDirectory = RepositoryCacheDirectory(baseDirectory, repository);
-            return Directory.Exists(cacheDirectory)
-                ? BrowseCached(baseDirectory, repository.Id, cacheDirectory, out diagnostics)
-                : new List<RepositoryPackageDescriptor>();
+            return _repositoryBrowser.BrowseCached(baseDirectory, repository, out diagnostics);
         }
 
         public bool HasRepositoryCache(string baseDirectory, PackageRepositoryConfiguration repository)
         {
-            if (repository == null) return false;
-            return Directory.Exists(RepositoryCacheDirectory(baseDirectory, repository));
+            return _repositoryBrowser.HasRepositoryCache(baseDirectory, repository);
         }
 
         public IReadOnlyList<DiagnosticMessage> ApplyPendingOperations(string baseDirectory)
@@ -285,7 +241,7 @@ namespace PlugHub.Framework.Packages
                 Directory.CreateDirectory(installRoot);
                 Directory.CreateDirectory(temporaryRoot);
 
-                var installResult = InstallPackagePayload(package, stagingDirectory);
+                var installResult = _packageInstallService.InstallPackagePayload(package, stagingDirectory);
                 if (!installResult.Success)
                 {
                     DeleteDirectoryQuietly(stagingDirectory);
@@ -376,174 +332,6 @@ namespace PlugHub.Framework.Packages
             }
         }
 
-        private IReadOnlyList<RepositoryPackageDescriptor> ReadPackagesFromManifest(string manifestPath, string repositoryId, string baseDirectory)
-        {
-            if (!TryReadManifest(manifestPath, out var root, out var modules))
-            {
-                return new List<RepositoryPackageDescriptor>();
-            }
-
-            var sourceDirectory = Path.GetDirectoryName(manifestPath) ?? string.Empty;
-            var version = StringValue(root, "version");
-            var moduleList = modules.Modules ?? new List<ModuleConfiguration>();
-
-            return moduleList
-                .Where(module => !string.IsNullOrWhiteSpace(module.Id))
-                .Select(module =>
-                {
-                    var packageId = module.Id;
-                    var installedDirectory = InstalledPackageDirectory(baseDirectory, packageId);
-                    var installedVersion = InstalledPackageVersion(baseDirectory, installedDirectory, module.Id);
-                    var displayName = RepositoryPackageDisplayName(module, packageId);
-
-                    return new RepositoryPackageDescriptor
-                    {
-                        RepositoryId = repositoryId ?? string.Empty,
-                        PackageId = packageId,
-                        ModuleId = module.Id,
-                        DisplayName = displayName,
-                        Version = version,
-                        ManifestPath = manifestPath,
-                        SourceDirectory = sourceDirectory,
-                        InstallDirectory = installedDirectory,
-                        IsInstalled = IsModuleInstalled(baseDirectory, installedDirectory, module.Id),
-                        InstalledVersion = installedVersion,
-                        PendingOperation = PendingOperationFor(baseDirectory, packageId, module.Id)
-                    };
-                })
-                .ToList();
-        }
-
-        private bool SyncRepositoryCache(PackageRepositoryConfiguration repository, string cacheDirectory, ICollection<DiagnosticMessage> diagnostics)
-        {
-            if (!IsSupportedRepositoryProvider(repository.Provider))
-            {
-                AddDiagnostic(diagnostics, repository.Id, "PH-REPOSITORY-PROVIDER", "Unsupported repository provider: " + repository.Provider);
-                return false;
-            }
-
-            if (string.IsNullOrWhiteSpace(repository.Repository))
-            {
-                AddDiagnostic(diagnostics, repository.Id, "PH-REPOSITORY-URL", "Repository is required.");
-                return false;
-            }
-
-            Directory.CreateDirectory(Path.GetDirectoryName(cacheDirectory) ?? cacheDirectory);
-
-            var publicUrl = RepositoryUrl(repository, false);
-            var authenticatedUrl = RepositoryUrl(repository, true);
-            var gitRef = string.IsNullOrWhiteSpace(repository.Ref) ? "main" : repository.Ref.Trim();
-            var fetchRef = "refs/plughub/fetch";
-
-            if (!Directory.Exists(Path.Combine(cacheDirectory, ".git")))
-            {
-                Directory.CreateDirectory(cacheDirectory);
-                if (!RunGit("init --quiet " + Quote(cacheDirectory), repository.Id, diagnostics)
-                    || !RunGit("-C " + Quote(cacheDirectory) + " remote add origin " + Quote(publicUrl), repository.Id, diagnostics))
-                {
-                    return false;
-                }
-            }
-            else if (!RunGit("-C " + Quote(cacheDirectory) + " remote set-url origin " + Quote(publicUrl), repository.Id, diagnostics))
-            {
-                return false;
-            }
-
-            if (!DeleteStaleFetchHead(cacheDirectory, repository.Id, diagnostics))
-            {
-                return false;
-            }
-
-            if (!ConfigureSparseCheckout(cacheDirectory, repository.Id, diagnostics))
-            {
-                return false;
-            }
-
-            if (!RunGit("-C " + Quote(cacheDirectory) + " fetch --quiet --no-write-fetch-head --filter=blob:none --depth 1 " + Quote(authenticatedUrl) + " " + Quote(gitRef + ":" + fetchRef), repository.Id, diagnostics))
-            {
-                return false;
-            }
-
-            return RunGit("-C " + Quote(cacheDirectory) + " checkout --quiet " + Quote(fetchRef), repository.Id, diagnostics)
-                && ConfigureSparseCheckout(cacheDirectory, repository.Id, diagnostics);
-        }
-
-        private static bool ConfigureSparseCheckout(string cacheDirectory, string repositoryId, ICollection<DiagnosticMessage> diagnostics)
-        {
-            return RunGit("-C " + Quote(cacheDirectory) + " sparse-checkout set --no-cone " + string.Join(" ", SparseCheckoutPatterns().Select(Quote)), repositoryId, diagnostics);
-        }
-
-        private static bool DeleteStaleFetchHead(string cacheDirectory, string repositoryId, ICollection<DiagnosticMessage> diagnostics)
-        {
-            var fetchHeadPath = Path.Combine(cacheDirectory, ".git", "FETCH_HEAD");
-            if (!File.Exists(fetchHeadPath))
-            {
-                return true;
-            }
-
-            try
-            {
-                File.Delete(fetchHeadPath);
-                return true;
-            }
-            catch (IOException ex)
-            {
-                AddDiagnostic(diagnostics, repositoryId, "PH-REPOSITORY-FETCHHEAD", "Could not delete stale FETCH_HEAD: " + fetchHeadPath + " " + ex.Message);
-                return false;
-            }
-            catch (UnauthorizedAccessException ex)
-            {
-                AddDiagnostic(diagnostics, repositoryId, "PH-REPOSITORY-FETCHHEAD", "Could not delete stale FETCH_HEAD: " + fetchHeadPath + " " + ex.Message);
-                return false;
-            }
-        }
-
-        private static IEnumerable<string> SparseCheckoutPatterns()
-        {
-            return new[]
-            {
-                "package.json",
-                "*.package.json",
-                "**/package.json",
-                "**/*.package.json",
-                "**/*.dll",
-                "**/*.png",
-                "**/*.jpg",
-                "**/*.jpeg",
-                "**/*.ico",
-                "**/*.bmp",
-                "**/*.webp"
-            };
-        }
-
-        private static IEnumerable<string> FindPackageManifests(string sourceDirectory)
-        {
-            if (!Directory.Exists(sourceDirectory)) yield break;
-
-            var rootManifest = Path.Combine(sourceDirectory, DefaultPackageManifestName);
-            if (File.Exists(rootManifest))
-            {
-                yield return rootManifest;
-            }
-
-            var manifests = Directory.GetFiles(sourceDirectory, DefaultPackageManifestName, SearchOption.AllDirectories)
-                .Concat(Directory.GetFiles(sourceDirectory, AdjacentPackageManifestPattern, SearchOption.AllDirectories))
-                .Where(path => !string.Equals(path, rootManifest, StringComparison.OrdinalIgnoreCase))
-                .Where(path => path.IndexOf(Path.DirectorySeparatorChar + ".git" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) < 0)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase);
-
-            foreach (var manifest in manifests)
-            {
-                yield return manifest;
-            }
-        }
-
-        private static string RepositoryCacheDirectory(string baseDirectory, PackageRepositoryConfiguration repository)
-        {
-            return Path.Combine(baseDirectory, "repository-cache", SafePathSegment(repository.Id));
-        }
-
         private static string InstalledPackagesRoot(string baseDirectory)
         {
             return Path.GetFullPath(Path.Combine(baseDirectory, PackagesDirectoryName));
@@ -589,7 +377,7 @@ namespace PlugHub.Framework.Packages
         {
             if (string.IsNullOrWhiteSpace(moduleId)) yield break;
 
-            foreach (var manifestPath in FindPackageManifests(installRoot))
+            foreach (var manifestPath in _manifestReader.FindPackageManifests(installRoot))
             {
                 if (ManifestContainsModule(manifestPath, moduleId))
                 {
@@ -856,22 +644,7 @@ namespace PlugHub.Framework.Packages
 
         private bool TryWriteManifest(string manifestPath, Dictionary<string, object> root, out string error)
         {
-            error = string.Empty;
-            try
-            {
-                File.WriteAllText(manifestPath, _serializer.Serialize(root));
-                return true;
-            }
-            catch (IOException ex)
-            {
-                error = ex.Message;
-                return false;
-            }
-            catch (UnauthorizedAccessException ex)
-            {
-                error = ex.Message;
-                return false;
-            }
+            return _manifestReader.TryWriteManifest(manifestPath, root, out error);
         }
 
         private static bool IsInstalledPackagesRoot(string directory)
@@ -889,132 +662,6 @@ namespace PlugHub.Framework.Packages
             }
         }
 
-        private PackageRepositoryOperationResult InstallPackagePayload(RepositoryPackageDescriptor package, string installDirectory)
-        {
-            if (!TryReadManifest(package.ManifestPath, out var root, out var modules))
-            {
-                return PackageRepositoryOperationResult.Failed("Package manifest could not be read: " + package.ManifestPath);
-            }
-
-            var module = FindModule(modules, package);
-            if (module == null)
-            {
-                return PackageRepositoryOperationResult.Failed("Package module was not found in manifest: " + package.ModuleId);
-            }
-
-            var moduleObject = FindModuleObject(root, module.Id);
-            if (moduleObject == null)
-            {
-                return PackageRepositoryOperationResult.Failed("Package module was not found in manifest: " + package.ModuleId);
-            }
-
-            Directory.CreateDirectory(installDirectory);
-            WriteSingleModuleManifest(root, moduleObject, Path.Combine(installDirectory, DefaultPackageManifestName));
-            foreach (var relativePath in PayloadPaths(module))
-            {
-                if (!CopyPayloadFile(package.SourceDirectory, installDirectory, relativePath, out var error))
-                {
-                    return PackageRepositoryOperationResult.Failed(error);
-                }
-            }
-
-            return PackageRepositoryOperationResult.Succeeded("Package payload installed.");
-        }
-
-        private static ModuleConfiguration? FindModule(ModulesConfiguration modules, RepositoryPackageDescriptor package)
-        {
-            return (modules.Modules ?? new List<ModuleConfiguration>())
-                .FirstOrDefault(item => string.Equals(item.Id, package.ModuleId, StringComparison.OrdinalIgnoreCase))
-                ?? (modules.Modules ?? new List<ModuleConfiguration>())
-                    .FirstOrDefault(item => string.Equals(item.Id, package.PackageId, StringComparison.OrdinalIgnoreCase));
-        }
-
-        private static Dictionary<string, object>? FindModuleObject(Dictionary<string, object> root, string moduleId)
-        {
-            return ArrayValue(root, "modules")
-                .OfType<Dictionary<string, object>>()
-                .FirstOrDefault(item => string.Equals(StringValue(item, "id"), moduleId, StringComparison.OrdinalIgnoreCase));
-        }
-
-        private void WriteSingleModuleManifest(Dictionary<string, object> root, Dictionary<string, object> moduleObject, string targetManifestPath)
-        {
-            var manifest = new Dictionary<string, object>
-            {
-                ["schemaVersion"] = FirstNonEmpty(StringValue(root, "schemaVersion"), "1.0"),
-                ["packageDirectories"] = new object[0],
-                ["moduleSources"] = new object[0],
-                ["repositories"] = new object[0],
-                ["conflictPolicy"] = root.TryGetValue("conflictPolicy", out var conflictPolicy) ? conflictPolicy : new Dictionary<string, object>
-                {
-                    ["duplicateFeatureId"] = "fail-feature",
-                    ["duplicateModuleId"] = "fail-module",
-                    ["missingModuleType"] = "warn"
-                },
-                ["modules"] = new object[] { moduleObject }
-            };
-            CopyOptionalManifestValue(root, manifest, "version");
-            CopyOptionalManifestValue(root, manifest, "revitVersions");
-            CopyOptionalManifestValue(root, manifest, "frameworkVersionRange");
-
-            File.WriteAllText(targetManifestPath, _serializer.Serialize(manifest));
-        }
-
-        private static void CopyOptionalManifestValue(Dictionary<string, object> source, Dictionary<string, object> target, string key)
-        {
-            if (TryGetValue(source, key, out var value))
-            {
-                target[key] = value;
-            }
-        }
-
-        private static IEnumerable<string> PayloadPaths(ModuleConfiguration module)
-        {
-            var paths = new List<string>();
-            AddPayloadPath(paths, module.Assembly);
-            foreach (var feature in module.Features ?? new List<FeatureConfiguration>())
-            {
-                AddPayloadPath(paths, feature.CommandAssembly);
-                AddPayloadPath(paths, feature.IconPath);
-            }
-
-            return paths.Distinct(StringComparer.OrdinalIgnoreCase);
-        }
-
-        private static void AddPayloadPath(ICollection<string> paths, string path)
-        {
-            if (string.IsNullOrWhiteSpace(path)) return;
-            if (Path.IsPathRooted(path)) return;
-            paths.Add(path.Trim());
-        }
-
-        private static bool CopyPayloadFile(string sourceDirectory, string installDirectory, string relativePath, out string error)
-        {
-            error = string.Empty;
-            var sourceFile = Path.GetFullPath(Path.Combine(sourceDirectory, relativePath));
-            var targetFile = Path.GetFullPath(Path.Combine(installDirectory, relativePath));
-            if (!IsUnderDirectory(sourceDirectory, sourceFile))
-            {
-                error = "Package payload path is outside the repository package directory: " + relativePath;
-                return false;
-            }
-
-            if (!IsUnderDirectory(installDirectory, targetFile))
-            {
-                error = "Package payload path is outside the install directory: " + relativePath;
-                return false;
-            }
-
-            if (!File.Exists(sourceFile))
-            {
-                error = "Package payload file was not found: " + sourceFile;
-                return false;
-            }
-
-            Directory.CreateDirectory(Path.GetDirectoryName(targetFile) ?? installDirectory);
-            File.Copy(sourceFile, targetFile, true);
-            return true;
-        }
-
         private static bool IsUnderDirectory(string parentDirectory, string childPath)
         {
             var parent = Path.GetFullPath(parentDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
@@ -1024,27 +671,7 @@ namespace PlugHub.Framework.Packages
 
         private bool TryReadManifest(string manifestPath, out Dictionary<string, object> root, out ModulesConfiguration modules)
         {
-            root = new Dictionary<string, object>();
-            modules = new ModulesConfiguration();
-            try
-            {
-                var text = File.ReadAllText(manifestPath);
-                root = _serializer.Deserialize<Dictionary<string, object>>(text);
-                if (root == null || !ContainsKey(root, "schemaVersion") || !ContainsKey(root, "modules"))
-                {
-                    root = new Dictionary<string, object>();
-                    return false;
-                }
-
-                modules = _serializer.Deserialize<ModulesConfiguration>(text) ?? new ModulesConfiguration();
-                return true;
-            }
-            catch (Exception)
-            {
-                root = new Dictionary<string, object>();
-                modules = new ModulesConfiguration();
-                return false;
-            }
+            return _manifestReader.TryReadManifest(manifestPath, out root, out modules);
         }
 
         private static IEnumerable<object> ArrayValue(Dictionary<string, object> root, string key)
@@ -1084,113 +711,6 @@ namespace PlugHub.Framework.Packages
             return false;
         }
 
-        private static bool RunGit(string arguments, string repositoryId, ICollection<DiagnosticMessage> diagnostics, bool reportFailure = true)
-        {
-            try
-            {
-                var startInfo = new ProcessStartInfo
-                {
-                    FileName = "git",
-                    Arguments = arguments,
-                    CreateNoWindow = true,
-                    UseShellExecute = false,
-                    RedirectStandardError = true,
-                    RedirectStandardOutput = true
-                };
-
-                using (var process = Process.Start(startInfo))
-                {
-                    if (process == null)
-                    {
-                        if (reportFailure) AddDiagnostic(diagnostics, repositoryId, "PH-REPOSITORY-GIT", "Could not start git process.");
-                        return false;
-                    }
-
-                    if (!process.WaitForExit(30000))
-                    {
-                        try { process.Kill(); } catch (Exception) { }
-                        if (reportFailure) AddDiagnostic(diagnostics, repositoryId, "PH-REPOSITORY-GIT", "Git operation timed out.");
-                        return false;
-                    }
-
-                    var error = process.StandardError.ReadToEnd();
-                    if (process.ExitCode != 0)
-                    {
-                        if (reportFailure) AddDiagnostic(diagnostics, repositoryId, "PH-REPOSITORY-GIT", string.IsNullOrWhiteSpace(error) ? "Git operation failed." : error.Trim());
-                        return false;
-                    }
-
-                    return true;
-                }
-            }
-            catch (Exception ex)
-            {
-                if (reportFailure) AddDiagnostic(diagnostics, repositoryId, "PH-REPOSITORY-GIT", ex.Message);
-                return false;
-            }
-        }
-
-        private string RepositoryUrl(PackageRepositoryConfiguration repository, bool includeCredential)
-        {
-            var provider = string.Equals(repository.Provider, "gitee", StringComparison.OrdinalIgnoreCase) ? "gitee" : "github";
-            var url = StripUrlUserInfo(repository.Repository.StartsWith("http", StringComparison.OrdinalIgnoreCase)
-                ? repository.Repository.Trim()
-                : RepositoryHost(provider) + repository.Repository.Trim().TrimEnd('/') + ".git");
-            var apiKey = _credentialService.ResolveApiKey(repository);
-
-            if (!includeCredential
-                || !string.Equals(repository.Visibility, "private", StringComparison.OrdinalIgnoreCase)
-                || string.IsNullOrWhiteSpace(apiKey))
-            {
-                return url;
-            }
-
-            if (provider == "gitee" && url.StartsWith("https://gitee.com/", StringComparison.OrdinalIgnoreCase))
-            {
-                return "https://oauth2:" + Uri.EscapeDataString(apiKey.Trim()) + "@" + url.Substring("https://".Length);
-            }
-
-            if (provider == "github" && url.StartsWith("https://github.com/", StringComparison.OrdinalIgnoreCase))
-            {
-                return "https://x-access-token:" + Uri.EscapeDataString(apiKey.Trim()) + "@" + url.Substring("https://".Length);
-            }
-
-            return url;
-        }
-
-        private static string StripUrlUserInfo(string url)
-        {
-            if (string.IsNullOrWhiteSpace(url) || !Uri.TryCreate(url, UriKind.Absolute, out var uri) || string.IsNullOrEmpty(uri.UserInfo))
-            {
-                return url;
-            }
-
-            var builder = new UriBuilder(uri)
-            {
-                UserName = string.Empty,
-                Password = string.Empty
-            };
-            return builder.Uri.AbsoluteUri;
-        }
-
-        private static bool IsSupportedRepositoryProvider(string provider)
-        {
-            return string.Equals(provider, "github", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(provider, "gitee", StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static string RepositoryHost(string provider)
-        {
-            return string.Equals(provider, "gitee", StringComparison.OrdinalIgnoreCase)
-                ? "https://gitee.com/"
-                : "https://github.com/";
-        }
-
-        private static string Quote(string value)
-        {
-            return "\"" + (value ?? string.Empty).Replace("\"", "\\\"") + "\"";
-        }
-
         private static string SafePathSegment(string value)
         {
             var chars = (value ?? string.Empty)
@@ -1203,11 +723,6 @@ namespace PlugHub.Framework.Packages
         private static string StringValue(Dictionary<string, object> source, string key)
         {
             return TryGetValue(source, key, out var value) ? Convert.ToString(value) ?? string.Empty : string.Empty;
-        }
-
-        private static bool ContainsKey(Dictionary<string, object> source, string key)
-        {
-            return source.Keys.Any(item => string.Equals(item, key, StringComparison.OrdinalIgnoreCase));
         }
 
         private static bool TryGetValue(Dictionary<string, object> source, string key, out object value)
@@ -1228,25 +743,6 @@ namespace PlugHub.Framework.Packages
         private static string FirstNonEmpty(params string?[] values)
         {
             return values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
-        }
-
-        private static string RepositoryPackageDisplayName(ModuleConfiguration module, string fallback)
-        {
-            var featureNames = (module.Features ?? new List<FeatureConfiguration>())
-                .OrderBy(feature => feature.Order)
-                .ThenBy(feature => feature.Id, StringComparer.OrdinalIgnoreCase)
-                .Select(feature => FirstNonEmpty(feature.DisplayName, feature.Name, feature.Id))
-                .Where(name => !string.IsNullOrWhiteSpace(name))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Take(3)
-                .ToList();
-
-            if (featureNames.Count > 0)
-            {
-                return string.Join("、", featureNames);
-            }
-
-            return FirstNonEmpty(module.DisplayName, module.Name, fallback);
         }
 
         private static void AddDiagnostic(ICollection<DiagnosticMessage> diagnostics, string repositoryId, string code, string message)

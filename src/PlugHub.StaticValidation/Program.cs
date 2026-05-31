@@ -196,6 +196,9 @@ namespace PlugHub.StaticValidation
                 "src/PlugHub.Framework/Runtime/FrameworkRuntime.cs",
                 "src/PlugHub.Framework/Registry/FeatureRegistry.cs",
                 "src/PlugHub.Framework/Packages/RepositoryCredentialService.cs",
+                "src/PlugHub.Framework/Packages/RepositoryBrowser.cs",
+                "src/PlugHub.Framework/Packages/PackageManifestReader.cs",
+                "src/PlugHub.Framework/Packages/PackageInstallService.cs",
                 "src/PlugHub.Framework/Diagnostics/PlugHubLogEntry.cs",
                 "src/PlugHub.Framework/Diagnostics/PlugHubLogger.cs",
                 "src/PlugHub.Framework/Diagnostics/PlugHubLogExporter.cs",
@@ -427,9 +430,9 @@ namespace PlugHub.StaticValidation
             Require(discovery.Contains("CurrentRevitVersion") && discovery.Contains(".Trim()") && discovery.Contains("StringComparer.OrdinalIgnoreCase"), "module discovery must normalize declared Revit versions before comparing with the current runtime.");
             Require(discovery.Contains("FrameworkVersionRange") && discovery.Contains("metadata"), "frameworkVersionRange must be explicitly preserved as metadata and not treated as runtime compatibility logic yet.");
 
-            var packageRepositoryService = ReadText("src/PlugHub.Framework/Packages/PackageRepositoryService.cs");
-            Require(packageRepositoryService.Contains("\"revitVersions\"") && packageRepositoryService.Contains("\"frameworkVersionRange\""), "single-module installed manifests must preserve root compatibility metadata.");
-            Require(!packageRepositoryService.Contains("CopyOptionalManifestValue(root, manifest, \"sha256\")") && !packageRepositoryService.Contains("CopyOptionalManifestValue(root, manifest, \"signature\")"), "single-module installed manifests must not copy root sha256 or signature after rewriting the manifest.");
+            var packageInstallService = ReadText("src/PlugHub.Framework/Packages/PackageInstallService.cs");
+            Require(packageInstallService.Contains("\"revitVersions\"") && packageInstallService.Contains("\"frameworkVersionRange\""), "single-module installed manifests must preserve root compatibility metadata.");
+            Require(!packageInstallService.Contains("CopyOptionalManifestValue(root, manifest, \"sha256\")") && !packageInstallService.Contains("CopyOptionalManifestValue(root, manifest, \"signature\")"), "single-module installed manifests must not copy root sha256 or signature after rewriting the manifest.");
 
             ValidateRuntimeAcceptsWhitespacePaddedRevitVersion();
             ValidateRuntimeSkipsPresetOverriddenIncompatiblePackage();
@@ -1002,6 +1005,9 @@ namespace PlugHub.StaticValidation
             var sourceResolver = ReadText("src/PlugHub.Framework/Sources/ModuleSourceResolver.cs");
             var configurationLoader = ReadText("src/PlugHub.Framework/Configuration/FrameworkConfigurationLoader.cs");
             var packageRepositoryService = ReadText("src/PlugHub.Framework/Packages/PackageRepositoryService.cs");
+            var repositoryBrowser = ReadText("src/PlugHub.Framework/Packages/RepositoryBrowser.cs");
+            var packageManifestReader = ReadText("src/PlugHub.Framework/Packages/PackageManifestReader.cs");
+            var packageInstallService = ReadText("src/PlugHub.Framework/Packages/PackageInstallService.cs");
             var credentialService = ReadText("src/PlugHub.Framework/Packages/RepositoryCredentialService.cs");
             var redactor = ReadText("src/PlugHub.Framework/Diagnostics/SensitiveTextRedactor.cs");
             var configurationModels = ReadText("src/PlugHub.Framework/Configuration/ConfigurationModels.cs");
@@ -1031,24 +1037,28 @@ namespace PlugHub.StaticValidation
             Require(settingsWindow.Contains("BuildLogsTab") && settingsWindow.Contains("\"日志\"") && !settingsWindow.Contains("BuildDiagnosticsTab"), "settings must present diagnostics as logs.");
             Require(settingsWindow.Contains("ApiKey") && settingsWindow.Contains("Visibility") && settingsWindow.Contains("private"), "settings must support public and private repositories with apiKey.");
             Require(!settingsWindow.Contains("确定卸载插件包") && !settingsWindow.Contains("result.Success ? MessageBoxImage.Information"), "repository package install and uninstall must report status inline without pop-up result prompts.");
-            Require(packageRepositoryService.Contains("sparse-checkout") && packageRepositoryService.Contains("SparseCheckoutPatterns") && packageRepositoryService.Contains("ConfigureSparseCheckout"), "repository browsing must use sparse checkout instead of pulling the whole repository.");
-            Require(packageRepositoryService.Contains("\"gitee\"") && packageRepositoryService.Contains("https://gitee.com/") && packageRepositoryService.Contains("oauth2:"), "repository browsing must support Gitee HTTPS repositories with apiKey credentials.");
-            Require(packageRepositoryService.Contains("InstallPackagePayload") && packageRepositoryService.Contains("WriteSingleModuleManifest") && !packageRepositoryService.Contains("CopyDirectory("), "repository install must split selected plugins and must not copy the whole repository directory.");
+            Require(repositoryBrowser.Contains("sparse-checkout") && repositoryBrowser.Contains("SparseCheckoutPatterns") && repositoryBrowser.Contains("ConfigureSparseCheckout"), "repository browsing must use sparse checkout instead of pulling the whole repository.");
+            Require(repositoryBrowser.Contains("\"gitee\"") && repositoryBrowser.Contains("https://gitee.com/") && repositoryBrowser.Contains("oauth2:"), "repository browsing must support Gitee HTTPS repositories with apiKey credentials.");
+            Require(packageRepositoryService.Contains("new RepositoryBrowser"), "PackageRepositoryService must delegate browsing to RepositoryBrowser.");
+            Require(packageRepositoryService.Contains("new PackageManifestReader"), "PackageRepositoryService must delegate manifest reading to PackageManifestReader.");
+            Require(packageRepositoryService.Contains("new PackageInstallService"), "PackageRepositoryService must delegate payload installation to PackageInstallService.");
+            Require(packageManifestReader.Contains("ReadPackagesFromManifest") && packageManifestReader.Contains("RepositoryPackageDisplayName"), "repository manifest reading must live in PackageManifestReader.");
+            Require(packageInstallService.Contains("InstallPackagePayload") && packageInstallService.Contains("CopyPackagePayload") && packageInstallService.Contains("WriteSingleModuleManifest") && !packageInstallService.Contains("CopyDirectory("), "repository install must split selected plugins and must not copy the whole repository directory.");
             Require(packageRepositoryService.Contains("ApplyPendingOperations") && packageRepositoryService.Contains("pending-operations.json") && packageRepositoryService.Contains("PendingPackageOperation.Restart"), "repository package operations must defer locked DLL deletion and replacement and mark normal installs as restart-required.");
             Require(packageRepositoryService.Contains("ListPendingOperations"), "package repository service must expose pending operation listing.");
             Require(packageRepositoryService.Contains("CancelPendingOperation"), "package repository service must expose pending operation cancellation.");
             Require(credentialService.Contains("ProtectedData.Protect") && credentialService.Contains("ProtectedData.Unprotect"), "repository credential service must use DPAPI.");
             Require(redactor.Contains("Redact") && redactor.Contains("x-access-token") && redactor.Contains("oauth2"), "diagnostic redactor must mask repository tokens.");
             Require(configurationModels.Contains("EncryptedApiKey"), "repository configuration must persist encrypted apiKey separately.");
-            Require(packageRepositoryService.Contains("ResolveApiKey(repository)") && packageRepositoryService.Contains("SensitiveTextRedactor.Redact"), "repository service must resolve protected credentials and redact git diagnostics.");
-            Require(!packageRepositoryService.Contains("clone --quiet --filter=blob:none --depth 1 --sparse --branch \" + Quote(gitRef) + \" \" + Quote(authenticatedUrl)"), "repository sync must not clone with authenticatedUrl because git persists clone URL as origin.");
-            Require(packageRepositoryService.Contains("init --quiet") && packageRepositoryService.Contains("remote add origin \" + Quote(publicUrl)") && packageRepositoryService.Contains("fetch --quiet --no-write-fetch-head --filter=blob:none --depth 1 \" + Quote(authenticatedUrl)"), "repository sync must initialize a public origin and fetch authenticated URLs without persisting credentials.");
-            Require(packageRepositoryService.Contains("--no-write-fetch-head") && packageRepositoryService.Contains("refs/plughub/fetch"), "repository fetch must avoid writing authenticated URLs into FETCH_HEAD by fetching into a private ref.");
-            Require(!packageRepositoryService.Contains("checkout --quiet FETCH_HEAD"), "repository checkout must not depend on FETCH_HEAD because it may contain authenticated fetch URLs.");
-            Require(packageRepositoryService.Contains("DeleteStaleFetchHead") && packageRepositoryService.Contains("Path.Combine(cacheDirectory, \".git\", \"FETCH_HEAD\")") && packageRepositoryService.Contains("File.Delete(fetchHeadPath)"), "repository sync must delete stale FETCH_HEAD token caches as a single file.");
-            Require(packageRepositoryService.IndexOf("DeleteStaleFetchHead(cacheDirectory, repository.Id, diagnostics)", StringComparison.Ordinal) >= 0
-                && packageRepositoryService.IndexOf("DeleteStaleFetchHead(cacheDirectory, repository.Id, diagnostics)", StringComparison.Ordinal) < packageRepositoryService.IndexOf("ConfigureSparseCheckout(cacheDirectory, repository.Id, diagnostics)", StringComparison.Ordinal)
-                && packageRepositoryService.IndexOf("DeleteStaleFetchHead(cacheDirectory, repository.Id, diagnostics)", StringComparison.Ordinal) < packageRepositoryService.IndexOf("fetch --quiet --no-write-fetch-head", StringComparison.Ordinal), "repository sync must clear stale FETCH_HEAD before authenticated fetch.");
+            Require(repositoryBrowser.Contains("ResolveApiKey(repository)") && repositoryBrowser.Contains("SensitiveTextRedactor.Redact"), "repository browser must resolve protected credentials and redact git diagnostics.");
+            Require(!repositoryBrowser.Contains("clone --quiet --filter=blob:none --depth 1 --sparse --branch \" + Quote(gitRef) + \" \" + Quote(authenticatedUrl)"), "repository sync must not clone with authenticatedUrl because git persists clone URL as origin.");
+            Require(repositoryBrowser.Contains("init --quiet") && repositoryBrowser.Contains("remote add origin \" + Quote(publicUrl)") && repositoryBrowser.Contains("fetch --quiet --no-write-fetch-head --filter=blob:none --depth 1 \" + Quote(authenticatedUrl)"), "repository sync must initialize a public origin and fetch authenticated URLs without persisting credentials.");
+            Require(repositoryBrowser.Contains("--no-write-fetch-head") && repositoryBrowser.Contains("refs/plughub/fetch"), "repository fetch must avoid writing authenticated URLs into FETCH_HEAD by fetching into a private ref.");
+            Require(!repositoryBrowser.Contains("checkout --quiet FETCH_HEAD"), "repository checkout must not depend on FETCH_HEAD because it may contain authenticated fetch URLs.");
+            Require(repositoryBrowser.Contains("DeleteStaleFetchHead") && repositoryBrowser.Contains("Path.Combine(cacheDirectory, \".git\", \"FETCH_HEAD\")") && repositoryBrowser.Contains("File.Delete(fetchHeadPath)"), "repository sync must delete stale FETCH_HEAD token caches as a single file.");
+            Require(repositoryBrowser.IndexOf("DeleteStaleFetchHead(cacheDirectory, repository.Id, diagnostics)", StringComparison.Ordinal) >= 0
+                && repositoryBrowser.IndexOf("DeleteStaleFetchHead(cacheDirectory, repository.Id, diagnostics)", StringComparison.Ordinal) < repositoryBrowser.IndexOf("ConfigureSparseCheckout(cacheDirectory, repository.Id, diagnostics)", StringComparison.Ordinal)
+                && repositoryBrowser.IndexOf("DeleteStaleFetchHead(cacheDirectory, repository.Id, diagnostics)", StringComparison.Ordinal) < repositoryBrowser.IndexOf("fetch --quiet --no-write-fetch-head", StringComparison.Ordinal), "repository sync must clear stale FETCH_HEAD before authenticated fetch.");
             Require(settingsWindow.Contains("RepositoryCredentialService") && settingsWindow.Contains("ProtectForSave(repository)"), "settings save must protect repository apiKey before serializing sources.");
             Require(settingsWindow.Contains("ApiKey = string.Empty") && settingsWindow.Contains("PlainApiKey = repository.ApiKey"), "settings repository rows must keep legacy plaintext apiKey available without echoing it in the UI.");
             Require(repositoryRow.Contains("string.IsNullOrWhiteSpace(ApiKey) ? PlainApiKey"), "repository row ToConfiguration must preserve legacy plaintext apiKey when the user did not enter a replacement token.");
@@ -1127,10 +1137,17 @@ namespace PlugHub.StaticValidation
             var redactedApiKey = PlugHub.Framework.Diagnostics.SensitiveTextRedactor.Redact("apiKey=\"secret\"");
             Require(!redactedApiKey.Contains("secret") && redactedApiKey.Contains("***"), "diagnostic redactor must mask apiKey values.");
 
-            var service = new PlugHub.Framework.Packages.PackageRepositoryService();
-            var repositoryUrl = typeof(PlugHub.Framework.Packages.PackageRepositoryService).GetMethod("RepositoryUrl", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-            Require(repositoryUrl != null, "repository service must expose a repository URL helper.");
-            var publicUrl = Convert.ToString(repositoryUrl!.Invoke(service, new object[]
+            var manifestReader = new PlugHub.Framework.Packages.PackageManifestReader();
+            var credentialResolver = new PlugHub.Framework.Packages.RepositoryCredentialService();
+            var browser = new PlugHub.Framework.Packages.RepositoryBrowser(
+                manifestReader,
+                credentialResolver,
+                (baseDirectory, installDirectory, moduleId) => string.Empty,
+                (baseDirectory, installDirectory, moduleId) => false,
+                (baseDirectory, packageId, moduleId) => string.Empty);
+            var repositoryUrl = typeof(PlugHub.Framework.Packages.RepositoryBrowser).GetMethod("RepositoryUrl", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public);
+            Require(repositoryUrl != null, "repository browser must expose a repository URL helper.");
+            var publicUrl = Convert.ToString(repositoryUrl!.Invoke(browser, new object[]
             {
                 new PlugHub.Framework.Configuration.PackageRepositoryConfiguration
                 {
@@ -1142,6 +1159,7 @@ namespace PlugHub.StaticValidation
                 false
             })) ?? string.Empty;
             Require(!publicUrl.Contains("secret") && !publicUrl.Contains("user:") && publicUrl.Contains("example.com/owner/repo.git"), "public repository URL must strip userinfo before being written to git remote config.");
+            var service = new PlugHub.Framework.Packages.PackageRepositoryService();
             service.Browse(Path.GetTempPath(), damagedRepository, out var diagnostics);
             Require(diagnostics.Any(message => message.Code == "PH-REPOSITORY-APIKEY"), "private repository with damaged encrypted credentials must ask for a replacement apiKey.");
         }
