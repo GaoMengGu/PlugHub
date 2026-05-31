@@ -17,6 +17,7 @@ namespace PlugHub.Framework.Packages
         private const string PendingOperationsFileName = "pending-operations.json";
 
         private readonly JavaScriptSerializer _serializer = new JavaScriptSerializer();
+        private readonly PendingPackageOperationStore _pendingOperations = new PendingPackageOperationStore();
 
         public IReadOnlyList<RepositoryPackageDescriptor> Browse(string baseDirectory, PackageRepositoryConfiguration repository, out IReadOnlyList<DiagnosticMessage> diagnostics)
         {
@@ -133,6 +134,30 @@ namespace PlugHub.Framework.Packages
 
             WritePendingOperations(baseDirectory, remaining);
             return diagnostics;
+        }
+
+        public IReadOnlyList<PendingPackageOperation> ListPendingOperations(string baseDirectory)
+        {
+            return _pendingOperations.Read(baseDirectory);
+        }
+
+        public PackageRepositoryOperationResult CancelPendingOperation(string baseDirectory, string packageId, string moduleId)
+        {
+            if (string.IsNullOrWhiteSpace(baseDirectory)) throw new ArgumentException("Base directory is required.", nameof(baseDirectory));
+
+            var operation = _pendingOperations.Find(baseDirectory, packageId, moduleId);
+            if (operation == null)
+            {
+                return PackageRepositoryOperationResult.Failed("未找到待处理插件包操作: " + packageId);
+            }
+
+            if (string.Equals(operation.Operation, "update", StringComparison.OrdinalIgnoreCase))
+            {
+                DeleteDirectoryQuietly(operation.StagingDirectory);
+            }
+
+            _pendingOperations.Remove(baseDirectory, packageId, moduleId);
+            return PackageRepositoryOperationResult.Succeeded("已取消待处理插件包操作: " + packageId);
         }
 
         public RepositoryPackageDescriptor RefreshInstallState(string baseDirectory, RepositoryPackageDescriptor package)
@@ -663,72 +688,27 @@ namespace PlugHub.Framework.Packages
 
         private void QueuePendingOperation(string baseDirectory, PendingPackageOperation operation)
         {
-            var operations = ReadPendingOperations(baseDirectory)
-                .Where(item => !SamePendingPackage(item, operation.PackageId, operation.ModuleId))
-                .ToList();
-            operations.Add(operation);
-            WritePendingOperations(baseDirectory, operations);
+            _pendingOperations.AddOrReplace(baseDirectory, operation);
         }
 
         private void RemovePendingOperations(string baseDirectory, string packageId, string moduleId)
         {
-            var operations = ReadPendingOperations(baseDirectory)
-                .Where(item => !SamePendingPackage(item, packageId, moduleId))
-                .ToList();
-            WritePendingOperations(baseDirectory, operations);
+            _pendingOperations.Remove(baseDirectory, packageId, moduleId);
         }
 
         private string PendingOperationFor(string baseDirectory, string packageId, string moduleId)
         {
-            return ReadPendingOperations(baseDirectory)
-                .Where(item => SamePendingPackage(item, packageId, moduleId))
-                .Select(item => item.Operation ?? string.Empty)
-                .FirstOrDefault() ?? string.Empty;
-        }
-
-        private static bool SamePendingPackage(PendingPackageOperation operation, string packageId, string moduleId)
-        {
-            return string.Equals(operation.PackageId, packageId, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(operation.ModuleId, moduleId, StringComparison.OrdinalIgnoreCase);
+            return _pendingOperations.Find(baseDirectory, packageId, moduleId)?.Operation ?? string.Empty;
         }
 
         private List<PendingPackageOperation> ReadPendingOperations(string baseDirectory)
         {
-            var path = PendingOperationsPath(baseDirectory);
-            if (!File.Exists(path))
-            {
-                return new List<PendingPackageOperation>();
-            }
-
-            try
-            {
-                var document = _serializer.Deserialize<PendingPackageOperationsDocument>(File.ReadAllText(path));
-                return document?.Operations ?? new List<PendingPackageOperation>();
-            }
-            catch (Exception)
-            {
-                return new List<PendingPackageOperation>();
-            }
+            return _pendingOperations.Read(baseDirectory).ToList();
         }
 
         private void WritePendingOperations(string baseDirectory, IReadOnlyList<PendingPackageOperation> operations)
         {
-            var path = PendingOperationsPath(baseDirectory);
-            Directory.CreateDirectory(Path.GetDirectoryName(path) ?? TemporaryPackageRoot(baseDirectory));
-            if (operations == null || operations.Count == 0)
-            {
-                if (File.Exists(path))
-                {
-                    File.Delete(path);
-                }
-
-                return;
-            }
-
-            File.WriteAllText(path, _serializer.Serialize(new PendingPackageOperationsDocument
-            {
-                Operations = operations.ToList()
-            }));
+            _pendingOperations.Write(baseDirectory, operations);
         }
 
         private static string PendingOperationsPath(string baseDirectory)

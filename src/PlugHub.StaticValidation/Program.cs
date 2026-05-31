@@ -57,6 +57,7 @@ namespace PlugHub.StaticValidation
                 ValidateSettingsGroupFeatureEditingBehavior();
                 ValidateDefaultIconSpecification();
                 ValidatePackageSourceAndReleaseBehavior();
+                ValidatePendingPackageOperationStoreBehavior();
                 ValidateRepositoryInstallFlowBehavior();
                 ValidateRepositoryPackageGranularityAndInstallPayload();
                 ValidateRuntimeLoadsSerializedInstalledPackageManifest();
@@ -194,6 +195,7 @@ namespace PlugHub.StaticValidation
                 "src/PlugHub.Framework/Discovery/ModuleDiscoveryService.cs",
                 "src/PlugHub.Framework/Runtime/FrameworkRuntime.cs",
                 "src/PlugHub.Framework/Registry/FeatureRegistry.cs",
+                "src/PlugHub.Framework/Packages/PendingPackageOperationStore.cs",
                 "src/PlugHub.Revit2020/ExternalApplicationEntry.cs",
                 "src/PlugHub.Revit2020/FeatureRibbonBuilder.cs",
                 "src/PlugHub.Revit2020/FrameworkFeatureCommand.cs",
@@ -985,6 +987,10 @@ namespace PlugHub.StaticValidation
             Require(packageRepositoryService.Contains("\"gitee\"") && packageRepositoryService.Contains("https://gitee.com/") && packageRepositoryService.Contains("oauth2:"), "repository browsing must support Gitee HTTPS repositories with apiKey credentials.");
             Require(packageRepositoryService.Contains("InstallPackagePayload") && packageRepositoryService.Contains("WriteSingleModuleManifest") && !packageRepositoryService.Contains("CopyDirectory("), "repository install must split selected plugins and must not copy the whole repository directory.");
             Require(packageRepositoryService.Contains("ApplyPendingOperations") && packageRepositoryService.Contains("pending-operations.json") && packageRepositoryService.Contains("PendingPackageOperation.Restart"), "repository package operations must defer locked DLL deletion and replacement and mark normal installs as restart-required.");
+            Require(packageRepositoryService.Contains("ListPendingOperations"), "package repository service must expose pending operation listing.");
+            Require(packageRepositoryService.Contains("CancelPendingOperation"), "package repository service must expose pending operation cancellation.");
+            var pendingStore = ReadText("src/PlugHub.Framework/Packages/PendingPackageOperationStore.cs");
+            Require(pendingStore.Contains("AddOrReplace") && pendingStore.Contains("Remove") && pendingStore.Contains("Read"), "pending operation store must read, add, and remove operations.");
             Require(settingsWindow.Contains("已安装待重启") && settingsWindow.Contains("PendingOperation") && settingsWindow.Contains("IsLoadedInCurrentRuntime"), "repository package status must distinguish installed from installed-pending-restart.");
             Require(ReadText("src/PlugHub.Framework/Runtime/FrameworkRuntime.cs").Contains("ApplyPendingOperations"), "runtime startup must apply deferred package operations before module discovery.");
             Require(!settingsWindow.Contains("LoadDiagnosticRows(FrameworkRuntimeState.Current);\r\n            LoadSourceRows();"), "settings save must not reload stale runtime diagnostics after saving configuration.");
@@ -998,6 +1004,47 @@ namespace PlugHub.StaticValidation
             Require(workflow.Contains("*.pdb") && workflow.Contains("*.sigstore.json") && !workflow.Contains("Compress-Archive -Path \"dist\\Revit2020\\*\""), "release zip must exclude pdb and sigstore files.");
 
             Require(readme.Contains("个人使用") && readme.Contains("不得商用"), "README must state the non-commercial personal-use license restriction.");
+        }
+
+        private static void ValidatePendingPackageOperationStoreBehavior()
+        {
+            var baseDirectory = Path.Combine(Path.GetTempPath(), "plughub-static-validation-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var store = new PlugHub.Framework.Packages.PendingPackageOperationStore();
+                var service = new PlugHub.Framework.Packages.PackageRepositoryService();
+                var installA = Path.Combine(baseDirectory, "install-a");
+                var installB = Path.Combine(baseDirectory, "install-b");
+                var staging = Path.Combine(baseDirectory, "staging-a");
+
+                Directory.CreateDirectory(staging);
+                File.WriteAllText(Path.Combine(staging, "payload.txt"), "pending");
+                store.AddOrReplace(baseDirectory, PlugHub.Framework.Packages.PendingPackageOperation.Update("shared-package", "module-a", installA, staging));
+                store.AddOrReplace(baseDirectory, PlugHub.Framework.Packages.PendingPackageOperation.Restart("shared-package", "module-b", installB));
+
+                var cancelUpdate = service.CancelPendingOperation(baseDirectory, "shared-package", "module-a");
+                var remaining = store.Read(baseDirectory).ToList();
+                Require(cancelUpdate.Success, "pending operation cancellation must succeed for an existing update.");
+                Require(remaining.Count == 1 && remaining[0].PackageId == "shared-package" && remaining[0].ModuleId == "module-b", "cancel pending operation must not remove another module from the same package.");
+                Require(!Directory.Exists(staging), "cancel pending update must remove the staging directory.");
+
+                var deleteInstall = Path.Combine(baseDirectory, "delete-install");
+                Directory.CreateDirectory(deleteInstall);
+                store.AddOrReplace(baseDirectory, PlugHub.Framework.Packages.PendingPackageOperation.Delete("delete-package", "delete-module", deleteInstall));
+                var cancelDelete = service.CancelPendingOperation(baseDirectory, "delete-package", "delete-module");
+                Require(cancelDelete.Success, "pending delete cancellation must succeed.");
+                Require(Directory.Exists(deleteInstall), "cancel pending delete must not remove the install directory.");
+
+                File.WriteAllText(store.PathFor(baseDirectory), "{broken json");
+                Require(store.Read(baseDirectory).Count == 0, "pending operation store must tolerate corrupted pending operation files.");
+            }
+            finally
+            {
+                if (Directory.Exists(baseDirectory))
+                {
+                    Directory.Delete(baseDirectory, true);
+                }
+            }
         }
 
         private static void ValidateRepositoryInstallFlowBehavior()
