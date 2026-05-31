@@ -113,6 +113,11 @@ namespace PlugHub.Framework.Packages
                 return PackageRepositoryOperationResult.Failed("未找到待处理插件包操作: " + packageId);
             }
 
+            if (!RestorePendingManifestBackups(baseDirectory, operation, out var restoreError))
+            {
+                return PackageRepositoryOperationResult.Failed("无法恢复待处理插件包清单: " + restoreError);
+            }
+
             if (string.Equals(operation.Operation, "update", StringComparison.OrdinalIgnoreCase))
             {
                 DeleteDirectoryQuietly(operation.StagingDirectory);
@@ -177,7 +182,8 @@ namespace PlugHub.Framework.Packages
 
             try
             {
-                if (!TryRemoveModuleFromInstalledManifests(installRoot, moduleId, string.Empty, out var cleanedManifests, out var cleanupError))
+                var manifestBackups = new List<PendingManifestBackup>();
+                if (!TryRemoveModuleFromInstalledManifests(installRoot, moduleId, string.Empty, manifestBackups, out var cleanedManifests, out var cleanupError))
                 {
                     return PackageRepositoryOperationResult.Failed("无法清理插件包清单。请关闭并重启 Revit 后重试: " + cleanupError);
                 }
@@ -186,7 +192,9 @@ namespace PlugHub.Framework.Packages
                 {
                     if (TryFindLockedFile(installDirectory, out var lockedFile))
                     {
-                        QueuePendingOperation(baseDirectory, PendingPackageOperation.Delete(package.PackageId, moduleId, installDirectory));
+                        var operation = PendingPackageOperation.Delete(package.PackageId, moduleId, installDirectory);
+                        operation.ManifestBackups = manifestBackups;
+                        QueuePendingOperation(baseDirectory, operation);
                         var queuedCleanupMessage = cleanedManifests > 0 ? " 已先从 package.json 移除插件声明。" : string.Empty;
                         return PackageRepositoryOperationResult.Succeeded("插件包已标记为待卸载。当前 DLL 正被 Revit 占用，请重启 Revit 后自动删除: " + package.PackageId + queuedCleanupMessage + " 占用文件: " + lockedFile);
                     }
@@ -250,13 +258,16 @@ namespace PlugHub.Framework.Packages
 
                 if (replaceExisting && Directory.Exists(installDirectory) && TryFindLockedFile(installDirectory, out var lockedFile))
                 {
-                    if (!TryRemoveModuleFromInstalledManifests(installRoot, moduleId, string.Empty, out var lockedCleanedManifests, out var lockedCleanupError))
+                    var manifestBackups = new List<PendingManifestBackup>();
+                    if (!TryRemoveModuleFromInstalledManifests(installRoot, moduleId, string.Empty, manifestBackups, out var lockedCleanedManifests, out var lockedCleanupError))
                     {
                         DeleteDirectoryQuietly(stagingDirectory);
                         return PackageRepositoryOperationResult.Failed("插件包更新已暂存，但清理旧插件包清单失败。请关闭并重启 Revit 后重试: " + lockedCleanupError);
                     }
 
-                    QueuePendingOperation(baseDirectory, PendingPackageOperation.Update(package.PackageId, moduleId, installDirectory, stagingDirectory));
+                    var operation = PendingPackageOperation.Update(package.PackageId, moduleId, installDirectory, stagingDirectory);
+                    operation.ManifestBackups = manifestBackups;
+                    QueuePendingOperation(baseDirectory, operation);
                     var lockedCleanupMessage = lockedCleanedManifests > 0 ? " 已先从 package.json 移除旧插件声明。" : string.Empty;
                     return PackageRepositoryOperationResult.Succeeded("插件包已标记为待更新。当前 DLL 正被 Revit 占用，请重启 Revit 后自动替换: " + package.PackageId + lockedCleanupMessage + " 占用文件: " + lockedFile);
                 }
@@ -545,6 +556,17 @@ namespace PlugHub.Framework.Packages
 
         private bool TryRemoveModuleFromInstalledManifests(string installRoot, string moduleId, string excludedDirectory, out int cleanedManifests, out string error)
         {
+            return TryRemoveModuleFromInstalledManifests(installRoot, moduleId, excludedDirectory, null, out cleanedManifests, out error);
+        }
+
+        private bool TryRemoveModuleFromInstalledManifests(
+            string installRoot,
+            string moduleId,
+            string excludedDirectory,
+            ICollection<PendingManifestBackup>? manifestBackups,
+            out int cleanedManifests,
+            out string error)
+        {
             cleanedManifests = 0;
             error = string.Empty;
 
@@ -557,6 +579,25 @@ namespace PlugHub.Framework.Packages
                     continue;
                 }
 
+                var originalManifest = string.Empty;
+                if (manifestBackups != null)
+                {
+                    try
+                    {
+                        originalManifest = File.ReadAllText(manifestPath);
+                    }
+                    catch (IOException ex)
+                    {
+                        error = ex.Message;
+                        return false;
+                    }
+                    catch (UnauthorizedAccessException ex)
+                    {
+                        error = ex.Message;
+                        return false;
+                    }
+                }
+
                 if (!TryRemoveModuleFromManifest(manifestPath, moduleId, out var changed, out error))
                 {
                     return false;
@@ -565,6 +606,55 @@ namespace PlugHub.Framework.Packages
                 if (changed)
                 {
                     cleanedManifests++;
+                    manifestBackups?.Add(new PendingManifestBackup
+                    {
+                        ManifestPath = manifestPath,
+                        Content = originalManifest
+                    });
+                }
+            }
+
+            return true;
+        }
+
+        private bool RestorePendingManifestBackups(string baseDirectory, PendingPackageOperation operation, out string error)
+        {
+            error = string.Empty;
+            var backups = operation.ManifestBackups ?? new List<PendingManifestBackup>();
+            if (backups.Count == 0)
+            {
+                return true;
+            }
+
+            var installRoot = InstalledPackagesRoot(baseDirectory);
+            foreach (var backup in backups.Where(item => item != null))
+            {
+                if (string.IsNullOrWhiteSpace(backup.ManifestPath))
+                {
+                    continue;
+                }
+
+                var manifestPath = Path.GetFullPath(backup.ManifestPath);
+                if (!IsUnderDirectory(installRoot, manifestPath))
+                {
+                    error = "Manifest backup path is outside the packages directory: " + backup.ManifestPath;
+                    return false;
+                }
+
+                try
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(manifestPath) ?? installRoot);
+                    File.WriteAllText(manifestPath, backup.Content ?? string.Empty);
+                }
+                catch (IOException ex)
+                {
+                    error = ex.Message;
+                    return false;
+                }
+                catch (UnauthorizedAccessException ex)
+                {
+                    error = ex.Message;
+                    return false;
                 }
             }
 
@@ -790,6 +880,7 @@ namespace PlugHub.Framework.Packages
         public string InstallDirectory { get; set; } = string.Empty;
         public string StagingDirectory { get; set; } = string.Empty;
         public string CreatedAtUtc { get; set; } = string.Empty;
+        public List<PendingManifestBackup> ManifestBackups { get; set; } = new List<PendingManifestBackup>();
 
         public static PendingPackageOperation Delete(string packageId, string moduleId, string installDirectory)
         {
@@ -827,6 +918,12 @@ namespace PlugHub.Framework.Packages
                 CreatedAtUtc = DateTime.UtcNow.ToString("o")
             };
         }
+    }
+
+    public sealed class PendingManifestBackup
+    {
+        public string ManifestPath { get; set; } = string.Empty;
+        public string Content { get; set; } = string.Empty;
     }
 
     public sealed class PackageRepositoryOperationResult

@@ -1411,6 +1411,39 @@ namespace PlugHub.StaticValidation
                 Require(File.ReadAllText(installedDll) == "replacement", "pending locked update must replace the DLL after restart.");
                 Require(File.ReadAllText(Path.Combine(installedDirectory, "package.json")).Contains("locked-update"), "pending locked update must restore the selected module manifest.");
 
+                var cancelUpdateDirectory = Path.Combine(tempRoot, "packages", "cancel-locked-update");
+                var cancelUpdateSourceDirectory = Path.Combine(tempRoot, "repository-cache", "cancel-locked-update");
+                Directory.CreateDirectory(cancelUpdateDirectory);
+                Directory.CreateDirectory(cancelUpdateSourceDirectory);
+                var cancelUpdateDll = Path.Combine(cancelUpdateDirectory, "CancelLockedUpdate.dll");
+                var cancelUpdateManifest = Path.Combine(cancelUpdateDirectory, "package.json");
+                File.WriteAllText(cancelUpdateDll, "locked");
+                File.WriteAllText(cancelUpdateManifest, "{\"schemaVersion\":\"1.0\",\"version\":\"1.0.0\",\"modules\":[{\"id\":\"cancel-locked-update\",\"assembly\":\"CancelLockedUpdate.dll\",\"type\":\"Demo.CancelLockedUpdateModule\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
+                File.WriteAllText(Path.Combine(cancelUpdateSourceDirectory, "CancelLockedUpdate.dll"), "replacement");
+                File.WriteAllText(Path.Combine(cancelUpdateSourceDirectory, "package.json"), "{\"schemaVersion\":\"1.0\",\"version\":\"2.0.0\",\"modules\":[{\"id\":\"cancel-locked-update\",\"assembly\":\"CancelLockedUpdate.dll\",\"type\":\"Demo.CancelLockedUpdateModule\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
+                var cancelUpdateDescriptor = new PlugHub.Framework.Packages.RepositoryPackageDescriptor
+                {
+                    RepositoryId = "test-repository",
+                    PackageId = "cancel-locked-update",
+                    ModuleId = "cancel-locked-update",
+                    DisplayName = "Cancel Locked Update",
+                    ManifestPath = Path.Combine(cancelUpdateSourceDirectory, "package.json"),
+                    SourceDirectory = cancelUpdateSourceDirectory,
+                    InstallDirectory = cancelUpdateDirectory,
+                    IsInstalled = true
+                };
+                using (File.Open(cancelUpdateDll, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+                {
+                    var service = new PlugHub.Framework.Packages.PackageRepositoryService();
+                    var updateResult = service.Update(tempRoot, cancelUpdateDescriptor);
+                    Require(updateResult.Success, "locked update prepared for cancellation must queue successfully: " + updateResult.Message);
+                    Require(!File.ReadAllText(cancelUpdateManifest).Contains("cancel-locked-update"), "locked update prepared for cancellation must remove the old module declaration first.");
+                    var cancelResult = service.CancelPendingOperation(tempRoot, "cancel-locked-update", "cancel-locked-update");
+                    Require(cancelResult.Success, "cancel pending locked update must succeed: " + cancelResult.Message);
+                    Require(File.ReadAllText(cancelUpdateManifest).Contains("cancel-locked-update"), "cancel pending locked update must restore the original module manifest.");
+                    Require(string.IsNullOrWhiteSpace(service.RefreshInstallState(tempRoot, cancelUpdateDescriptor).PendingOperation), "cancel pending locked update must clear pending operation metadata.");
+                }
+
                 var uninstallDirectory = Path.Combine(tempRoot, "packages", "locked-uninstall");
                 Directory.CreateDirectory(uninstallDirectory);
                 var uninstallDll = Path.Combine(uninstallDirectory, "LockedUninstall.dll");
@@ -1451,6 +1484,33 @@ namespace PlugHub.StaticValidation
                 var uninstallDiagnostics = new PlugHub.Framework.Packages.PackageRepositoryService().ApplyPendingOperations(tempRoot);
                 Require(!uninstallDiagnostics.Any(message => message.Severity == PlugHub.Contracts.Modules.DiagnosticSeverity.Error), "pending locked uninstall must apply on next startup: " + string.Join("; ", uninstallDiagnostics.Select(item => item.Message)));
                 Require(!Directory.Exists(uninstallDirectory), "pending locked uninstall must delete package files after restart.");
+
+                var cancelUninstallDirectory = Path.Combine(tempRoot, "packages", "cancel-locked-uninstall");
+                Directory.CreateDirectory(cancelUninstallDirectory);
+                var cancelUninstallDll = Path.Combine(cancelUninstallDirectory, "CancelLockedUninstall.dll");
+                var cancelUninstallManifest = Path.Combine(cancelUninstallDirectory, "package.json");
+                File.WriteAllText(cancelUninstallDll, "locked");
+                File.WriteAllText(cancelUninstallManifest, "{\"schemaVersion\":\"1.0\",\"modules\":[{\"id\":\"cancel-locked-uninstall\",\"assembly\":\"CancelLockedUninstall.dll\",\"type\":\"Demo.CancelLockedUninstallModule\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
+                var cancelUninstallDescriptor = new PlugHub.Framework.Packages.RepositoryPackageDescriptor
+                {
+                    RepositoryId = "test-repository",
+                    PackageId = "cancel-locked-uninstall",
+                    ModuleId = "cancel-locked-uninstall",
+                    DisplayName = "Cancel Locked Uninstall",
+                    InstallDirectory = cancelUninstallDirectory,
+                    IsInstalled = true
+                };
+                using (File.Open(cancelUninstallDll, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+                {
+                    var service = new PlugHub.Framework.Packages.PackageRepositoryService();
+                    var uninstallResult = service.Uninstall(tempRoot, cancelUninstallDescriptor);
+                    Require(uninstallResult.Success, "locked uninstall prepared for cancellation must queue successfully: " + uninstallResult.Message);
+                    Require(!File.ReadAllText(cancelUninstallManifest).Contains("cancel-locked-uninstall"), "locked uninstall prepared for cancellation must remove the module declaration first.");
+                    var cancelResult = service.CancelPendingOperation(tempRoot, "cancel-locked-uninstall", "cancel-locked-uninstall");
+                    Require(cancelResult.Success, "cancel pending locked uninstall must succeed: " + cancelResult.Message);
+                    Require(File.ReadAllText(cancelUninstallManifest).Contains("cancel-locked-uninstall"), "cancel pending locked uninstall must restore the original module manifest.");
+                    Require(string.IsNullOrWhiteSpace(service.RefreshInstallState(tempRoot, cancelUninstallDescriptor).PendingOperation), "cancel pending locked uninstall must clear pending operation metadata.");
+                }
             }
             finally
             {
