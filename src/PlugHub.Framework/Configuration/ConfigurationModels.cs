@@ -45,6 +45,8 @@ namespace PlugHub.Framework.Configuration
         public string Ref { get; set; } = "main";
         public string ManifestPath { get; set; } = string.Empty;
         public string ApiKey { get; set; } = string.Empty;
+        public string EncryptedApiKey { get; set; } = string.Empty;
+        public string ApiKeyProtection { get; set; } = string.Empty;
         public bool Enabled { get; set; }
     }
 

@@ -195,6 +195,8 @@ namespace PlugHub.StaticValidation
                 "src/PlugHub.Framework/Discovery/ModuleDiscoveryService.cs",
                 "src/PlugHub.Framework/Runtime/FrameworkRuntime.cs",
                 "src/PlugHub.Framework/Registry/FeatureRegistry.cs",
+                "src/PlugHub.Framework/Packages/RepositoryCredentialService.cs",
+                "src/PlugHub.Framework/Diagnostics/SensitiveTextRedactor.cs",
                 "src/PlugHub.Framework/Packages/PendingPackageOperationStore.cs",
                 "src/PlugHub.Revit2020/ExternalApplicationEntry.cs",
                 "src/PlugHub.Revit2020/FeatureRibbonBuilder.cs",
@@ -957,6 +959,9 @@ namespace PlugHub.StaticValidation
             var settingsWindow = ReadText("src/PlugHub.Revit2020/FrameworkSettingsWindow.cs");
             var sourceResolver = ReadText("src/PlugHub.Framework/Sources/ModuleSourceResolver.cs");
             var packageRepositoryService = ReadText("src/PlugHub.Framework/Packages/PackageRepositoryService.cs");
+            var credentialService = ReadText("src/PlugHub.Framework/Packages/RepositoryCredentialService.cs");
+            var redactor = ReadText("src/PlugHub.Framework/Diagnostics/SensitiveTextRedactor.cs");
+            var configurationModels = ReadText("src/PlugHub.Framework/Configuration/ConfigurationModels.cs");
             var workflow = ReadText(".github/workflows/release.yml");
             var giteeWorkflow = ReadText(".github/workflows/sync-gitee.yml");
             var buildScript = ReadText("scripts/build-revit2020.ps1");
@@ -989,6 +994,11 @@ namespace PlugHub.StaticValidation
             Require(packageRepositoryService.Contains("ApplyPendingOperations") && packageRepositoryService.Contains("pending-operations.json") && packageRepositoryService.Contains("PendingPackageOperation.Restart"), "repository package operations must defer locked DLL deletion and replacement and mark normal installs as restart-required.");
             Require(packageRepositoryService.Contains("ListPendingOperations"), "package repository service must expose pending operation listing.");
             Require(packageRepositoryService.Contains("CancelPendingOperation"), "package repository service must expose pending operation cancellation.");
+            Require(credentialService.Contains("ProtectedData.Protect") && credentialService.Contains("ProtectedData.Unprotect"), "repository credential service must use DPAPI.");
+            Require(redactor.Contains("Redact") && redactor.Contains("x-access-token") && redactor.Contains("oauth2"), "diagnostic redactor must mask repository tokens.");
+            Require(configurationModels.Contains("EncryptedApiKey"), "repository configuration must persist encrypted apiKey separately.");
+            Require(packageRepositoryService.Contains("ResolveApiKey(repository)") && packageRepositoryService.Contains("SensitiveTextRedactor.Redact"), "repository service must resolve protected credentials and redact git diagnostics.");
+            ValidateRepositoryCredentialAndRedactionBehavior();
             var pendingStore = ReadText("src/PlugHub.Framework/Packages/PendingPackageOperationStore.cs");
             Require(pendingStore.Contains("AddOrReplace") && pendingStore.Contains("Remove") && pendingStore.Contains("Read"), "pending operation store must read, add, and remove operations.");
             Require(settingsWindow.Contains("已安装待重启") && settingsWindow.Contains("PendingOperation") && settingsWindow.Contains("IsLoadedInCurrentRuntime"), "repository package status must distinguish installed from installed-pending-restart.");
@@ -1004,6 +1014,43 @@ namespace PlugHub.StaticValidation
             Require(workflow.Contains("*.pdb") && workflow.Contains("*.sigstore.json") && !workflow.Contains("Compress-Archive -Path \"dist\\Revit2020\\*\""), "release zip must exclude pdb and sigstore files.");
 
             Require(readme.Contains("个人使用") && readme.Contains("不得商用"), "README must state the non-commercial personal-use license restriction.");
+        }
+
+        private static void ValidateRepositoryCredentialAndRedactionBehavior()
+        {
+            var credentialService = new PlugHub.Framework.Packages.RepositoryCredentialService();
+            var repository = new PlugHub.Framework.Configuration.PackageRepositoryConfiguration
+            {
+                ApiKey = "secret-token"
+            };
+
+            credentialService.ProtectForSave(repository);
+            Require(string.IsNullOrWhiteSpace(repository.ApiKey), "protecting repository credentials must clear plaintext apiKey.");
+            Require(!string.IsNullOrWhiteSpace(repository.EncryptedApiKey), "protecting repository credentials must persist encrypted apiKey.");
+            Require(credentialService.ResolveApiKey(repository) == "secret-token", "protected repository credentials must round-trip through DPAPI.");
+
+            repository.ApiKey = "replacement-token";
+            Require(credentialService.ResolveApiKey(repository) == "replacement-token", "plaintext apiKey must take precedence over encrypted apiKey for replacement tokens.");
+
+            var damagedRepository = new PlugHub.Framework.Configuration.PackageRepositoryConfiguration
+            {
+                Enabled = true,
+                Visibility = "private",
+                EncryptedApiKey = "not valid base64",
+                ApiKeyProtection = "dpapi-current-user"
+            };
+            Require(credentialService.ResolveApiKey(damagedRepository) == string.Empty, "damaged encrypted repository credentials must not throw or resolve to plaintext.");
+
+            var redactedOauth = PlugHub.Framework.Diagnostics.SensitiveTextRedactor.Redact("https://oauth2:secret@gitee.com/owner/repo.git");
+            Require(!redactedOauth.Contains("secret") && redactedOauth.Contains("gitee.com/owner/repo.git"), "diagnostic redactor must mask oauth2 tokens while preserving repository host.");
+            var redactedGitHub = PlugHub.Framework.Diagnostics.SensitiveTextRedactor.Redact("https://x-access-token:secret@github.com/owner/repo.git");
+            Require(!redactedGitHub.Contains("secret") && redactedGitHub.Contains("github.com/owner/repo.git"), "diagnostic redactor must mask x-access-token credentials while preserving repository host.");
+            var redactedApiKey = PlugHub.Framework.Diagnostics.SensitiveTextRedactor.Redact("apiKey=\"secret\"");
+            Require(!redactedApiKey.Contains("secret") && redactedApiKey.Contains("***"), "diagnostic redactor must mask apiKey values.");
+
+            var service = new PlugHub.Framework.Packages.PackageRepositoryService();
+            service.Browse(Path.GetTempPath(), damagedRepository, out var diagnostics);
+            Require(diagnostics.Any(message => message.Code == "PH-REPOSITORY-APIKEY"), "private repository with damaged encrypted credentials must ask for a replacement apiKey.");
         }
 
         private static void ValidatePendingPackageOperationStoreBehavior()

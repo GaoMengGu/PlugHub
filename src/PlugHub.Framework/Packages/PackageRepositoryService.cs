@@ -6,6 +6,7 @@ using System.Linq;
 using System.Web.Script.Serialization;
 using PlugHub.Contracts.Modules;
 using PlugHub.Framework.Configuration;
+using PlugHub.Framework.Diagnostics;
 
 namespace PlugHub.Framework.Packages
 {
@@ -18,6 +19,7 @@ namespace PlugHub.Framework.Packages
 
         private readonly JavaScriptSerializer _serializer = new JavaScriptSerializer();
         private readonly PendingPackageOperationStore _pendingOperations = new PendingPackageOperationStore();
+        private readonly RepositoryCredentialService _credentialService = new RepositoryCredentialService();
 
         public IReadOnlyList<RepositoryPackageDescriptor> Browse(string baseDirectory, PackageRepositoryConfiguration repository, out IReadOnlyList<DiagnosticMessage> diagnostics)
         {
@@ -34,7 +36,7 @@ namespace PlugHub.Framework.Packages
             }
 
             if (string.Equals(repository.Visibility, "private", StringComparison.OrdinalIgnoreCase)
-                && string.IsNullOrWhiteSpace(repository.ApiKey))
+                && string.IsNullOrWhiteSpace(_credentialService.ResolveApiKey(repository)))
             {
                 AddDiagnostic(messages, repository.Id, "PH-REPOSITORY-APIKEY", "Private repository requires apiKey.");
                 return new List<RepositoryPackageDescriptor>();
@@ -1095,28 +1097,29 @@ namespace PlugHub.Framework.Packages
             }
         }
 
-        private static string RepositoryUrl(PackageRepositoryConfiguration repository, bool includeCredential)
+        private string RepositoryUrl(PackageRepositoryConfiguration repository, bool includeCredential)
         {
             var provider = string.Equals(repository.Provider, "gitee", StringComparison.OrdinalIgnoreCase) ? "gitee" : "github";
             var url = repository.Repository.StartsWith("http", StringComparison.OrdinalIgnoreCase)
                 ? repository.Repository.Trim()
                 : RepositoryHost(provider) + repository.Repository.Trim().TrimEnd('/') + ".git";
+            var apiKey = _credentialService.ResolveApiKey(repository);
 
             if (!includeCredential
                 || !string.Equals(repository.Visibility, "private", StringComparison.OrdinalIgnoreCase)
-                || string.IsNullOrWhiteSpace(repository.ApiKey))
+                || string.IsNullOrWhiteSpace(apiKey))
             {
                 return url;
             }
 
             if (provider == "gitee" && url.StartsWith("https://gitee.com/", StringComparison.OrdinalIgnoreCase))
             {
-                return "https://oauth2:" + Uri.EscapeDataString(repository.ApiKey.Trim()) + "@" + url.Substring("https://".Length);
+                return "https://oauth2:" + Uri.EscapeDataString(apiKey.Trim()) + "@" + url.Substring("https://".Length);
             }
 
             if (provider == "github" && url.StartsWith("https://github.com/", StringComparison.OrdinalIgnoreCase))
             {
-                return "https://x-access-token:" + Uri.EscapeDataString(repository.ApiKey.Trim()) + "@" + url.Substring("https://".Length);
+                return "https://x-access-token:" + Uri.EscapeDataString(apiKey.Trim()) + "@" + url.Substring("https://".Length);
             }
 
             return url;
@@ -1210,7 +1213,7 @@ namespace PlugHub.Framework.Packages
                 ModuleId = repositoryId ?? string.Empty,
                 Severity = severity,
                 Code = code ?? string.Empty,
-                Message = message ?? string.Empty
+                Message = SensitiveTextRedactor.Redact(message ?? string.Empty)
             });
         }
     }
