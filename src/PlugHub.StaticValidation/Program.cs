@@ -43,6 +43,7 @@ namespace PlugHub.StaticValidation
                 ValidatePackageManifestSchemaAndCompatibility();
                 ValidateRibbonLayoutConfigurationModels();
                 ValidateRibbonLayoutComposerShape();
+                ValidateRibbonLayoutRules();
                 ValidateRevitRibbonAdapter();
                 ValidateRuntimeRoutingSpecification();
                 ValidateRevit2025AlcReadinessSpecification();
@@ -605,6 +606,101 @@ namespace PlugHub.StaticValidation
             Require(viewModel.Contains("public const string PulldownButton = \"pulldownButton\""), "Ribbon layout item type constants must include pulldownButton.");
             Require(viewModel.Contains("public const string SplitButton = \"splitButton\""), "Ribbon layout item type constants must include splitButton.");
             Require(viewModel.Contains("public const string Stack = \"stack\""), "Ribbon layout item type constants must include stack.");
+        }
+
+        private static void ValidateRibbonLayoutRules()
+        {
+            var views = ReadObject("config/views.example.json");
+            var modules = AllModules().ToList();
+            var featureIds = new HashSet<string>(
+                modules
+                    .SelectMany(Features)
+                    .Select(feature => StringValue(feature, "id"))
+                    .Where(featureId => !string.IsNullOrWhiteSpace(featureId)),
+                StringComparer.OrdinalIgnoreCase);
+
+            foreach (var view in Views(views))
+            {
+                if (!TryObjectValue(view, "ribbon", out var ribbon)) continue;
+                if (!TryArrayValue(ribbon, "panels", out var panels)) continue;
+
+                var panelIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var panelObject in panels.Cast<object>())
+                {
+                    var panel = panelObject as Dictionary<string, object>;
+                    Require(panel != null, "ribbon panel layout entries must be objects.");
+                    var panelId = StringValue(panel!, "id");
+                    Require(!string.IsNullOrWhiteSpace(panelId), "ribbon panel layout id is required.");
+                    Require(panelIds.Add(panelId), "duplicate ribbon panel layout id: " + panelId);
+                    ValidateRibbonLayoutItems(ArrayValue(panel!, "items"), featureIds, new HashSet<string>(StringComparer.OrdinalIgnoreCase), panelId);
+                }
+            }
+        }
+
+        private static void ValidateRibbonLayoutItems(IEnumerable items, ISet<string> featureIds, ISet<string> containerIds, string location)
+        {
+            if (items == null) return;
+            foreach (var itemObject in items.Cast<object>())
+            {
+                var item = itemObject as Dictionary<string, object>;
+                Require(item != null, "ribbon layout item must be an object at " + location);
+                var type = StringValue(item!, "type").Trim();
+                Require(!string.IsNullOrWhiteSpace(type), "ribbon layout item type is required at " + location);
+
+                if (string.Equals(type, "pushButton", StringComparison.OrdinalIgnoreCase))
+                {
+                    var featureId = StringValue(item!, "featureId");
+                    Require(featureIds.Contains(featureId), "ribbon layout references missing featureId: " + featureId);
+                    continue;
+                }
+
+                var id = StringValue(item!, "id");
+                Require(!string.IsNullOrWhiteSpace(id), "ribbon container id is required at " + location);
+                Require(containerIds.Add(id), "duplicate ribbon container id in panel " + location + ": " + id);
+
+                var children = ArrayValue(item!, "items").Cast<object>().ToList();
+                if (string.Equals(type, "pulldownButton", StringComparison.OrdinalIgnoreCase))
+                {
+                    Require(children.Count >= 1, "pulldownButton must contain at least one child: " + id);
+                    ValidateRibbonLayoutItems(children, featureIds, containerIds, id);
+                    continue;
+                }
+
+                if (string.Equals(type, "splitButton", StringComparison.OrdinalIgnoreCase))
+                {
+                    Require(children.Count >= 2, "splitButton must contain at least two children: " + id);
+                    ValidateRibbonLayoutItems(children, featureIds, containerIds, id);
+                    var defaultFeatureId = StringValue(item!, "defaultFeatureId");
+                    Require(string.IsNullOrWhiteSpace(defaultFeatureId) || ChildrenContainFeatureId(children, defaultFeatureId), "splitButton defaultFeatureId must reference one child feature: " + id);
+                    continue;
+                }
+
+                if (string.Equals(type, "stack", StringComparison.OrdinalIgnoreCase))
+                {
+                    Require(children.Count >= 2 && children.Count <= 3, "stack must contain two or three children: " + id);
+                    foreach (var child in children)
+                    {
+                        var childMap = child as Dictionary<string, object>;
+                        Require(childMap != null, "stack child item must be an object: " + id);
+                        var childType = StringValue(childMap!, "type");
+                        Require(string.Equals(childType, "pushButton", StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(childType, "pulldownButton", StringComparison.OrdinalIgnoreCase), "stack supports pushButton and pulldownButton children only: " + id);
+                    }
+
+                    ValidateRibbonLayoutItems(children, featureIds, containerIds, id);
+                    continue;
+                }
+
+                Require(false, "unsupported ribbon layout item type: " + type);
+            }
+        }
+
+        private static bool ChildrenContainFeatureId(IEnumerable<object> children, string featureId)
+        {
+            return children
+                .Select(child => child as Dictionary<string, object>)
+                .Where(child => child != null)
+                .Any(child => string.Equals(StringValue(child!, "featureId"), featureId, StringComparison.OrdinalIgnoreCase));
         }
 
         private static void ValidateRevitRibbonAdapter()
@@ -2032,9 +2128,33 @@ namespace PlugHub.StaticValidation
             return source.TryGetValue(key, out var value) && value is Dictionary<string, object> result ? result : new Dictionary<string, object>();
         }
 
+        private static bool TryObjectValue(Dictionary<string, object> source, string key, out Dictionary<string, object> result)
+        {
+            if (source.TryGetValue(key, out var value) && value is Dictionary<string, object> objectValue)
+            {
+                result = objectValue;
+                return true;
+            }
+
+            result = new Dictionary<string, object>();
+            return false;
+        }
+
         private static ArrayList ArrayValue(Dictionary<string, object> source, string key)
         {
             return source.TryGetValue(key, out var value) && value is ArrayList result ? result : new ArrayList();
+        }
+
+        private static bool TryArrayValue(Dictionary<string, object> source, string key, out ArrayList result)
+        {
+            if (source.TryGetValue(key, out var value) && value is ArrayList arrayValue)
+            {
+                result = arrayValue;
+                return true;
+            }
+
+            result = new ArrayList();
+            return false;
         }
 
         private static List<string> SequenceValue(Dictionary<string, object> source, string key)
