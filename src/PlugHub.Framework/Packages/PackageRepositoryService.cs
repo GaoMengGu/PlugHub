@@ -183,7 +183,7 @@ namespace PlugHub.Framework.Packages
             try
             {
                 var manifestBackups = new List<PendingManifestBackup>();
-                if (!TryRemoveModuleFromInstalledManifests(installRoot, moduleId, string.Empty, manifestBackups, out var cleanedManifests, out var cleanupError))
+                if (!TryRemoveModuleFromInstalledManifests(installRoot, moduleId, string.Empty, manifestBackups, false, out var cleanedManifests, out var cleanupError))
                 {
                     return PackageRepositoryOperationResult.Failed("无法清理插件包清单。请关闭并重启 Revit 后重试: " + cleanupError);
                 }
@@ -259,7 +259,7 @@ namespace PlugHub.Framework.Packages
                 if (replaceExisting && Directory.Exists(installDirectory) && TryFindLockedFile(installDirectory, out var lockedFile))
                 {
                     var manifestBackups = new List<PendingManifestBackup>();
-                    if (!TryRemoveModuleFromInstalledManifests(installRoot, moduleId, string.Empty, manifestBackups, out var lockedCleanedManifests, out var lockedCleanupError))
+                    if (!TryRemoveModuleFromInstalledManifests(installRoot, moduleId, string.Empty, manifestBackups, false, out var lockedCleanedManifests, out var lockedCleanupError))
                     {
                         DeleteDirectoryQuietly(stagingDirectory);
                         return PackageRepositoryOperationResult.Failed("插件包更新已暂存，但清理旧插件包清单失败。请关闭并重启 Revit 后重试: " + lockedCleanupError);
@@ -567,6 +567,18 @@ namespace PlugHub.Framework.Packages
             out int cleanedManifests,
             out string error)
         {
+            return TryRemoveModuleFromInstalledManifests(installRoot, moduleId, excludedDirectory, manifestBackups, true, out cleanedManifests, out error);
+        }
+
+        private bool TryRemoveModuleFromInstalledManifests(
+            string installRoot,
+            string moduleId,
+            string excludedDirectory,
+            ICollection<PendingManifestBackup>? manifestBackups,
+            bool deleteEmptyPackageDirectories,
+            out int cleanedManifests,
+            out string error)
+        {
             cleanedManifests = 0;
             error = string.Empty;
 
@@ -598,7 +610,7 @@ namespace PlugHub.Framework.Packages
                     }
                 }
 
-                if (!TryRemoveModuleFromManifest(manifestPath, moduleId, out var changed, out error))
+                if (!TryRemoveModuleFromManifest(manifestPath, moduleId, deleteEmptyPackageDirectories, out var changed, out error))
                 {
                     return false;
                 }
@@ -663,6 +675,11 @@ namespace PlugHub.Framework.Packages
 
         private bool TryRemoveModuleFromManifest(string manifestPath, string moduleId, out bool changed, out string error)
         {
+            return TryRemoveModuleFromManifest(manifestPath, moduleId, true, out changed, out error);
+        }
+
+        private bool TryRemoveModuleFromManifest(string manifestPath, string moduleId, bool deleteEmptyPackageDirectory, out bool changed, out string error)
+        {
             changed = false;
             error = string.Empty;
 
@@ -686,7 +703,7 @@ namespace PlugHub.Framework.Packages
 
             changed = true;
             var manifestDirectory = Path.GetDirectoryName(manifestPath) ?? string.Empty;
-            if (remainingModules.Length == 0 && !IsInstalledPackagesRoot(manifestDirectory))
+            if (remainingModules.Length == 0 && !IsInstalledPackagesRoot(manifestDirectory) && deleteEmptyPackageDirectory)
             {
                 if (TryDeletePackageDirectoryOrClearManifest(manifestDirectory, manifestPath, root, out error))
                 {
