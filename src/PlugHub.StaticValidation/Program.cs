@@ -25,6 +25,7 @@ namespace PlugHub.StaticValidation
                 ValidateCoreContracts();
                 ValidateRevitRibbonAdapter();
                 ValidateRuntimeRoutingSpecification();
+                ValidateRevit2025AlcReadinessSpecification();
                 ValidateManifestAuthoritativeDiscoverySpecification();
                 ValidateRuntimeConfigurationLoader();
                 ValidateFrameworkRuntimeLoadIsolation();
@@ -78,6 +79,7 @@ namespace PlugHub.StaticValidation
                 "src/PlugHub.Revit2020/PlugHub.Revit2020.csproj",
                 "src/PlugHub.StaticValidation/PlugHub.StaticValidation.csproj",
                 "src/PlugHub.Contracts/Modules/IPlugHubModule.cs",
+                "src/PlugHub.Contracts/Loading/AlcLoadRules.cs",
                 "src/PlugHub.Framework/Composition/FeatureViewComposer.cs",
                 "src/PlugHub.Framework/Configuration/FrameworkConfigurationLoader.cs",
                 "src/PlugHub.Framework/Discovery/ModuleDiscoveryService.cs",
@@ -313,6 +315,26 @@ namespace PlugHub.StaticValidation
             Require(!loader.Contains("Assembly.LoadFrom(assemblyPath)"), "net48 command loader must not load directly from the installed package assembly path.");
             Require(featureDispatcher.Contains("new Net48ShadowCopyCommandAssemblyLoader()"), "FeatureCommandDispatcher must use the shadow-copy command loader.");
             Require(featureDispatcher.Contains("CommandAssemblyLoader.Create(assemblyPath, feature.CommandType, FrameworkRuntimeState.BaseDirectory)"), "FeatureCommandDispatcher must pass the runtime base directory to the shadow-copy loader.");
+        }
+
+        private static void ValidateRevit2025AlcReadinessSpecification()
+        {
+            var revitText = ReadAllCSharp("src/PlugHub.Revit2020");
+            var alcRules = ReadText("src/PlugHub.Contracts/Loading/AlcLoadRules.cs");
+            var architecture = ReadText("docs/architecture.md");
+            var development = ReadText("docs/development.md");
+
+            Require(alcRules.Contains("class AlcLoadRules"), "ALC readiness must define shared assembly load rules.");
+            Require(alcRules.Contains("MustUseDefaultContext"), "ALC readiness must expose a default-context decision point.");
+            foreach (var sharedAssembly in new[] { "RevitAPI", "RevitAPIUI", "PlugHub.Contracts" })
+            {
+                Require(alcRules.Contains(sharedAssembly), "future Revit 2025+ ALC loaders must share assembly with the default context: " + sharedAssembly);
+            }
+
+            Require(!revitText.Contains("AssemblyLoadContext"), "Revit 2020 adapter must not use AssemblyLoadContext.");
+            Require(!revitText.Contains("AssemblyDependencyResolver"), "Revit 2020 adapter must not use AssemblyDependencyResolver.");
+            Require(architecture.Contains("Revit 2025+ ALC") && architecture.Contains("AlcLoadRules"), "architecture docs must describe the Revit 2025+ ALC readiness boundary.");
+            Require(development.Contains(".NET SDK 8") && development.Contains("不声明 Revit 2025 实机支持"), "development docs must state the local Revit 2025+ ALC prerequisites and non-support boundary.");
         }
 
         private static void ValidateManifestAuthoritativeDiscoverySpecification()

@@ -98,6 +98,14 @@ Revit 2020 适配层的业务命令加载器是 `Net48ShadowCopyCommandAssemblyL
 
 这个机制只减少 Revit 锁住安装目录业务 DLL 的概率，不提供 .NET Framework 程序集卸载能力，也不承诺同一 Revit 会话内替换已加载的同名程序集。
 
+## Revit 2025+ ALC 准备
+
+当前仓库的可运行入口仍是 `PlugHub.Revit2020`。第四阶段先固化 Revit 2025+ ALC 的共享程序集规则，不在 Revit 2020 适配层中引入 `AssemblyLoadContext`。
+
+`PlugHub.Contracts.Loading.AlcLoadRules` 定义未来 `Net8AlcCommandAssemblyLoader` 必须回退到默认加载上下文的程序集：`RevitAPI`、`RevitAPIUI` 和 `PlugHub.Contracts`。这些程序集不能被插件 ALC 重复加载，否则 `IExternalCommand`、Revit API 类型或 PlugHub 契约类型会出现类型身份不一致。业务插件自己的依赖才应由未来 net8 加载器通过插件目录解析。
+
+完整 Revit 2025+ 适配需要独立目标框架、Revit 2025 API 引用、可兼容的 Contracts/Framework 目标框架以及实机验证。本仓库当前只提供 ALC readiness 边界，不声明 Revit 2025 实机支持。
+
 ## 模块契约
 
 插件包清单是模块和功能入口的权威来源。`IPlugHubModule` 与 `Describe()` 保留为模块侧契约和后续可选诊断/校验扩展点，但默认启动链路不实例化模块类型，也不把运行时描述合并回 Ribbon 组合。
