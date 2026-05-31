@@ -294,6 +294,14 @@ namespace PlugHub.StaticValidation
             Require(ReadText("docs/architecture.md").Contains("DPAPI"), "architecture docs must document credential protection.");
             Require(ReadText("docs/project-overview.md").Contains("V1.2"), "project overview must mention V1.2 architecture hardening.");
             Require(!ReadText("README.md").Contains("D:\\AI\\code\\PlugHub_Modules"), "root README must not expose local external module paths.");
+
+            var architecture = ReadText("docs/architecture.md");
+            var development = ReadText("docs/development.md");
+            var pluginDevelopment = ReadText("docs/plugin-development.md");
+            Require(architecture.Contains("Ribbon layout") || architecture.Contains("Ribbon 布局"), "architecture docs must describe advanced Ribbon layout.");
+            Require(architecture.Contains("PulldownButton") && architecture.Contains("SplitButton"), "architecture docs must mention advanced Revit Ribbon controls.");
+            Require(development.Contains("Ribbon 结构") && development.Contains("重启 Revit"), "development docs must state Ribbon layout changes require Revit restart.");
+            Require(pluginDevelopment.Contains("插件包只声明功能") || pluginDevelopment.Contains("插件包清单只声明功能"), "plugin development docs must keep package manifests separate from user Ribbon layout.");
         }
 
         private static void ValidateLayering()

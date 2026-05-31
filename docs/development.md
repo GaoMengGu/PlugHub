@@ -94,6 +94,7 @@ dotnet build src\PlugHub.Revit2020\PlugHub.Revit2020.csproj /p:RevitApiReference
 - 功能显示名、开关、所属分组、图标、大小、排序保存后能写回配置；插件包整体设置不在设置页直接编辑。
 - 自定义分组通过分组页右键菜单新增或删除；删除前必须先移走该分组下的功能。
 - Ribbon 结构、图标和大小调整后，重启 Revit 能看到新布局。
+- Ribbon 结构包括 panel、PushButton、PulldownButton、SplitButton 和 Stack；设置页保存后不会尝试在当前 Revit 会话中实时替换已有 Ribbon 控件，必须重启 Revit 后验收。
 - 外部模块按钮能进入对应 Revit API 命令，例如分离后的 `Tee/Tap 切换` 和 `批量材质参数`。
 
 不要把静态验证或本机构建表述为实机通过。
