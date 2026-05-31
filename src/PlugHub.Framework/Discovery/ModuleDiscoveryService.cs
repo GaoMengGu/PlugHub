@@ -10,6 +10,8 @@ namespace PlugHub.Framework.Discovery
 {
     public sealed class ModuleDiscoveryService
     {
+        private const string CurrentRevitVersion = "2020";
+
         public ModuleDiscoveryResult Discover(string baseDirectory, ModulesConfiguration modulesConfiguration)
         {
             if (string.IsNullOrWhiteSpace(baseDirectory)) throw new ArgumentException("Base directory is required.", nameof(baseDirectory));
@@ -43,8 +45,12 @@ namespace PlugHub.Framework.Discovery
             reason = string.Empty;
             if (module == null) return true;
 
-            var revitVersions = module.RevitVersions ?? new List<string>();
-            if (revitVersions.Count > 0 && !revitVersions.Contains("2020"))
+            // FrameworkVersionRange is preserved as package metadata; runtime range evaluation is intentionally not enforced yet.
+            var revitVersions = (module.RevitVersions ?? new List<string>())
+                .Select(version => (version ?? string.Empty).Trim())
+                .Where(version => !string.IsNullOrWhiteSpace(version))
+                .ToList();
+            if (revitVersions.Count > 0 && !revitVersions.Contains(CurrentRevitVersion, StringComparer.OrdinalIgnoreCase))
             {
                 reason = "Module does not declare compatibility with Revit 2020.";
                 return false;

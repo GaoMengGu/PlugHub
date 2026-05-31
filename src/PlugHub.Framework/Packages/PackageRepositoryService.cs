@@ -934,6 +934,8 @@ namespace PlugHub.Framework.Packages
                 ["modules"] = new object[] { moduleObject }
             };
             CopyOptionalManifestValue(root, manifest, "version");
+            CopyOptionalManifestValue(root, manifest, "revitVersions");
+            CopyOptionalManifestValue(root, manifest, "frameworkVersionRange");
 
             File.WriteAllText(targetManifestPath, _serializer.Serialize(manifest));
         }

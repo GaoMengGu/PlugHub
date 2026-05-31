@@ -409,8 +409,44 @@ namespace PlugHub.StaticValidation
             var discovery = ReadText("src/PlugHub.Framework/Discovery/ModuleDiscoveryService.cs");
             Require(discovery.Contains("IsCompatibleWithRuntime"), "module discovery must skip packages incompatible with the active runtime.");
             Require(discovery.Contains("RT-MODULE-COMPATIBILITY") && discovery.Contains("continue;"), "module discovery must warn and skip packages incompatible with the active runtime.");
+            Require(discovery.Contains("CurrentRevitVersion") && discovery.Contains(".Trim()") && discovery.Contains("StringComparer.OrdinalIgnoreCase"), "module discovery must normalize declared Revit versions before comparing with the current runtime.");
+            Require(discovery.Contains("FrameworkVersionRange") && discovery.Contains("metadata"), "frameworkVersionRange must be explicitly preserved as metadata and not treated as runtime compatibility logic yet.");
 
+            var packageRepositoryService = ReadText("src/PlugHub.Framework/Packages/PackageRepositoryService.cs");
+            Require(packageRepositoryService.Contains("\"revitVersions\"") && packageRepositoryService.Contains("\"frameworkVersionRange\""), "single-module installed manifests must preserve root compatibility metadata.");
+            Require(!packageRepositoryService.Contains("CopyOptionalManifestValue(root, manifest, \"sha256\")") && !packageRepositoryService.Contains("CopyOptionalManifestValue(root, manifest, \"signature\")"), "single-module installed manifests must not copy root sha256 or signature after rewriting the manifest.");
+
+            ValidateRuntimeAcceptsWhitespacePaddedRevitVersion();
             ValidateRuntimeSkipsPresetOverriddenIncompatiblePackage();
+            ValidateInstalledRepositoryPackagePreservesCompatibilityAndSkips();
+        }
+
+        private static void ValidateRuntimeAcceptsWhitespacePaddedRevitVersion()
+        {
+            var tempRoot = Path.Combine(Path.GetTempPath(), "PlugHub.StaticValidation", Guid.NewGuid().ToString("N"));
+            try
+            {
+                var configDirectory = Path.Combine(tempRoot, "config");
+                var packageDirectory = Path.Combine(tempRoot, "packages", "compatible-package");
+                Directory.CreateDirectory(configDirectory);
+                Directory.CreateDirectory(packageDirectory);
+
+                WriteRuntimeConfig(configDirectory);
+                File.WriteAllText(
+                    Path.Combine(packageDirectory, "package.json"),
+                    "{\"schemaVersion\":\"1.0\",\"revitVersions\":[\" 2020 \",\"\"],\"frameworkVersionRange\":\">=1.2\",\"modules\":[{\"id\":\"compatible-package\",\"assembly\":\"Compatible.dll\",\"type\":\"Demo.CompatibleModule\",\"enabled\":true,\"visible\":true,\"features\":[{\"id\":\"compatible-feature\",\"displayName\":\"Compatible\",\"category\":\"test\",\"group\":\"test\",\"defaultState\":\"Visible\"}]}]}");
+
+                var snapshot = new PlugHub.Framework.Runtime.FrameworkRuntime().Load(configDirectory);
+                Require(snapshot.Features.Any(feature => feature.ModuleId == "compatible-package"), "runtime must accept whitespace-padded Revit 2020 compatibility declarations.");
+                Require(!snapshot.Diagnostics.Any(diagnostic => diagnostic.Code == "RT-MODULE-COMPATIBILITY" && diagnostic.ModuleId == "compatible-package"), "runtime must not warn for whitespace-padded Revit 2020 compatibility declarations.");
+            }
+            finally
+            {
+                if (Directory.Exists(tempRoot))
+                {
+                    Directory.Delete(tempRoot, true);
+                }
+            }
         }
 
         private static void ValidateRuntimeSkipsPresetOverriddenIncompatiblePackage()
@@ -423,15 +459,7 @@ namespace PlugHub.StaticValidation
                 Directory.CreateDirectory(configDirectory);
                 Directory.CreateDirectory(packageDirectory);
 
-                File.WriteAllText(
-                    Path.Combine(configDirectory, "sources.json"),
-                    "{\"schemaVersion\":\"1.0\",\"packageDirectories\":[\"packages\"],\"moduleSources\":[],\"repositories\":[],\"conflictPolicy\":{\"duplicateFeatureId\":\"fail-feature\",\"duplicateModuleId\":\"fail-module\",\"missingModuleType\":\"warn\"},\"modules\":[]}");
-                File.WriteAllText(
-                    Path.Combine(configDirectory, "views.json"),
-                    "{\"schemaVersion\":\"1.0\",\"defaultView\":\"workspace\",\"views\":[{\"id\":\"workspace\",\"name\":\"Workspace\",\"ribbon\":{\"tabName\":\"PlugHub\",\"fallbackPanelName\":\"Framework\"},\"groups\":[{\"id\":\"test\",\"name\":\"Test\",\"includeCategories\":[\"test\"],\"order\":0}],\"sort\":[\"group.order\",\"feature.order\",\"feature.name\",\"feature.id\"]}]}");
-                File.WriteAllText(
-                    Path.Combine(configDirectory, "feature-combinations.json"),
-                    "{\"schemaVersion\":\"1.0\",\"defaultPreset\":\"workspace-preset\",\"presets\":[{\"id\":\"workspace-preset\",\"viewId\":\"workspace\",\"moduleOverrides\":[{\"moduleId\":\"incompatible-package\",\"visible\":true}]}]}");
+                WriteRuntimeConfig(configDirectory, "incompatible-package");
                 File.WriteAllText(
                     Path.Combine(packageDirectory, "package.json"),
                     "{\"schemaVersion\":\"1.0\",\"revitVersions\":[\"2024\"],\"modules\":[{\"id\":\"incompatible-package\",\"assembly\":\"Incompatible.dll\",\"type\":\"Demo.IncompatibleModule\",\"enabled\":true,\"visible\":true,\"features\":[{\"id\":\"incompatible-feature\",\"displayName\":\"Incompatible\",\"category\":\"test\",\"group\":\"test\",\"defaultState\":\"Visible\"}]}]}");
@@ -447,6 +475,75 @@ namespace PlugHub.StaticValidation
                     Directory.Delete(tempRoot, true);
                 }
             }
+        }
+
+        private static void ValidateInstalledRepositoryPackagePreservesCompatibilityAndSkips()
+        {
+            var tempRoot = Path.Combine(Path.GetTempPath(), "PlugHub.StaticValidation", Guid.NewGuid().ToString("N"));
+            try
+            {
+                var configDirectory = Path.Combine(tempRoot, "config");
+                var repositoryDirectory = Path.Combine(tempRoot, "repository", "root-incompatible-package");
+                var installDirectory = Path.Combine(tempRoot, "packages", "root-incompatible-package");
+                Directory.CreateDirectory(configDirectory);
+                Directory.CreateDirectory(repositoryDirectory);
+                File.WriteAllText(Path.Combine(repositoryDirectory, "Incompatible.dll"), "payload");
+                WriteRuntimeConfig(configDirectory);
+                File.WriteAllText(
+                    Path.Combine(repositoryDirectory, "package.json"),
+                    "{\"schemaVersion\":\"1.0\",\"version\":\"1.0.0\",\"revitVersions\":[\"2024\"],\"frameworkVersionRange\":\">=1.2\",\"sha256\":\"stale-after-rewrite\",\"signature\":\"stale-after-rewrite\",\"modules\":[{\"id\":\"root-incompatible-package\",\"assembly\":\"Incompatible.dll\",\"type\":\"Demo.IncompatibleModule\",\"enabled\":true,\"visible\":true,\"features\":[{\"id\":\"root-incompatible-feature\",\"displayName\":\"Root Incompatible\",\"category\":\"test\",\"group\":\"test\",\"defaultState\":\"Visible\"}]}]}");
+
+                var package = new PlugHub.Framework.Packages.RepositoryPackageDescriptor
+                {
+                    RepositoryId = "test-repository",
+                    PackageId = "root-incompatible-package",
+                    ModuleId = "root-incompatible-package",
+                    DisplayName = "Root Incompatible Package",
+                    ManifestPath = Path.Combine(repositoryDirectory, "package.json"),
+                    SourceDirectory = repositoryDirectory,
+                    InstallDirectory = installDirectory
+                };
+                var installResult = new PlugHub.Framework.Packages.PackageRepositoryService().Install(tempRoot, package);
+                Require(installResult.Success, "installing repository package with root compatibility metadata should succeed: " + installResult.Message);
+
+                var installedManifest = ReadInstalledManifest(Path.Combine(installDirectory, "package.json"));
+                Require(installedManifest.Contains("\"revitVersions\"") && installedManifest.Contains("\"2024\""), "installed single-module manifest must preserve root revitVersions metadata.");
+                Require(installedManifest.Contains("\"frameworkVersionRange\""), "installed single-module manifest must preserve root frameworkVersionRange metadata.");
+                Require(!installedManifest.Contains("\"sha256\"") && !installedManifest.Contains("\"signature\""), "installed single-module manifest must not preserve stale root signature metadata after rewrite.");
+
+                var snapshot = new PlugHub.Framework.Runtime.FrameworkRuntime().Load(configDirectory);
+                Require(!snapshot.Features.Any(feature => feature.ModuleId == "root-incompatible-package"), "runtime must skip installed repository packages whose root manifest declared incompatible Revit versions.");
+                Require(snapshot.Diagnostics.Any(diagnostic => diagnostic.Code == "RT-MODULE-COMPATIBILITY" && diagnostic.ModuleId == "root-incompatible-package"), "runtime must report RT-MODULE-COMPATIBILITY for installed repository packages with incompatible root metadata.");
+            }
+            finally
+            {
+                if (Directory.Exists(tempRoot))
+                {
+                    Directory.Delete(tempRoot, true);
+                }
+            }
+        }
+
+        private static void WriteRuntimeConfig(string configDirectory, string overrideModuleId = "")
+        {
+            File.WriteAllText(
+                Path.Combine(configDirectory, "sources.json"),
+                "{\"schemaVersion\":\"1.0\",\"packageDirectories\":[\"packages\"],\"moduleSources\":[],\"repositories\":[],\"conflictPolicy\":{\"duplicateFeatureId\":\"fail-feature\",\"duplicateModuleId\":\"fail-module\",\"missingModuleType\":\"warn\"},\"modules\":[]}");
+            File.WriteAllText(
+                Path.Combine(configDirectory, "views.json"),
+                "{\"schemaVersion\":\"1.0\",\"defaultView\":\"workspace\",\"views\":[{\"id\":\"workspace\",\"name\":\"Workspace\",\"ribbon\":{\"tabName\":\"PlugHub\",\"fallbackPanelName\":\"Framework\"},\"groups\":[{\"id\":\"test\",\"name\":\"Test\",\"includeCategories\":[\"test\"],\"order\":0}],\"sort\":[\"group.order\",\"feature.order\",\"feature.name\",\"feature.id\"]}]}");
+
+            var overrides = string.IsNullOrWhiteSpace(overrideModuleId)
+                ? "[]"
+                : "[{\"moduleId\":\"" + overrideModuleId + "\",\"visible\":true}]";
+            File.WriteAllText(
+                Path.Combine(configDirectory, "feature-combinations.json"),
+                "{\"schemaVersion\":\"1.0\",\"defaultPreset\":\"workspace-preset\",\"presets\":[{\"id\":\"workspace-preset\",\"viewId\":\"workspace\",\"moduleOverrides\":" + overrides + "}]}");
+        }
+
+        private static string ReadInstalledManifest(string path)
+        {
+            return File.ReadAllText(path).Replace("\\/", "/");
         }
 
         private static void ValidateRevitRibbonAdapter()
