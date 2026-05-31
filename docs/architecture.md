@@ -104,7 +104,7 @@ Revit 2020 适配层的业务命令加载器是 `Net48ShadowCopyCommandAssemblyL
 
 `PlugHub.Contracts.Loading.AlcLoadRules` 定义未来 `Net8AlcCommandAssemblyLoader` 必须回退到默认加载上下文的程序集：`RevitAPI`、`RevitAPIUI` 和 `PlugHub.Contracts`。这些程序集不能被插件 ALC 重复加载，否则 `IExternalCommand`、Revit API 类型或 PlugHub 契约类型会出现类型身份不一致。业务插件自己的依赖才应由未来 net8 加载器通过插件目录解析。
 
-完整 Revit 2025+ 适配需要独立目标框架、Revit 2025 API 引用、可兼容的 Contracts/Framework 目标框架以及实机验证。本仓库当前只提供 ALC readiness 边界，不声明 Revit 2025 实机支持。
+完整 Revit 2025+ 适配需要独立目标框架、Revit 2025 API 引用、可兼容的 Contracts/Framework 目标框架以及实机验证。`PlugHub.Contracts` 已提供 `net48;netstandard2.1` 契约输出；`PlugHub.Framework` 仍是 `net48`，需要先替换 `System.Web.Script.Serialization` 之后才能继续做 net8 适配。本仓库当前只提供 ALC readiness 边界，不声明 Revit 2025 实机支持。
 
 ## 模块契约
 

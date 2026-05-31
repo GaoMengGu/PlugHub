@@ -23,6 +23,7 @@ namespace PlugHub.StaticValidation
                 ValidateViewCompositionExamples();
                 ValidateComposerShape();
                 ValidateCoreContracts();
+                ValidateContractsMultiTargetReadiness();
                 ValidateRevitRibbonAdapter();
                 ValidateRuntimeRoutingSpecification();
                 ValidateRevit2025AlcReadinessSpecification();
@@ -244,6 +245,18 @@ namespace PlugHub.StaticValidation
             {
                 Require(contractText.Contains(token), "missing contract token: " + token);
             }
+        }
+
+        private static void ValidateContractsMultiTargetReadiness()
+        {
+            var contractsProject = ReadText("src/PlugHub.Contracts/PlugHub.Contracts.csproj");
+            var frameworkProject = ReadText("src/PlugHub.Framework/PlugHub.Framework.csproj");
+            var development = ReadText("docs/development.md");
+
+            Require(contractsProject.Contains("<TargetFrameworks>net48;netstandard2.1</TargetFrameworks>"), "PlugHub.Contracts must target net48 and netstandard2.1 for future net8 adapters.");
+            Require(!ReadAllCSharp("src/PlugHub.Contracts").Contains("System.Web"), "PlugHub.Contracts must stay free of net48-only System.Web dependencies.");
+            Require(frameworkProject.Contains("<TargetFramework>net48</TargetFramework>") && frameworkProject.Contains("System.Web.Extensions"), "PlugHub.Framework remains net48 until its JSON serializer boundary is replaced.");
+            Require(development.Contains("PlugHub.Contracts") && development.Contains("netstandard2.1") && development.Contains("System.Web.Script.Serialization"), "development docs must describe the Contracts multi-target boundary and Framework blocker.");
         }
 
         private static void ValidateRevitRibbonAdapter()

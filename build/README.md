@@ -16,4 +16,4 @@ CI 发布构建不要求安装 Revit，改用 NuGet 编译引用：
 
 `build\Directory.Build.props` 已预留 `RevitVersion`、`RevitApiReferenceMode`、`RevitApiNuGetVersion` 以及 2018/2020/2022/2024 的安装目录属性。后续新增 Revit 版本适配项目时，应复用这些属性，不要把 Revit API DLL 提交到仓库。
 
-Revit 2025+ ALC 适配需要单独的 net8 项目和 .NET SDK 8。本仓库当前构建脚本仍只闭环 Revit 2020；不要仅因为存在 `AlcLoadRules` 就把构建产物或文档声明为 Revit 2025 可用。
+Revit 2025+ ALC 适配需要单独的 net8 项目和 .NET SDK 8。`PlugHub.Contracts` 已输出 `net48;netstandard2.1`，但本仓库当前构建脚本仍只闭环 Revit 2020；不要仅因为存在 `AlcLoadRules` 或 netstandard 契约输出就把构建产物或文档声明为 Revit 2025 可用。

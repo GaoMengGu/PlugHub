@@ -90,7 +90,7 @@ CI 发布构建使用 `NuGet` 引用模式，只把 Revit API 当作编译引用
 
 在 Revit 2020 中，PlugHub 不承诺已加载业务 DLL 的真正热重载。Ribbon 按钮不再直接绑定业务 `commandAssembly`，而是绑定到框架 slot 命令；`ModuleDiscoveryService` 以插件包清单为权威来源，启动发现不加载业务 DLL，也不调用 `IPlugHubModule.Describe()`。命令实例由 `FeatureCommandDispatcher` 在用户点击功能的路径上创建或加载；如果功能没有配置 `commandAssembly`，框架会默认解析为 `module.Assembly`。net48 命令加载器会把插件包复制到 `runtime-cache/<package>/<hash>/` 后从缓存副本加载，旧缓存清理失败会记录到 `runtime-cache/pending-cleanup.txt` 并在后续加载前重试。该机制用于降低安装目录 DLL 被占用的概率，不能承诺 .NET Framework 已加载程序集卸载或同一 Revit 会话内真热重载。
 
-Revit 2025+ ALC 需要单独的 net8 适配层、.NET SDK 8、Revit 2025 API 引用以及可被 net8 适配层引用的 Contracts/Framework 目标框架。当前本机只有 .NET SDK 3.1，当前仓库也仍是 Revit 2020 成果目录；这里的第四阶段只固化 `AlcLoadRules` 共享程序集边界，不声明 Revit 2025 实机支持。
+Revit 2025+ ALC 需要单独的 net8 适配层、.NET SDK 8、Revit 2025 API 引用以及可被 net8 适配层引用的 Contracts/Framework 目标框架。`PlugHub.Contracts` 已多目标到 `net48;netstandard2.1`，供 Revit 2020 和未来 net8 适配层共享契约；`PlugHub.Framework` 仍保持 `net48`，因为配置、包仓库和设置写回路径仍依赖 `System.Web.Script.Serialization`，后续要先替换这个 JSON 边界才能继续多目标化。当前本机只有 .NET SDK 3.1，当前仓库也仍是 Revit 2020 成果目录；这里的第四阶段只固化 `AlcLoadRules` 共享程序集边界，不声明 Revit 2025 实机支持。
 
 ## 配置变更注意事项
 
