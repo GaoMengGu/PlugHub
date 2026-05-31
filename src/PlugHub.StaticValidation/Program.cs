@@ -615,7 +615,7 @@ namespace PlugHub.StaticValidation
                 ValidateRuntimeRoutingSpecification();
             }
 
-            foreach (var token in new[] { "CreateRibbonTab", "CreateRibbonPanel", "PushButtonData", "FeatureRibbonBuilder", "FrameworkFeatureCommand", "FeatureCommandDispatcher", "FeatureSlotRegistry" })
+            foreach (var token in new[] { "CreateRibbonTab", "CreateRibbonPanel", "PushButtonData", "PulldownButtonData", "SplitButtonData", "FeatureRibbonBuilder", "FrameworkFeatureCommand", "FeatureCommandDispatcher", "FeatureSlotRegistry" })
             {
                 Require(adapterText.Contains(token), "missing Revit adapter token: " + token);
             }
@@ -650,6 +650,12 @@ namespace PlugHub.StaticValidation
 
             Require(!ribbonBuilder.Contains("new CommandTarget(assemblyPath, feature.CommandType)"), "Revit feature buttons must use framework slots instead of external command assemblies.");
             Require(ribbonBuilder.Contains("FeatureSlotRegistry.Replace"), "Ribbon build must atomically replace feature slot mappings.");
+            Require(ribbonBuilder.Contains("new RibbonLayoutComposer().Compose"), "Ribbon builder must consume RibbonLayoutComposer.");
+            Require(ribbonBuilder.Contains("AddPulldownButton"), "Ribbon builder must render pulldown buttons.");
+            Require(ribbonBuilder.Contains("AddSplitButton"), "Ribbon builder must render split buttons.");
+            Require(ribbonBuilder.Contains("AddStackItemData"), "Ribbon builder must render stacked layout item data.");
+            Require(ribbonBuilder.Contains("RibbonItemData"), "Ribbon builder must pass generic RibbonItemData into AddStackedItems.");
+            Require(ribbonBuilder.Contains("layout.ClickableFeatures"), "Ribbon slot assignment must use clickable features from the layout tree.");
             Require(!featureCommand.Contains("Assembly.LoadFrom"), "FrameworkFeatureCommand must delegate business command loading to ICommandAssemblyLoader.");
             Require(featureExecutionGate.Contains("CanExecuteFeatureId") && featureExecutionGate.Contains("matchCommandKey"), "FeatureExecutionGate must expose an id-only execution path for slot routing.");
             Require(featureDispatcher.Contains("CanExecuteFeatureId(featureId)"), "FeatureCommandDispatcher must validate slot-routed feature ids without matching command keys.");
@@ -1038,6 +1044,7 @@ namespace PlugHub.StaticValidation
         {
             var settingsWindow = ReadText("src/PlugHub.Revit2020/FrameworkSettingsWindow.cs");
             var ribbonBuilder = ReadText("src/PlugHub.Revit2020/FeatureRibbonBuilder.cs");
+            var ribbonLayoutComposer = ReadText("src/PlugHub.Framework/Composition/RibbonLayoutComposer.cs");
 
             Require(settingsWindow.Contains("BuildSelectedFeatureEditor") && settingsWindow.Contains("_selectedFeatureGroupCombo") && settingsWindow.Contains("_selectedFeatureButtonSizeCombo"), "feature group and button size editors must be ordinary selected-feature combo boxes.");
             Require(settingsWindow.Contains("ApplySelectedFeatureGroup") && settingsWindow.Contains("ApplySelectedFeatureButtonSize"), "selected feature combo boxes must write group and button size back to the selected row.");
@@ -1053,7 +1060,10 @@ namespace PlugHub.StaticValidation
 
             Require(!settingsWindow.Contains("MessageBox.Show"), "settings window must not show pop-up prompts for normal settings operations.");
             Require(!settingsWindow.Contains("BuildInstalledPackagesTab") && !settingsWindow.Contains("BuildPluginPackagesTab") && !settingsWindow.Contains("ApplyPluginPackageRows();"), "settings window must not expose the installed package settings tab.");
-            Require(ribbonBuilder.Contains("OrderFeaturesForRibbon"), "Ribbon builder must explicitly order features inside each panel.");
+            Require(ribbonBuilder.Contains("new RibbonLayoutComposer().Compose")
+                && ribbonLayoutComposer.Contains(".OrderBy(feature => feature.DisplayOrder)")
+                && ribbonLayoutComposer.Contains(".ThenBy(feature => feature.FeatureId"),
+                "Ribbon layout composer must explicitly order features inside each panel.");
         }
 
         private static void ValidatePackageSourceAndReleaseBehavior()

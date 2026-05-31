@@ -40,16 +40,8 @@ namespace PlugHub.Revit2020
                 return;
             }
 
-            var orderedGroups = composition.Features
-                .GroupBy(f => new { f.GroupId, f.GroupName, f.GroupOrder })
-                .OrderBy(group => group.Key.GroupOrder)
-                .ThenBy(group => group.Key.GroupName)
-                .ToList();
-
-            var orderedFeatures = orderedGroups
-                .SelectMany(group => OrderFeaturesForRibbon(group))
-                .ToList();
-            var slotAssignments = BuildSlotAssignments(orderedFeatures);
+            var layout = new RibbonLayoutComposer().Compose(view, composition.Features);
+            var slotAssignments = BuildSlotAssignments(layout.ClickableFeatures);
             FeatureSlotRegistry.Replace(slotAssignments.SlotToFeatureId, slotAssignments.SkippedFeatureIds);
 
             foreach (var skippedFeatureId in slotAssignments.SkippedFeatureIds)
@@ -57,20 +49,12 @@ namespace PlugHub.Revit2020
                 Trace.TraceWarning("PH-FEATURE-SLOT-LIMIT: Feature was not assigned a Revit command slot: " + skippedFeatureId);
             }
 
-            foreach (var group in orderedGroups)
+            foreach (var panelModel in layout.Panels)
             {
-                var panelName = SafeDisplayName(group.Key.GroupName, fallbackPanelName);
+                var panelName = SafeDisplayName(panelModel.Name, fallbackPanelName);
                 var panel = GetOrCreatePanel(application, tabName, panelName);
-                AddFeatureButtons(panel, OrderFeaturesForRibbon(group), slotAssignments.FeatureIdToSlot);
+                AddRibbonLayoutItems(panel, panelModel.Items, slotAssignments.FeatureIdToSlot);
             }
-        }
-
-        private static IEnumerable<FeatureViewModel> OrderFeaturesForRibbon(IEnumerable<FeatureViewModel> features)
-        {
-            return (features ?? new List<FeatureViewModel>())
-                .OrderBy(feature => feature.DisplayOrder)
-                .ThenBy(feature => feature.DisplayName, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(feature => feature.FeatureId, StringComparer.OrdinalIgnoreCase);
         }
 
         private void AddFrameworkButtons(RibbonPanel panel)
@@ -101,92 +85,177 @@ namespace PlugHub.Revit2020
             panel.AddItem(data);
         }
 
-        private void AddFeatureButtons(RibbonPanel panel, IEnumerable<FeatureViewModel> features, IReadOnlyDictionary<string, int> featureIdToSlot)
+        private void AddRibbonLayoutItems(RibbonPanel panel, IEnumerable<RibbonItemViewModel> items, IReadOnlyDictionary<string, int> featureIdToSlot)
         {
-            var smallBuffer = new List<PushButtonData>();
-            foreach (var feature in features)
+            foreach (var item in items ?? new List<RibbonItemViewModel>())
             {
-                if (string.IsNullOrWhiteSpace(feature.FeatureId) || !featureIdToSlot.ContainsKey(feature.FeatureId))
+                if (item == null)
                 {
                     continue;
                 }
 
-                var data = CreateFeatureButtonData(feature, featureIdToSlot);
-                if (IsSmall(feature.ButtonSize))
+                if (IsRibbonItemType(item, RibbonItemViewModel.Stack))
                 {
-                    smallBuffer.Add(data);
-                    if (smallBuffer.Count == 3)
-                    {
-                        AddStackedButtons(panel, smallBuffer);
-                        smallBuffer.Clear();
-                    }
-
+                    AddStackLayout(panel, item, featureIdToSlot);
                     continue;
                 }
 
-                AddStackedButtons(panel, smallBuffer);
-                smallBuffer.Clear();
-                AddFeatureButton(panel, data);
+                var data = CreateRibbonItemData(item, featureIdToSlot);
+                if (data == null || ContainsRibbonItem(panel, data.Name))
+                {
+                    continue;
+                }
+
+                var added = panel.AddItem(data);
+                PopulateContainer(added, item, featureIdToSlot);
+            }
+        }
+
+        private RibbonItemData? CreateRibbonItemData(RibbonItemViewModel item, IReadOnlyDictionary<string, int> featureIdToSlot)
+        {
+            if (item == null) return null;
+            if (IsRibbonItemType(item, RibbonItemViewModel.PushButton))
+            {
+                return CreateFeatureButtonData(item, featureIdToSlot);
             }
 
-            AddStackedButtons(panel, smallBuffer);
+            if (IsRibbonItemType(item, RibbonItemViewModel.PulldownButton))
+            {
+                return new PulldownButtonData(
+                    SafeContainerName(item),
+                    SafeDisplayName(item.Text, SafeDisplayName(item.Id, "Menu")));
+            }
+
+            if (IsRibbonItemType(item, RibbonItemViewModel.SplitButton))
+            {
+                return new SplitButtonData(
+                    SafeContainerName(item),
+                    SafeDisplayName(item.Text, SafeDisplayName(item.Id, "Split")));
+            }
+
+            Trace.TraceWarning("PH-RIBBON-ITEM-SKIPPED: Unsupported ribbon item type: " + item.Type);
+            return null;
         }
 
-        private void AddFeatureButton(RibbonPanel panel, PushButtonData data)
+        private void PopulateContainer(RibbonItem added, RibbonItemViewModel item, IReadOnlyDictionary<string, int> featureIdToSlot)
         {
-            if (panel.GetItems().Any(item => string.Equals(item.Name, data.Name, StringComparison.OrdinalIgnoreCase))) return;
-            panel.AddItem(data);
+            if (added is PulldownButton pulldown)
+            {
+                AddPulldownButton(pulldown, item, featureIdToSlot);
+                return;
+            }
+
+            if (added is SplitButton split)
+            {
+                AddSplitButton(split, item, featureIdToSlot);
+            }
         }
 
-        private PushButtonData CreateFeatureButtonData(FeatureViewModel feature, IReadOnlyDictionary<string, int> featureIdToSlot)
+        private void AddPulldownButton(PulldownButton pulldown, RibbonItemViewModel item, IReadOnlyDictionary<string, int> featureIdToSlot)
         {
+            foreach (var child in item.Items ?? new List<RibbonItemViewModel>())
+            {
+                var data = CreateFeatureButtonData(child, featureIdToSlot);
+                if (data == null)
+                {
+                    continue;
+                }
+
+                pulldown.AddPushButton(data);
+            }
+        }
+
+        private void AddSplitButton(SplitButton split, RibbonItemViewModel item, IReadOnlyDictionary<string, int> featureIdToSlot)
+        {
+            foreach (var child in item.Items ?? new List<RibbonItemViewModel>())
+            {
+                var data = CreateFeatureButtonData(child, featureIdToSlot);
+                if (data == null)
+                {
+                    continue;
+                }
+
+                split.AddPushButton(data);
+            }
+        }
+
+        private void AddStackLayout(RibbonPanel panel, RibbonItemViewModel item, IReadOnlyDictionary<string, int> featureIdToSlot)
+        {
+            var children = item.Items ?? new List<RibbonItemViewModel>();
+            if (children.Count < 2 || children.Count > 3)
+            {
+                Trace.TraceWarning("PH-RIBBON-STACK-SKIPPED: Stack item requires 2 or 3 child items: " + SafeDisplayName(item.Id, item.Text));
+                return;
+            }
+
+            var data = children
+                .Select(child => CreateRibbonItemData(child, featureIdToSlot))
+                .ToList();
+            if (data.Any(childData => childData == null))
+            {
+                Trace.TraceWarning("PH-RIBBON-STACK-SKIPPED: Stack item contains child item without valid ribbon data: " + SafeDisplayName(item.Id, item.Text));
+                return;
+            }
+
+            var typedData = data
+                .Cast<RibbonItemData>()
+                .ToList();
+            if (typedData.Any(childData => ContainsRibbonItem(panel, childData.Name)))
+            {
+                Trace.TraceWarning("PH-RIBBON-STACK-SKIPPED: Stack item contains an item already present on the panel: " + SafeDisplayName(item.Id, item.Text));
+                return;
+            }
+
+            var addedItems = AddStackItemData(panel, typedData);
+            for (var index = 0; index < addedItems.Count && index < children.Count; index++)
+            {
+                PopulateContainer(addedItems[index], children[index], featureIdToSlot);
+            }
+        }
+
+        private static IList<RibbonItem> AddStackItemData(RibbonPanel panel, IReadOnlyList<RibbonItemData> data)
+        {
+            if (data.Count == 2)
+            {
+                return panel.AddStackedItems(data[0], data[1]);
+            }
+
+            if (data.Count == 3)
+            {
+                return panel.AddStackedItems(data[0], data[1], data[2]);
+            }
+
+            return new List<RibbonItem>();
+        }
+
+        private PushButtonData? CreateFeatureButtonData(RibbonItemViewModel item, IReadOnlyDictionary<string, int> featureIdToSlot)
+        {
+            if (item == null || item.Feature == null || string.IsNullOrWhiteSpace(item.Feature.FeatureId))
+            {
+                return null;
+            }
+
+            var feature = item.Feature;
+            if (!featureIdToSlot.TryGetValue(feature.FeatureId, out var slotId))
+            {
+                return null;
+            }
+
             var buttonName = SafeInternalName(feature.FeatureId);
-            var slotId = featureIdToSlot[feature.FeatureId];
             var commandType = FrameworkFeatureCommandSlots.CommandTypeFor(slotId);
+            var iconPath = string.IsNullOrWhiteSpace(item.IconPath) ? feature.IconPath : item.IconPath;
             var data = new PushButtonData(
                 buttonName,
-                SafeDisplayName(feature.DisplayName, "Feature"),
+                SafeDisplayName(item.Text, SafeDisplayName(feature.DisplayName, "Feature")),
                 _assemblyPath,
                 commandType.FullName);
 
             data.ToolTip = BuildToolTip(feature);
             data.LongDescription = feature.Description;
-            data.Image = LoadFeatureIcon(feature.IconPath, false) ?? DefaultRibbonIconProvider.CreateSmallIcon();
-            data.LargeImage = LoadFeatureIcon(feature.IconPath, true) ?? DefaultRibbonIconProvider.CreateLargeIcon();
+            data.Image = LoadFeatureIcon(iconPath, false) ?? DefaultRibbonIconProvider.CreateSmallIcon();
+            data.LargeImage = LoadFeatureIcon(iconPath, true) ?? DefaultRibbonIconProvider.CreateLargeIcon();
 
             return data;
-        }
-
-        private static void AddStackedButtons(RibbonPanel panel, List<PushButtonData> data)
-        {
-            if (data.Count == 0) return;
-            if (data.Count == 1)
-            {
-                if (!panel.GetItems().Any(item => string.Equals(item.Name, data[0].Name, StringComparison.OrdinalIgnoreCase)))
-                {
-                    panel.AddItem(data[0]);
-                }
-
-                return;
-            }
-
-            var filtered = data
-                .Where(item => !panel.GetItems().Any(existing => string.Equals(existing.Name, item.Name, StringComparison.OrdinalIgnoreCase)))
-                .ToList();
-            if (filtered.Count == 0) return;
-            if (filtered.Count == 1)
-            {
-                panel.AddItem(filtered[0]);
-                return;
-            }
-
-            if (filtered.Count == 2)
-            {
-                panel.AddStackedItems(filtered[0], filtered[1]);
-                return;
-            }
-
-            panel.AddStackedItems(filtered[0], filtered[1], filtered[2]);
         }
 
         private static void EnsureRibbonTab(UIControlledApplication application, string tabName)
@@ -207,9 +276,20 @@ namespace PlugHub.Revit2020
             return existing ?? application.CreateRibbonPanel(tabName, panelName);
         }
 
+        private static bool ContainsRibbonItem(RibbonPanel panel, string name)
+        {
+            return panel.GetItems().Any(item => string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase));
+        }
+
         private static string SafeDisplayName(string? value, string fallback)
         {
             return string.IsNullOrWhiteSpace(value) ? fallback : value!.Trim();
+        }
+
+        private static string SafeContainerName(RibbonItemViewModel item)
+        {
+            var id = SafeDisplayName(item.Id, SafeDisplayName(item.Text, item.Type));
+            return SafeInternalName(item.Type + "_" + id);
         }
 
         private static string SafeInternalName(string value)
@@ -258,9 +338,9 @@ namespace PlugHub.Revit2020
             return string.Join("\n", lines.Where(line => !string.IsNullOrWhiteSpace(line)));
         }
 
-        private static bool IsSmall(string value)
+        private static bool IsRibbonItemType(RibbonItemViewModel item, string type)
         {
-            return string.Equals(value, "small", StringComparison.OrdinalIgnoreCase);
+            return string.Equals(item.Type, type, StringComparison.OrdinalIgnoreCase);
         }
 
         private static SlotAssignmentResult BuildSlotAssignments(IReadOnlyList<FeatureViewModel> orderedFeatures)
