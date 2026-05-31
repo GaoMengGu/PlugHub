@@ -301,8 +301,10 @@ namespace PlugHub.StaticValidation
             Require(architecture.Contains("Ribbon layout") || architecture.Contains("布局页"), "architecture docs must describe advanced Ribbon layout.");
             Require(architecture.Contains("PulldownButton") && architecture.Contains("SplitButton"), "architecture docs must mention advanced Revit Ribbon controls.");
             Require(architecture.Contains("布局页是唯一") && !architecture.Contains("- 功能：") && !architecture.Contains("- 分组："), "architecture docs must describe layout as the single Ribbon layout entry.");
+            Require(architecture.Contains("一个 featureId") && architecture.Contains("只能出现一次"), "architecture docs must state each feature can appear only once in a layout.");
             Require(development.Contains("Ribbon 结构") && development.Contains("重启 Revit"), "development docs must state Ribbon layout changes require Revit restart.");
             Require(development.Contains("布局页") && !development.Contains("分组页"), "development docs must describe layout-page validation instead of feature/group tabs.");
+            Require(development.Contains("布局画布") && development.Contains("重复添加"), "development docs must describe canvas layout editing and duplicate prevention.");
             Require(pluginDevelopment.Contains("插件包只声明功能") || pluginDevelopment.Contains("插件包清单只声明功能"), "plugin development docs must keep package manifests separate from user Ribbon layout.");
         }
 
@@ -729,6 +731,7 @@ namespace PlugHub.StaticValidation
             Require(nodeRow.Contains("ToPanelConfiguration"), "RibbonLayoutNodeRow must convert panel nodes to configuration.");
             Require(nodeRow.Contains("ToItemConfiguration"), "RibbonLayoutNodeRow must convert item nodes to configuration.");
             Require(poolRow.Contains("FeatureId") && poolRow.Contains("ModuleName"), "RibbonFeaturePoolRow must identify feature and module.");
+            Require(poolRow.Contains("IsPlaced") && poolRow.Contains("DisplayText"), "RibbonFeaturePoolRow must expose placement state for the layout canvas.");
         }
 
         private static void ValidateRevitRibbonAdapter()
@@ -1033,7 +1036,12 @@ namespace PlugHub.StaticValidation
             Require(settingsWindow.Contains("ApplyRibbonLayoutRows"), "settings window must save ribbon layout rows.");
             Require(settingsWindow.Contains("ResetDefaultRibbonLayout"), "settings window must reset to the framework default layout.");
             Require(settingsWindow.Contains("CreateDefaultRibbonLayoutNodes"), "settings window must create a framework-owned default layout.");
-            Require(settingsWindow.Contains("TreeView"), "settings window must use TreeView for ribbon layout editing.");
+            Require(settingsWindow.Contains("_ribbonLayoutCanvas"), "settings window must expose a Ribbon-like layout canvas.");
+            Require(settingsWindow.Contains("BuildRibbonLayoutCanvasHost"), "settings window must build a Ribbon-like canvas host.");
+            Require(settingsWindow.Contains("RefreshRibbonLayoutCanvas"), "settings window must refresh the Ribbon-like canvas after layout changes.");
+            Require(settingsWindow.Contains("FeatureIdExistsInRibbonLayout"), "settings window must prevent duplicate feature placement.");
+            Require(settingsWindow.Contains("ValidateUniqueRibbonFeaturePlacement"), "settings save must validate unique feature placement.");
+            Require(settingsWindow.Contains("RefreshRibbonFeaturePoolPlacementState"), "settings window must mark placed features in the pool.");
             Require(settingsWindow.Contains("BuildTab(\"布局\""), "settings window must label the ribbon layout tab as layout.");
             Require(!settingsWindow.Contains("tabs.Items.Add(BuildFeaturesTab())"), "settings window must not expose the feature settings tab.");
             Require(!settingsWindow.Contains("tabs.Items.Add(BuildGroupsTab())"), "settings window must not expose the group settings tab.");
@@ -1126,7 +1134,7 @@ namespace PlugHub.StaticValidation
         {
             var settingsWindow = ReadText("src/PlugHub.Revit2020/FrameworkSettingsWindow.cs");
 
-            foreach (var token in new[] { "功能池", "布局树", "ResetDefaultRibbonLayout", "CreateDefaultRibbonLayoutNodes", "ApplyRibbonLayoutRows", "RefreshRibbonLayoutTree" })
+            foreach (var token in new[] { "功能池", "布局画布", "ResetDefaultRibbonLayout", "CreateDefaultRibbonLayoutNodes", "ApplyRibbonLayoutRows", "RefreshRibbonLayoutCanvas" })
             {
                 Require(settingsWindow.Contains(token), "settings must manage Ribbon layout from the layout tab: " + token);
             }

@@ -93,7 +93,7 @@ Framework 层只组合中立布局模型，不引用 Revit API。`PlugHub.Revit2
 
 设置入口是 `FrameworkSettingsCommand`，打开 `FrameworkSettingsWindow`。当前设置页提供：
 
-- 布局：布局页是唯一的 Ribbon 布局调整入口。在功能池和布局树之间组合 PushButton、PulldownButton、SplitButton 和 Stack，布局保存到当前 workspace；重置默认布局会按框架默认策略重新生成布局，不卸载插件包或删除 feature。
+- 布局：布局页是唯一的 Ribbon 布局调整入口。在功能池和布局画布之间组合 PushButton、PulldownButton、SplitButton 和 Stack，布局保存到当前 workspace；重置默认布局会按框架默认策略重新生成布局，不卸载插件包或删除 feature。一个 featureId 在同一个 workspace 布局中只能出现一次，功能池会标记已放置功能并阻止重复添加。
 - 仓库：通过 `类型` 列选择 GitHub 或 Gitee，通过 `可见性` 列选择公开或私有，维护仓库、分支和私有仓库 `apiKey`；用户可手动浏览仓库中的 `package.json` 和 `*.package.json`。一个清单中的多个 module 会作为多个插件行展示，安装和更新由 PlugHub 拆成单插件本地包，只复制所选插件的清单及其引用的 DLL/资源到本地 `packages`。右键菜单只提供一个 `新增仓库` 入口，新增后在表格中调整类型和可见性。
 - 日志：只读展示当前运行时日志。
 
