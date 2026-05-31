@@ -121,6 +121,11 @@ namespace PlugHub.Framework.Configuration
             return new ModulesConfiguration
             {
                 SchemaVersion = modules.SchemaVersion,
+                Version = modules.Version,
+                RevitVersions = new List<string>(modules.RevitVersions ?? new List<string>()),
+                FrameworkVersionRange = modules.FrameworkVersionRange,
+                Sha256 = modules.Sha256,
+                Signature = modules.Signature,
                 PackageDirectories = new List<string>(modules.PackageDirectories ?? new List<string>()),
                 ModuleSources = (modules.ModuleSources ?? new List<ModuleSourceConfiguration>()).Select(source => new ModuleSourceConfiguration
                 {
@@ -191,6 +196,8 @@ namespace PlugHub.Framework.Configuration
                 Description = module.Description,
                 SourceId = module.SourceId,
                 ResolvedBaseDirectory = module.ResolvedBaseDirectory,
+                RevitVersions = new List<string>(module.RevitVersions ?? new List<string>()),
+                FrameworkVersionRange = module.FrameworkVersionRange,
                 Enabled = moduleOverride.Enabled ?? module.Enabled,
                 Visible = moduleOverride.Visible ?? module.Visible,
                 Order = moduleOverride.Order ?? module.Order,
