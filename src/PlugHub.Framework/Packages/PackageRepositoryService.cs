@@ -436,22 +436,24 @@ namespace PlugHub.Framework.Packages
 
             if (!Directory.Exists(Path.Combine(cacheDirectory, ".git")))
             {
-                if (!RunGit("clone --quiet --filter=blob:none --depth 1 --sparse --branch " + Quote(gitRef) + " " + Quote(authenticatedUrl) + " " + Quote(cacheDirectory), repository.Id, diagnostics))
+                Directory.CreateDirectory(cacheDirectory);
+                if (!RunGit("init --quiet " + Quote(cacheDirectory), repository.Id, diagnostics)
+                    || !RunGit("-C " + Quote(cacheDirectory) + " remote add origin " + Quote(publicUrl), repository.Id, diagnostics))
                 {
                     return false;
                 }
-
-                if (!ConfigureSparseCheckout(cacheDirectory, repository.Id, diagnostics))
-                {
-                    return false;
-                }
-
-                RunGit("-C " + Quote(cacheDirectory) + " remote set-url origin " + Quote(publicUrl), repository.Id, diagnostics, false);
-                return true;
+            }
+            else if (!RunGit("-C " + Quote(cacheDirectory) + " remote set-url origin " + Quote(publicUrl), repository.Id, diagnostics))
+            {
+                return false;
             }
 
-            ConfigureSparseCheckout(cacheDirectory, repository.Id, diagnostics);
-            if (!RunGit("-C " + Quote(cacheDirectory) + " fetch --quiet --depth 1 " + Quote(authenticatedUrl) + " " + Quote(gitRef), repository.Id, diagnostics))
+            if (!ConfigureSparseCheckout(cacheDirectory, repository.Id, diagnostics))
+            {
+                return false;
+            }
+
+            if (!RunGit("-C " + Quote(cacheDirectory) + " fetch --quiet --filter=blob:none --depth 1 " + Quote(authenticatedUrl) + " " + Quote(gitRef), repository.Id, diagnostics))
             {
                 return false;
             }
@@ -1100,9 +1102,9 @@ namespace PlugHub.Framework.Packages
         private string RepositoryUrl(PackageRepositoryConfiguration repository, bool includeCredential)
         {
             var provider = string.Equals(repository.Provider, "gitee", StringComparison.OrdinalIgnoreCase) ? "gitee" : "github";
-            var url = repository.Repository.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            var url = StripUrlUserInfo(repository.Repository.StartsWith("http", StringComparison.OrdinalIgnoreCase)
                 ? repository.Repository.Trim()
-                : RepositoryHost(provider) + repository.Repository.Trim().TrimEnd('/') + ".git";
+                : RepositoryHost(provider) + repository.Repository.Trim().TrimEnd('/') + ".git");
             var apiKey = _credentialService.ResolveApiKey(repository);
 
             if (!includeCredential
@@ -1123,6 +1125,21 @@ namespace PlugHub.Framework.Packages
             }
 
             return url;
+        }
+
+        private static string StripUrlUserInfo(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url) || !Uri.TryCreate(url, UriKind.Absolute, out var uri) || string.IsNullOrEmpty(uri.UserInfo))
+            {
+                return url;
+            }
+
+            var builder = new UriBuilder(uri)
+            {
+                UserName = string.Empty,
+                Password = string.Empty
+            };
+            return builder.Uri.AbsoluteUri;
         }
 
         private static bool IsSupportedRepositoryProvider(string provider)

@@ -989,7 +989,7 @@ namespace PlugHub.StaticValidation
             Require(settingsWindow.Contains("BuildLogsTab") && settingsWindow.Contains("\"日志\"") && !settingsWindow.Contains("BuildDiagnosticsTab"), "settings must present diagnostics as logs.");
             Require(settingsWindow.Contains("ApiKey") && settingsWindow.Contains("Visibility") && settingsWindow.Contains("private"), "settings must support public and private repositories with apiKey.");
             Require(!settingsWindow.Contains("确定卸载插件包") && !settingsWindow.Contains("result.Success ? MessageBoxImage.Information"), "repository package install and uninstall must report status inline without pop-up result prompts.");
-            Require(packageRepositoryService.Contains("--sparse") && packageRepositoryService.Contains("sparse-checkout") && packageRepositoryService.Contains("SparseCheckoutPatterns"), "repository browsing must use sparse checkout instead of pulling the whole repository.");
+            Require(packageRepositoryService.Contains("sparse-checkout") && packageRepositoryService.Contains("SparseCheckoutPatterns") && packageRepositoryService.Contains("ConfigureSparseCheckout"), "repository browsing must use sparse checkout instead of pulling the whole repository.");
             Require(packageRepositoryService.Contains("\"gitee\"") && packageRepositoryService.Contains("https://gitee.com/") && packageRepositoryService.Contains("oauth2:"), "repository browsing must support Gitee HTTPS repositories with apiKey credentials.");
             Require(packageRepositoryService.Contains("InstallPackagePayload") && packageRepositoryService.Contains("WriteSingleModuleManifest") && !packageRepositoryService.Contains("CopyDirectory("), "repository install must split selected plugins and must not copy the whole repository directory.");
             Require(packageRepositoryService.Contains("ApplyPendingOperations") && packageRepositoryService.Contains("pending-operations.json") && packageRepositoryService.Contains("PendingPackageOperation.Restart"), "repository package operations must defer locked DLL deletion and replacement and mark normal installs as restart-required.");
@@ -999,6 +999,8 @@ namespace PlugHub.StaticValidation
             Require(redactor.Contains("Redact") && redactor.Contains("x-access-token") && redactor.Contains("oauth2"), "diagnostic redactor must mask repository tokens.");
             Require(configurationModels.Contains("EncryptedApiKey"), "repository configuration must persist encrypted apiKey separately.");
             Require(packageRepositoryService.Contains("ResolveApiKey(repository)") && packageRepositoryService.Contains("SensitiveTextRedactor.Redact"), "repository service must resolve protected credentials and redact git diagnostics.");
+            Require(!packageRepositoryService.Contains("clone --quiet --filter=blob:none --depth 1 --sparse --branch \" + Quote(gitRef) + \" \" + Quote(authenticatedUrl)"), "repository sync must not clone with authenticatedUrl because git persists clone URL as origin.");
+            Require(packageRepositoryService.Contains("init --quiet") && packageRepositoryService.Contains("remote add origin \" + Quote(publicUrl)") && packageRepositoryService.Contains("fetch --quiet --filter=blob:none --depth 1 \" + Quote(authenticatedUrl)"), "repository sync must initialize a public origin and fetch authenticated URLs without persisting credentials.");
             Require(settingsWindow.Contains("RepositoryCredentialService") && settingsWindow.Contains("ProtectForSave(repository)"), "settings save must protect repository apiKey before serializing sources.");
             Require(settingsWindow.Contains("ApiKey = string.Empty") && settingsWindow.Contains("PlainApiKey = repository.ApiKey"), "settings repository rows must keep legacy plaintext apiKey available without echoing it in the UI.");
             Require(settingsWindow.Contains("string.IsNullOrWhiteSpace(ApiKey) ? PlainApiKey"), "repository row ToConfiguration must preserve legacy plaintext apiKey when the user did not enter a replacement token.");
@@ -1072,10 +1074,26 @@ namespace PlugHub.StaticValidation
             Require(!redactedOauth.Contains("secret") && redactedOauth.Contains("gitee.com/owner/repo.git"), "diagnostic redactor must mask oauth2 tokens while preserving repository host.");
             var redactedGitHub = PlugHub.Framework.Diagnostics.SensitiveTextRedactor.Redact("https://x-access-token:secret@github.com/owner/repo.git");
             Require(!redactedGitHub.Contains("secret") && redactedGitHub.Contains("github.com/owner/repo.git"), "diagnostic redactor must mask x-access-token credentials while preserving repository host.");
+            var redactedUserInfo = PlugHub.Framework.Diagnostics.SensitiveTextRedactor.Redact("https://user:secret@example.com/owner/repo.git");
+            Require(!redactedUserInfo.Contains("secret") && redactedUserInfo.Contains("example.com/owner/repo.git"), "diagnostic redactor must mask generic URL userinfo while preserving repository host.");
             var redactedApiKey = PlugHub.Framework.Diagnostics.SensitiveTextRedactor.Redact("apiKey=\"secret\"");
             Require(!redactedApiKey.Contains("secret") && redactedApiKey.Contains("***"), "diagnostic redactor must mask apiKey values.");
 
             var service = new PlugHub.Framework.Packages.PackageRepositoryService();
+            var repositoryUrl = typeof(PlugHub.Framework.Packages.PackageRepositoryService).GetMethod("RepositoryUrl", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            Require(repositoryUrl != null, "repository service must expose a repository URL helper.");
+            var publicUrl = Convert.ToString(repositoryUrl!.Invoke(service, new object[]
+            {
+                new PlugHub.Framework.Configuration.PackageRepositoryConfiguration
+                {
+                    Provider = "github",
+                    Visibility = "private",
+                    Repository = "https://user:secret@example.com/owner/repo.git",
+                    ApiKey = "replacement-token"
+                },
+                false
+            })) ?? string.Empty;
+            Require(!publicUrl.Contains("secret") && !publicUrl.Contains("user:") && publicUrl.Contains("example.com/owner/repo.git"), "public repository URL must strip userinfo before being written to git remote config.");
             service.Browse(Path.GetTempPath(), damagedRepository, out var diagnostics);
             Require(diagnostics.Any(message => message.Code == "PH-REPOSITORY-APIKEY"), "private repository with damaged encrypted credentials must ask for a replacement apiKey.");
         }
