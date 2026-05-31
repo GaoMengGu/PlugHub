@@ -55,6 +55,14 @@ function Remove-InstalledAddin {
     }
 }
 
+function Remove-StaleOutputPath {
+    param([string]$Path)
+    if (Test-Path $Path) {
+        Assert-PathInsideRoot $Path
+        Remove-Item -LiteralPath $Path -Recurse -Force
+    }
+}
+
 function Test-RevitApiDir {
     param([string]$Path)
     return ![string]::IsNullOrWhiteSpace($Path) `
@@ -95,6 +103,7 @@ if (!$UseRevitApiNuGet) {
     $RevitApiDir = (Resolve-Path $resolvedApiDir).Path
 }
 
+Assert-PathInsideRoot $OutputDir
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 $OutputDir = (Resolve-Path $OutputDir).Path
 
@@ -113,9 +122,7 @@ $StaleOutputPaths = @(
     (Join-Path $OutputDir "modules")
 )
 foreach ($StaleOutputPath in $StaleOutputPaths) {
-    if (Test-Path $StaleOutputPath) {
-        Remove-Item -LiteralPath $StaleOutputPath -Recurse -Force
-    }
+    Remove-StaleOutputPath $StaleOutputPath
 }
 
 $buildArguments = @(

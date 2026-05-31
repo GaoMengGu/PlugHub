@@ -1149,6 +1149,10 @@ namespace PlugHub.StaticValidation
             Require(buildScript.Contains("[switch]$NoStage"), "build script must expose -NoStage.");
             Require(buildScript.Contains("[switch]$Clean"), "build script must expose -Clean.");
             Require(buildScript.Contains("Assert-PathInsideRoot"), "build script must verify clean targets stay inside the repository.");
+            Require(buildScript.Contains("Assert-PathInsideRoot $OutputDir"), "build script must verify OutputDir stays inside the repository before creating or cleaning it.");
+            Require(buildScript.Contains("function Remove-StaleOutputPath"), "build script must route stale output cleanup through a protected function.");
+            Require(buildScript.Contains("Remove-StaleOutputPath $StaleOutputPath"), "build script must use the protected stale output cleanup function.");
+            Require(!buildScript.Contains("Remove-Item -LiteralPath $StaleOutputPath"), "stale output cleanup must not call Remove-Item directly.");
             Require(installScript.Contains("Backup-ExistingAddin") && installScript.Contains("Restore-AddinBackup"), "addin install script must backup and restore the addin manifest.");
             Require(workflow.Contains("-UseRevitApiNuGet"), "release workflow must build through NuGet API references.");
             Require(!workflow.Contains("REVIT2020_API_ZIP_BASE64"), "release workflow must not require a secret containing Autodesk Revit API DLLs.");
