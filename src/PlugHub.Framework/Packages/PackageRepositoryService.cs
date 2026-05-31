@@ -144,6 +144,10 @@ namespace PlugHub.Framework.Packages
         public PackageRepositoryOperationResult CancelPendingOperation(string baseDirectory, string packageId, string moduleId)
         {
             if (string.IsNullOrWhiteSpace(baseDirectory)) throw new ArgumentException("Base directory is required.", nameof(baseDirectory));
+            if (string.IsNullOrWhiteSpace(packageId) || string.IsNullOrWhiteSpace(moduleId))
+            {
+                return PackageRepositoryOperationResult.Failed("取消待处理插件包操作必须提供 packageId 和 moduleId。");
+            }
 
             var operation = _pendingOperations.Find(baseDirectory, packageId, moduleId);
             if (operation == null)

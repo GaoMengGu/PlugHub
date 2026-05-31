@@ -36,7 +36,7 @@ namespace PlugHub.Framework.Packages
         public PendingPackageOperation? Find(string baseDirectory, string packageId, string moduleId)
         {
             return Read(baseDirectory)
-                .FirstOrDefault(operation => Matches(operation, packageId, moduleId));
+                .FirstOrDefault(operation => MatchesExact(operation, packageId, moduleId));
         }
 
         public void AddOrReplace(string baseDirectory, PendingPackageOperation operation)
@@ -44,7 +44,7 @@ namespace PlugHub.Framework.Packages
             if (operation == null) throw new ArgumentNullException(nameof(operation));
 
             var operations = Read(baseDirectory)
-                .Where(item => !Matches(item, operation.PackageId, operation.ModuleId))
+                .Where(item => !MatchesReplacementKey(item, operation.PackageId, operation.ModuleId))
                 .ToList();
             operations.Add(operation);
             Write(baseDirectory, operations);
@@ -53,7 +53,7 @@ namespace PlugHub.Framework.Packages
         public void Remove(string baseDirectory, string packageId, string moduleId)
         {
             var operations = Read(baseDirectory)
-                .Where(item => !Matches(item, packageId, moduleId))
+                .Where(item => !MatchesExact(item, packageId, moduleId))
                 .ToList();
             Write(baseDirectory, operations);
         }
@@ -85,7 +85,15 @@ namespace PlugHub.Framework.Packages
             return Path.GetFullPath(Path.Combine(baseDirectory, "repository-cache", ".package-install", PendingOperationsFileName));
         }
 
-        internal static bool Matches(PendingPackageOperation operation, string packageId, string moduleId)
+        internal static bool MatchesExact(PendingPackageOperation operation, string packageId, string moduleId)
+        {
+            if (operation == null) return false;
+            if (!string.Equals(operation.PackageId, packageId, StringComparison.OrdinalIgnoreCase)) return false;
+
+            return string.Equals(operation.ModuleId, moduleId, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool MatchesReplacementKey(PendingPackageOperation operation, string packageId, string moduleId)
         {
             if (operation == null) return false;
             if (!string.Equals(operation.PackageId, packageId, StringComparison.OrdinalIgnoreCase)) return false;

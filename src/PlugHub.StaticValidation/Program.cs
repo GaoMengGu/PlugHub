@@ -1016,6 +1016,33 @@ namespace PlugHub.StaticValidation
                 var installA = Path.Combine(baseDirectory, "install-a");
                 var installB = Path.Combine(baseDirectory, "install-b");
                 var staging = Path.Combine(baseDirectory, "staging-a");
+                var stagingSameA = Path.Combine(baseDirectory, "staging-same-a");
+                var stagingSameB = Path.Combine(baseDirectory, "staging-same-b");
+
+                Directory.CreateDirectory(stagingSameA);
+                Directory.CreateDirectory(stagingSameB);
+                File.WriteAllText(Path.Combine(stagingSameA, "payload.txt"), "pending-a");
+                File.WriteAllText(Path.Combine(stagingSameB, "payload.txt"), "pending-b");
+                store.AddOrReplace(baseDirectory, PlugHub.Framework.Packages.PendingPackageOperation.Update("same-package", "module-a", installA, stagingSameA));
+                store.AddOrReplace(baseDirectory, PlugHub.Framework.Packages.PendingPackageOperation.Update("same-package", "module-b", installB, stagingSameB));
+
+                var cancelWithoutModule = service.CancelPendingOperation(baseDirectory, "same-package", string.Empty);
+                var cancelWithoutPackage = service.CancelPendingOperation(baseDirectory, string.Empty, "module-a");
+                var samePackageRemaining = store.Read(baseDirectory)
+                    .Where(operation => operation.PackageId == "same-package")
+                    .ToList();
+                Require(!cancelWithoutModule.Success, "pending operation cancellation must require a module id.");
+                Require(!cancelWithoutPackage.Success, "pending operation cancellation must require a package id.");
+                Require(samePackageRemaining.Count == 2, "empty-module pending cancellation must not remove same-package metadata.");
+                Require(Directory.Exists(stagingSameA) && Directory.Exists(stagingSameB), "empty-module pending cancellation must not delete any update staging directories.");
+
+                var cancelSameModule = service.CancelPendingOperation(baseDirectory, "same-package", "module-a");
+                var samePackageAfterExactCancel = store.Read(baseDirectory)
+                    .Where(operation => operation.PackageId == "same-package")
+                    .ToList();
+                Require(cancelSameModule.Success, "exact pending update cancellation must succeed.");
+                Require(samePackageAfterExactCancel.Count == 1 && samePackageAfterExactCancel[0].ModuleId == "module-b", "exact pending update cancellation must remove only the matching module metadata.");
+                Require(!Directory.Exists(stagingSameA) && Directory.Exists(stagingSameB), "exact pending update cancellation must delete only the matching staging directory.");
 
                 Directory.CreateDirectory(staging);
                 File.WriteAllText(Path.Combine(staging, "payload.txt"), "pending");
@@ -1023,7 +1050,9 @@ namespace PlugHub.StaticValidation
                 store.AddOrReplace(baseDirectory, PlugHub.Framework.Packages.PendingPackageOperation.Restart("shared-package", "module-b", installB));
 
                 var cancelUpdate = service.CancelPendingOperation(baseDirectory, "shared-package", "module-a");
-                var remaining = store.Read(baseDirectory).ToList();
+                var remaining = store.Read(baseDirectory)
+                    .Where(operation => operation.PackageId == "shared-package")
+                    .ToList();
                 Require(cancelUpdate.Success, "pending operation cancellation must succeed for an existing update.");
                 Require(remaining.Count == 1 && remaining[0].PackageId == "shared-package" && remaining[0].ModuleId == "module-b", "cancel pending operation must not remove another module from the same package.");
                 Require(!Directory.Exists(staging), "cancel pending update must remove the staging directory.");
