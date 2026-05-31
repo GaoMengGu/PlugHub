@@ -138,6 +138,13 @@ namespace PlugHub.StaticValidation
             var validationProgram = ReadText("src/PlugHub.StaticValidation/Program.cs");
             Require(validationProgram.Contains("string[] args"), "Static validation entrypoint must accept command-line arguments.");
             Require(validationProgram.Contains("--report-json") && validationProgram.Contains("--report-html"), "Static validation must support JSON and HTML report arguments.");
+            var reportWriter = ReadText("src/PlugHub.StaticValidation/Validation/ValidationReportWriter.cs");
+            Require(reportWriter.Contains("issues"), "JSON validation report must emit an issues field.");
+            foreach (var field in new[] { "severity", "code", "file", "message", "suggestion" })
+            {
+                Require(reportWriter.Contains(field), "Validation report issue fields must use lowercase names: " + field);
+                Require(reportWriter.Contains("<th>" + field + "</th>"), "HTML validation report must include a table header for " + field + ".");
+            }
             Require(!File.Exists(FullPath("config/modules.example.json")), "framework source config must be named sources.example.json, not modules.example.json.");
             Require(!File.Exists(FullPath("config/plugin-sources.example.json")), "framework source config must be named sources.example.json, not plugin-sources.example.json.");
             Require(!Directory.Exists(FullPath("modules")), "source workspace must not keep a modules drop-in directory; build output creates package drop-ins.");

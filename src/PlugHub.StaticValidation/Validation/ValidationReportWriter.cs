@@ -11,7 +11,17 @@ namespace PlugHub.StaticValidation.Validation
         {
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path)) ?? ".");
             var serializer = new JavaScriptSerializer();
-            File.WriteAllText(path, serializer.Serialize(report.Issues));
+            File.WriteAllText(path, serializer.Serialize(new
+            {
+                issues = report.Issues.Select(issue => new
+                {
+                    severity = issue.Severity.ToString(),
+                    code = issue.Code,
+                    file = issue.File,
+                    message = issue.Message,
+                    suggestion = issue.Suggestion
+                }).ToList()
+            }));
         }
 
         public static void WriteHtml(string path, ValidationReport report)
@@ -23,8 +33,9 @@ namespace PlugHub.StaticValidation.Validation
                 Escape(issue.Message) + "</td><td>" + Escape(issue.Suggestion) + "</td></tr>"));
             File.WriteAllText(path,
                 "<!doctype html><html><head><meta charset=\"utf-8\"><title>PlugHub Validation</title></head><body><table>" +
+                "<thead><tr><th>severity</th><th>code</th><th>file</th><th>message</th><th>suggestion</th></tr></thead><tbody>" +
                 rows +
-                "</table></body></html>",
+                "</tbody></table></body></html>",
                 Encoding.UTF8);
         }
 
