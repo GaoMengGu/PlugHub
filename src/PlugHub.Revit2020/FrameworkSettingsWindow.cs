@@ -16,6 +16,7 @@ using PlugHub.Contracts.Modules;
 using PlugHub.Framework.Configuration;
 using PlugHub.Framework.Packages;
 using PlugHub.Framework.Runtime;
+using PlugHub.Revit2020.Settings.Rows;
 
 namespace PlugHub.Revit2020
 {
@@ -37,6 +38,7 @@ namespace PlugHub.Revit2020
         private readonly DataGrid _groupsGrid = CreateGrid();
         private readonly DataGrid _repositoriesGrid = CreateGrid();
         private readonly DataGrid _repositoryPackagesGrid = CreateGrid();
+        private readonly DataGrid _pendingPackageOperationsGrid = CreateGrid();
         private readonly DataGrid _diagnosticsGrid = CreateGrid();
         private readonly TextBlock _statusText = new TextBlock();
         private List<ModuleManifestDocument> _moduleDocuments = new List<ModuleManifestDocument>();
@@ -50,6 +52,7 @@ namespace PlugHub.Revit2020
         private readonly ComboBox _selectedFeatureButtonSizeCombo = new ComboBox();
         private ObservableCollection<RepositoryRow> _repositoryRows = new ObservableCollection<RepositoryRow>();
         private ObservableCollection<RepositoryPackageRow> _repositoryPackageRows = new ObservableCollection<RepositoryPackageRow>();
+        private ObservableCollection<PendingPackageOperationRow> _pendingPackageOperationRows = new ObservableCollection<PendingPackageOperationRow>();
         private int _dragSourceRowIndex = -1;
         private DataGrid? _dragSourceGrid;
         private bool _syncingSelectedFeatureEditor;
@@ -201,12 +204,15 @@ namespace PlugHub.Revit2020
         {
             _repositoriesGrid.ContextMenu = BuildRepositoryMenu();
             _repositoryPackagesGrid.ContextMenu = BuildRepositoryPackageMenu();
+            _pendingPackageOperationsGrid.ContextMenu = BuildPendingPackageOperationMenu();
 
             var layout = new Grid();
             layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0.48, GridUnitType.Star) });
+            layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0.42, GridUnitType.Star) });
             layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0.52, GridUnitType.Star) });
+            layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0.38, GridUnitType.Star) });
+            layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0.20, GridUnitType.Star) });
 
             var repositoriesHeader = SectionHeader("仓库");
             Grid.SetRow(repositoriesHeader, 0);
@@ -219,6 +225,12 @@ namespace PlugHub.Revit2020
             layout.Children.Add(packagesHeader);
             Grid.SetRow(_repositoryPackagesGrid, 3);
             layout.Children.Add(_repositoryPackagesGrid);
+
+            var pendingHeader = SectionHeader("待处理操作");
+            Grid.SetRow(pendingHeader, 4);
+            layout.Children.Add(pendingHeader);
+            Grid.SetRow(_pendingPackageOperationsGrid, 5);
+            layout.Children.Add(_pendingPackageOperationsGrid);
 
             return BuildTab("仓库", layout);
         }
@@ -294,6 +306,7 @@ namespace PlugHub.Revit2020
             LoadFeatureRows();
             LoadRepositoryRows();
             LoadRepositoryPackageRows(new List<RepositoryPackageDescriptor>());
+            LoadPendingPackageOperationRows();
             LoadDiagnosticRows(FrameworkRuntimeState.Current);
             RefreshStatus("已加载配置。设置窗口会保存根配置和独立模块清单；Ribbon 布局、图标和按钮大小需重启 Revit 重绘。");
             LoadCachedRepositoryPackages();
@@ -471,6 +484,18 @@ namespace PlugHub.Revit2020
             _repositoryPackageRows = new ObservableCollection<RepositoryPackageRow>((packages ?? new List<RepositoryPackageDescriptor>())
                 .Select(package => RepositoryPackageRow.FromDescriptor(package, IsLoadedInCurrentRuntime(package.PackageId, package.ModuleId))));
             _repositoryPackagesGrid.ItemsSource = _repositoryPackageRows;
+        }
+
+        private void LoadPendingPackageOperationRows()
+        {
+            _pendingPackageOperationsGrid.Columns.Clear();
+            _pendingPackageOperationsGrid.Columns.Add(TextColumn(nameof(PendingPackageOperationRow.Operation), "操作", true, 0.6));
+            _pendingPackageOperationsGrid.Columns.Add(TextColumn(nameof(PendingPackageOperationRow.PackageId), "插件包", true, 1.2));
+            _pendingPackageOperationsGrid.Columns.Add(TextColumn(nameof(PendingPackageOperationRow.CreatedAtUtc), "创建时间", true, 1.0));
+
+            _pendingPackageOperationRows = new ObservableCollection<PendingPackageOperationRow>(
+                _packageRepositoryService.ListPendingOperations(BaseDirectory()).Select(PendingPackageOperationRow.FromOperation));
+            _pendingPackageOperationsGrid.ItemsSource = _pendingPackageOperationRows;
         }
 
         private void LoadCachedRepositoryPackages()
@@ -1082,6 +1107,13 @@ namespace PlugHub.Revit2020
             return menu;
         }
 
+        private ContextMenu BuildPendingPackageOperationMenu()
+        {
+            var menu = new ContextMenu();
+            menu.Items.Add(MenuItem("取消待处理操作", (sender, args) => CancelSelectedPendingPackageOperation()));
+            return menu;
+        }
+
         private static MenuItem MenuItem(string text, RoutedEventHandler handler)
         {
             var item = new MenuItem { Header = text };
@@ -1223,6 +1255,7 @@ namespace PlugHub.Revit2020
 
                 var result = operation(row.ToDescriptor());
                 RefreshRepositoryPackageInstallState(row.PackageId, row.InstallDirectory);
+                LoadPendingPackageOperationRows();
                 SafeRefreshGrid(_repositoryPackagesGrid);
 
                 _moduleDocuments = LoadModuleDocuments(_configuration);
@@ -1234,6 +1267,14 @@ namespace PlugHub.Revit2020
             {
                 ReportSettingsError("插件包操作失败", ex);
             }
+        }
+
+        private void CancelSelectedPendingPackageOperation()
+        {
+            if (!(_pendingPackageOperationsGrid.SelectedItem is PendingPackageOperationRow row)) return;
+            var result = _packageRepositoryService.CancelPendingOperation(BaseDirectory(), row.PackageId, row.ModuleId);
+            LoadPendingPackageOperationRows();
+            RefreshStatus(result.Message);
         }
 
         private void RefreshRepositoryPackageInstallState(string packageId, string installDirectory)
@@ -1997,74 +2038,6 @@ namespace PlugHub.Revit2020
             return candidate;
         }
 
-        private sealed class ModuleRow
-        {
-            public string Id { get; set; } = string.Empty;
-            public string PositionText { get; set; } = string.Empty;
-            public string Name { get; set; } = string.Empty;
-            public string DisplayName { get; set; } = string.Empty;
-            public bool Enabled { get; set; }
-            public bool Visible { get; set; }
-            public string SourceId { get; set; } = string.Empty;
-            public int Order { get; set; }
-        }
-
-        private sealed class GroupRow
-        {
-            public string Id { get; set; } = string.Empty;
-            public string PositionText { get; set; } = string.Empty;
-            public string Name { get; set; } = string.Empty;
-            public int FeatureCount { get; set; }
-            public string FeatureCountText { get; set; } = string.Empty;
-            public int Order { get; set; }
-        }
-
-        private sealed class FeatureRow
-        {
-            public string ModuleId { get; set; } = string.Empty;
-            public string OriginalModuleId { get; set; } = string.Empty;
-            public string FeatureId { get; set; } = string.Empty;
-            public string PositionText { get; set; } = string.Empty;
-            public string ModuleName { get; set; } = string.Empty;
-            public string Name { get; set; } = string.Empty;
-            public string ConfigName { get; set; } = string.Empty;
-            public string DisplayName { get; set; } = string.Empty;
-            public string Description { get; set; } = string.Empty;
-            public string Category { get; set; } = string.Empty;
-            public string Group { get; set; } = string.Empty;
-            public string GroupDisplayText { get; set; } = string.Empty;
-            public List<string> Tags { get; set; } = new List<string>();
-            public bool Visible { get; set; }
-            public string IconPath { get; set; } = string.Empty;
-            public int Order { get; set; }
-            public string ButtonSize { get; set; } = "large";
-            public string ButtonSizeDisplayText { get; set; } = "大";
-            public string CommandKey { get; set; } = string.Empty;
-            public string CommandAssembly { get; set; } = string.Empty;
-            public string CommandType { get; set; } = string.Empty;
-
-            public FeatureConfiguration ToConfiguration()
-            {
-                return new FeatureConfiguration
-                {
-                    Id = FeatureId ?? string.Empty,
-                    Name = string.IsNullOrWhiteSpace(ConfigName) ? Name ?? string.Empty : ConfigName,
-                    DisplayName = DisplayName ?? string.Empty,
-                    Description = Description ?? string.Empty,
-                    Category = Category ?? string.Empty,
-                    Group = Group ?? string.Empty,
-                    Tags = new List<string>(Tags ?? new List<string>()),
-                    Order = Order,
-                    DefaultState = Visible ? "Visible" : "Hidden",
-                    CommandKey = CommandKey ?? string.Empty,
-                    CommandAssembly = CommandAssembly ?? string.Empty,
-                    CommandType = CommandType ?? string.Empty,
-                    ButtonSize = FrameworkSettingsWindow.NormalizeButtonSize(ButtonSize),
-                    IconPath = IconPath ?? string.Empty
-                };
-            }
-        }
-
         private sealed class GroupOption
         {
             public string Id { get; set; } = string.Empty;
@@ -2075,118 +2048,6 @@ namespace PlugHub.Revit2020
         {
             public string Value { get; set; } = string.Empty;
             public string DisplayText { get; set; } = string.Empty;
-        }
-
-        private sealed class RepositoryRow
-        {
-            public string Id { get; set; } = string.Empty;
-            public bool Enabled { get; set; }
-            public string Provider { get; set; } = DefaultRepositoryProvider;
-            public string Visibility { get; set; } = "public";
-            public string Repository { get; set; } = string.Empty;
-            public string Ref { get; set; } = "main";
-            public string ManifestPath { get; set; } = DefaultPackageManifestName;
-            public string ApiKey { get; set; } = string.Empty;
-            public string PlainApiKey { get; set; } = string.Empty;
-            public string EncryptedApiKey { get; set; } = string.Empty;
-            public string ApiKeyProtection { get; set; } = string.Empty;
-            public string Status { get; set; } = string.Empty;
-
-            public PackageRepositoryConfiguration ToConfiguration()
-            {
-                return new PackageRepositoryConfiguration
-                {
-                    Id = Id ?? string.Empty,
-                    Enabled = Enabled,
-                    Provider = string.IsNullOrWhiteSpace(Provider) ? DefaultRepositoryProvider : Provider,
-                    Visibility = string.Equals(Visibility, "private", StringComparison.OrdinalIgnoreCase) ? "private" : "public",
-                    Repository = Repository ?? string.Empty,
-                    Ref = string.IsNullOrWhiteSpace(Ref) ? "main" : Ref.Trim(),
-                    ManifestPath = string.IsNullOrWhiteSpace(ManifestPath) ? DefaultPackageManifestName : ManifestPath.Trim(),
-                    ApiKey = string.IsNullOrWhiteSpace(ApiKey) ? PlainApiKey ?? string.Empty : ApiKey ?? string.Empty,
-                    EncryptedApiKey = EncryptedApiKey ?? string.Empty,
-                    ApiKeyProtection = ApiKeyProtection ?? string.Empty
-                };
-            }
-        }
-
-        private sealed class RepositoryPackageRow
-        {
-            public string RepositoryId { get; set; } = string.Empty;
-            public string PackageId { get; set; } = string.Empty;
-            public string ModuleId { get; set; } = string.Empty;
-            public string DisplayName { get; set; } = string.Empty;
-            public string Version { get; set; } = string.Empty;
-            public string ManifestPath { get; set; } = string.Empty;
-            public string SourceDirectory { get; set; } = string.Empty;
-            public string InstallDirectory { get; set; } = string.Empty;
-            public string InstalledVersion { get; set; } = string.Empty;
-            public string PendingOperation { get; set; } = string.Empty;
-            public bool IsInstalled { get; set; }
-            public string InstallState { get; set; } = string.Empty;
-
-            public static RepositoryPackageRow FromDescriptor(RepositoryPackageDescriptor descriptor, bool isLoadedInCurrentRuntime)
-            {
-                return new RepositoryPackageRow
-                {
-                    RepositoryId = descriptor.RepositoryId,
-                    PackageId = descriptor.PackageId,
-                    ModuleId = descriptor.ModuleId,
-                    DisplayName = descriptor.DisplayName,
-                    Version = descriptor.Version,
-                    ManifestPath = descriptor.ManifestPath,
-                    SourceDirectory = descriptor.SourceDirectory,
-                    InstallDirectory = descriptor.InstallDirectory,
-                    InstalledVersion = descriptor.InstalledVersion,
-                    PendingOperation = descriptor.PendingOperation,
-                    IsInstalled = descriptor.IsInstalled,
-                    InstallState = InstallStateFor(descriptor.IsInstalled, descriptor.Version, descriptor.InstalledVersion, descriptor.PendingOperation, isLoadedInCurrentRuntime)
-                };
-            }
-
-            public RepositoryPackageDescriptor ToDescriptor()
-            {
-                return new RepositoryPackageDescriptor
-                {
-                    RepositoryId = RepositoryId ?? string.Empty,
-                    PackageId = PackageId ?? string.Empty,
-                    ModuleId = ModuleId ?? string.Empty,
-                    DisplayName = DisplayName ?? string.Empty,
-                    Version = Version ?? string.Empty,
-                    ManifestPath = ManifestPath ?? string.Empty,
-                    SourceDirectory = SourceDirectory ?? string.Empty,
-                    InstallDirectory = InstallDirectory ?? string.Empty,
-                    InstalledVersion = InstalledVersion ?? string.Empty,
-                    PendingOperation = PendingOperation ?? string.Empty,
-                    IsInstalled = IsInstalled
-                };
-            }
-
-            public static string InstallStateFor(bool isInstalled, string version, string installedVersion, string pendingOperation, bool isLoadedInCurrentRuntime)
-            {
-                if (string.Equals(pendingOperation, "delete", StringComparison.OrdinalIgnoreCase)) return "待重启卸载";
-                if (string.Equals(pendingOperation, "update", StringComparison.OrdinalIgnoreCase)) return "待重启更新";
-                if (string.Equals(pendingOperation, "restart", StringComparison.OrdinalIgnoreCase) && isInstalled) return "已安装待重启";
-                if (!isInstalled && isLoadedInCurrentRuntime) return "待重启卸载";
-                if (!isInstalled) return "未安装";
-                if (!isLoadedInCurrentRuntime) return "已安装待重启";
-                if (!string.IsNullOrWhiteSpace(version)
-                    && !string.IsNullOrWhiteSpace(installedVersion)
-                    && !string.Equals(version, installedVersion, StringComparison.OrdinalIgnoreCase))
-                {
-                    return "可更新";
-                }
-
-                return "已安装";
-            }
-        }
-
-        private sealed class DiagnosticRow
-        {
-            public string Severity { get; set; } = string.Empty;
-            public string Code { get; set; } = string.Empty;
-            public string Scope { get; set; } = string.Empty;
-            public string Message { get; set; } = string.Empty;
         }
 
         private sealed class ModuleManifestDocument

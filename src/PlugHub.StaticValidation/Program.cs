@@ -206,6 +206,14 @@ namespace PlugHub.StaticValidation
                 "src/PlugHub.Revit2020/FrameworkFeatureCommand.cs",
                 "src/PlugHub.Revit2020/FrameworkRefreshCommand.cs",
                 "src/PlugHub.Revit2020/FrameworkSettingsWindow.cs",
+                "src/PlugHub.Revit2020/Settings/RepositorySettingsController.cs",
+                "src/PlugHub.Revit2020/Settings/Rows/ModuleRow.cs",
+                "src/PlugHub.Revit2020/Settings/Rows/FeatureRow.cs",
+                "src/PlugHub.Revit2020/Settings/Rows/GroupRow.cs",
+                "src/PlugHub.Revit2020/Settings/Rows/RepositoryRow.cs",
+                "src/PlugHub.Revit2020/Settings/Rows/RepositoryPackageRow.cs",
+                "src/PlugHub.Revit2020/Settings/Rows/PendingPackageOperationRow.cs",
+                "src/PlugHub.Revit2020/Settings/Rows/DiagnosticRow.cs",
                 "src/PlugHub.Revit2020/FrameworkStatusWindow.cs",
                 "src/PlugHub.Revit2020/DefaultRibbonIconProvider.cs",
                 "src/PlugHub.Revit2020/RevitWindowOwner.cs",
@@ -926,6 +934,9 @@ namespace PlugHub.StaticValidation
             Require(settingsWindow.Contains("PositionText") && settingsWindow.Contains("RefreshPluginPackagePositions") && settingsWindow.Contains("RefreshFeaturePositions") && settingsWindow.Contains("RefreshGroupPositions"), "settings must show human-readable position text and maintain drag/up-down sorting.");
             Require(settingsWindow.Contains("AddCustomGroup") && settingsWindow.Contains("RemoveSelectedGroup"), "settings must allow custom workspace groups to be created and removed.");
             Require(!settingsWindow.Contains("CreateButton(\"新增分组\"") && !settingsWindow.Contains("CreateButton(\"删除分组\""), "custom group create/delete actions must remain in the right-click menu only.");
+            Require(!settingsWindow.Contains("private sealed class RepositoryPackageRow"), "RepositoryPackageRow must be extracted from FrameworkSettingsWindow.");
+            Require(settingsWindow.Contains("PendingPackageOperationRow"), "settings window must display pending package operations.");
+            Require(settingsWindow.Contains("CancelSelectedPendingPackageOperation"), "settings window must allow cancelling selected pending package operations.");
         }
 
         private static void ValidateDefaultIconSpecification()
@@ -970,6 +981,8 @@ namespace PlugHub.StaticValidation
         {
             var modulesText = ReadText("config/sources.example.json");
             var settingsWindow = ReadText("src/PlugHub.Revit2020/FrameworkSettingsWindow.cs");
+            var repositoryRow = ReadText("src/PlugHub.Revit2020/Settings/Rows/RepositoryRow.cs");
+            var repositoryPackageRow = ReadText("src/PlugHub.Revit2020/Settings/Rows/RepositoryPackageRow.cs");
             var sourceResolver = ReadText("src/PlugHub.Framework/Sources/ModuleSourceResolver.cs");
             var configurationLoader = ReadText("src/PlugHub.Framework/Configuration/FrameworkConfigurationLoader.cs");
             var packageRepositoryService = ReadText("src/PlugHub.Framework/Packages/PackageRepositoryService.cs");
@@ -1022,15 +1035,15 @@ namespace PlugHub.StaticValidation
                 && packageRepositoryService.IndexOf("DeleteStaleFetchHead(cacheDirectory, repository.Id, diagnostics)", StringComparison.Ordinal) < packageRepositoryService.IndexOf("fetch --quiet --no-write-fetch-head", StringComparison.Ordinal), "repository sync must clear stale FETCH_HEAD before authenticated fetch.");
             Require(settingsWindow.Contains("RepositoryCredentialService") && settingsWindow.Contains("ProtectForSave(repository)"), "settings save must protect repository apiKey before serializing sources.");
             Require(settingsWindow.Contains("ApiKey = string.Empty") && settingsWindow.Contains("PlainApiKey = repository.ApiKey"), "settings repository rows must keep legacy plaintext apiKey available without echoing it in the UI.");
-            Require(settingsWindow.Contains("string.IsNullOrWhiteSpace(ApiKey) ? PlainApiKey"), "repository row ToConfiguration must preserve legacy plaintext apiKey when the user did not enter a replacement token.");
+            Require(repositoryRow.Contains("string.IsNullOrWhiteSpace(ApiKey) ? PlainApiKey"), "repository row ToConfiguration must preserve legacy plaintext apiKey when the user did not enter a replacement token.");
             Require(settingsWindow.Contains("EncryptedApiKey = repository.EncryptedApiKey") && settingsWindow.Contains("ApiKeyProtection = repository.ApiKeyProtection"), "settings repository rows must preserve encrypted apiKey metadata.");
-            Require(settingsWindow.Contains("EncryptedApiKey = EncryptedApiKey ?? string.Empty") && settingsWindow.Contains("ApiKeyProtection = ApiKeyProtection ?? string.Empty"), "repository row ToConfiguration must retain encrypted apiKey metadata.");
+            Require(repositoryRow.Contains("EncryptedApiKey = EncryptedApiKey ?? string.Empty") && repositoryRow.Contains("ApiKeyProtection = ApiKeyProtection ?? string.Empty"), "repository row ToConfiguration must retain encrypted apiKey metadata.");
             Require(configurationLoader.Contains("EncryptedApiKey = repository.EncryptedApiKey") && configurationLoader.Contains("ApiKeyProtection = repository.ApiKeyProtection"), "configuration loader must preserve encrypted repository credentials when applying presets.");
             Require(sourceResolver.Contains("EncryptedApiKey = repository.EncryptedApiKey") && sourceResolver.Contains("ApiKeyProtection = repository.ApiKeyProtection"), "module source resolver must preserve encrypted repository credentials.");
             ValidateRepositoryCredentialAndRedactionBehavior();
             var pendingStore = ReadText("src/PlugHub.Framework/Packages/PendingPackageOperationStore.cs");
             Require(pendingStore.Contains("AddOrReplace") && pendingStore.Contains("Remove") && pendingStore.Contains("Read"), "pending operation store must read, add, and remove operations.");
-            Require(settingsWindow.Contains("已安装待重启") && settingsWindow.Contains("PendingOperation") && settingsWindow.Contains("IsLoadedInCurrentRuntime"), "repository package status must distinguish installed from installed-pending-restart.");
+            Require(repositoryPackageRow.Contains("已安装待重启") && repositoryPackageRow.Contains("PendingOperation") && settingsWindow.Contains("IsLoadedInCurrentRuntime"), "repository package status must distinguish installed from installed-pending-restart.");
             Require(ReadText("src/PlugHub.Framework/Runtime/FrameworkRuntime.cs").Contains("ApplyPendingOperations"), "runtime startup must apply deferred package operations before module discovery.");
             Require(!settingsWindow.Contains("LoadDiagnosticRows(FrameworkRuntimeState.Current);\r\n            LoadSourceRows();"), "settings save must not reload stale runtime diagnostics after saving configuration.");
 
