@@ -10,7 +10,7 @@ namespace PlugHub.Revit2020
 {
     internal static class FeatureCommandDispatcher
     {
-        private static readonly ICommandAssemblyLoader CommandAssemblyLoader = new Net48DirectCommandAssemblyLoader();
+        private static readonly ICommandAssemblyLoader CommandAssemblyLoader = new Net48ShadowCopyCommandAssemblyLoader();
 
         public static Result ExecuteSlot(int slotId, ExternalCommandData commandData, ref string message, ElementSet elements)
         {
@@ -60,7 +60,7 @@ namespace PlugHub.Revit2020
             IExternalCommand command;
             try
             {
-                command = CommandAssemblyLoader.Create(assemblyPath, feature.CommandType);
+                command = CommandAssemblyLoader.Create(assemblyPath, feature.CommandType, FrameworkRuntimeState.BaseDirectory);
             }
             catch (Exception ex)
             {

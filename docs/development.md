@@ -88,7 +88,7 @@ CI 发布构建使用 `NuGet` 引用模式，只把 Revit API 当作编译引用
 
 不要把静态验证或本机构建表述为实机通过。
 
-在 Revit 2020 中，PlugHub 不承诺已加载业务 DLL 的真正热重载。Ribbon 按钮不再直接绑定业务 `commandAssembly`，而是绑定到框架 slot 命令；`ModuleDiscoveryService` 以插件包清单为权威来源，启动发现不加载业务 DLL，也不调用 `IPlugHubModule.Describe()`。命令实例由 `FeatureCommandDispatcher` 在用户点击功能的路径上创建或加载；如果功能没有配置 `commandAssembly`，框架会默认解析为 `module.Assembly`，但该路径只在点击执行时交给命令加载器。后续 shadow copy 加载器会接入 dispatcher 这个调度点，但不能承诺 Revit 2020 对已加载 DLL 真热重载。
+在 Revit 2020 中，PlugHub 不承诺已加载业务 DLL 的真正热重载。Ribbon 按钮不再直接绑定业务 `commandAssembly`，而是绑定到框架 slot 命令；`ModuleDiscoveryService` 以插件包清单为权威来源，启动发现不加载业务 DLL，也不调用 `IPlugHubModule.Describe()`。命令实例由 `FeatureCommandDispatcher` 在用户点击功能的路径上创建或加载；如果功能没有配置 `commandAssembly`，框架会默认解析为 `module.Assembly`。net48 命令加载器会把插件包复制到 `runtime-cache/<package>/<hash>/` 后从缓存副本加载，旧缓存清理失败会记录到 `runtime-cache/pending-cleanup.txt` 并在后续加载前重试。该机制用于降低安装目录 DLL 被占用的概率，不能承诺 .NET Framework 已加载程序集卸载或同一 Revit 会话内真热重载。
 
 ## 配置变更注意事项
 
@@ -99,6 +99,7 @@ CI 发布构建使用 `NuGet` 引用模式，只把 Revit API 当作编译引用
 - 仓库根 `package.json` 如果包含多个 module，设置页应展示为多个插件行；安装时 PlugHub 会按选中 module 拆成单插件本地包。
 - 安装和更新会把选中插件的单模块清单及其引用的 DLL/资源复制到 `packages/<插件ID>`，不会复制整个仓库；卸载只删除 `packages` 下对应已安装目录。
 - 如果 DLL 正被 Revit 占用，更新和卸载不会直接失败：PlugHub 会先移除本地清单中的模块声明，写入 `repository-cache/.package-install/pending-operations.json`，并在下次启动、模块发现之前删除或替换对应插件目录。
+- 业务命令执行后可能生成 `runtime-cache`。这个目录是运行时缓存，可以删除；如果当前 Revit 会话仍占用其中旧 DLL，PlugHub 会在后续加载前继续尝试清理。
 - 外部插件包文件夹推荐使用 `package.json`；平铺投放 DLL 时使用 `<DllName>.package.json`；框架来源配置文件名统一为 `config\sources.json`。
 - 功能如果没有 `commandAssembly` / `commandType`，Ribbon 按钮会回落到框架状态窗口。
 - workspace 未配置 group 时，Composer 会按 feature 的 `group`、`category` 或 `moduleId` 生成 fallback panel。

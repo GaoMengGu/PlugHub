@@ -271,7 +271,7 @@ namespace PlugHub.StaticValidation
 
             Require(revitText.Contains("class FeatureCommandDispatcher"), "runtime routing must use FeatureCommandDispatcher.");
             Require(revitText.Contains("interface ICommandAssemblyLoader"), "runtime routing must isolate command assembly loading behind ICommandAssemblyLoader.");
-            Require(revitText.Contains("class Net48DirectCommandAssemblyLoader"), "runtime routing must keep the net48 direct loader explicit.");
+            Require(revitText.Contains("class Net48ShadowCopyCommandAssemblyLoader"), "runtime routing must use the net48 shadow-copy loader.");
             Require(revitText.Contains("class FeatureSlotRegistry"), "runtime routing must use a feature slot registry.");
             Require(revitText.Contains("class FrameworkFeatureCommandSlot001"), "runtime routing must define the first feature command slot.");
             Require(revitText.Contains("class FrameworkFeatureCommandSlot128"), "runtime routing must define the last feature command slot.");
@@ -294,9 +294,25 @@ namespace PlugHub.StaticValidation
             Require(!featureSlotRegistry.Contains("new Dictionary<int, string>(slotToFeatureId ??"), "FeatureSlotRegistry must not construct Dictionary directly from an IReadOnlyDictionary fallback under net48.");
             Require(featureSlotRegistry.Contains(".ToDictionary(pair => pair.Key, pair => pair.Value)"), "FeatureSlotRegistry.Replace must clone slot mappings through an enumerable-compatible Dictionary shape.");
 
+            ValidateNet48ShadowCopyCommandLoader(featureDispatcher);
+        }
+
+        private static void ValidateNet48ShadowCopyCommandLoader(string featureDispatcher)
+        {
             const string commandAssemblyLoaderPath = "src/PlugHub.Revit2020/CommandAssemblyLoader.cs";
-            Require(File.Exists(FullPath(commandAssemblyLoaderPath)), "runtime routing must keep the net48 direct LoadFrom strategy in CommandAssemblyLoader.cs.");
-            Require(ReadText(commandAssemblyLoaderPath).Contains("Assembly.LoadFrom"), "net48 command loader must keep the direct LoadFrom strategy in one file.");
+            Require(File.Exists(FullPath(commandAssemblyLoaderPath)), "runtime routing must keep the net48 command loading strategy in CommandAssemblyLoader.cs.");
+
+            var loader = ReadText(commandAssemblyLoaderPath);
+            Require(loader.Contains("class Net48ShadowCopyCommandAssemblyLoader"), "net48 command loader must use a shadow-copy implementation.");
+            Require(loader.Contains("runtime-cache"), "shadow-copy loader must copy business assemblies under runtime-cache.");
+            Require(loader.Contains("SHA256.Create"), "shadow-copy loader must compute a content hash for cache directories.");
+            Require(loader.Contains("CopyPackagePayload"), "shadow-copy loader must copy package payload before loading commands.");
+            Require(loader.Contains("IsFlatPayloadFile"), "shadow-copy loader must avoid copying every installed package for flat DLL package manifests.");
+            Require(loader.Contains("ApplyPendingCleanup") && loader.Contains("pending-cleanup.txt"), "shadow-copy loader must retry cleanup of old locked cache directories.");
+            Require(loader.Contains("Assembly.LoadFrom(cachedAssemblyPath)"), "net48 command loader must load the cached business assembly copy.");
+            Require(!loader.Contains("Assembly.LoadFrom(assemblyPath)"), "net48 command loader must not load directly from the installed package assembly path.");
+            Require(featureDispatcher.Contains("new Net48ShadowCopyCommandAssemblyLoader()"), "FeatureCommandDispatcher must use the shadow-copy command loader.");
+            Require(featureDispatcher.Contains("CommandAssemblyLoader.Create(assemblyPath, feature.CommandType, FrameworkRuntimeState.BaseDirectory)"), "FeatureCommandDispatcher must pass the runtime base directory to the shadow-copy loader.");
         }
 
         private static void ValidateManifestAuthoritativeDiscoverySpecification()
