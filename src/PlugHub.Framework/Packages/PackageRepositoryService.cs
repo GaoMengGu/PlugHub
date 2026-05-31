@@ -449,6 +449,11 @@ namespace PlugHub.Framework.Packages
                 return false;
             }
 
+            if (!DeleteStaleFetchHead(cacheDirectory, repository.Id, diagnostics))
+            {
+                return false;
+            }
+
             if (!ConfigureSparseCheckout(cacheDirectory, repository.Id, diagnostics))
             {
                 return false;
@@ -466,6 +471,31 @@ namespace PlugHub.Framework.Packages
         private static bool ConfigureSparseCheckout(string cacheDirectory, string repositoryId, ICollection<DiagnosticMessage> diagnostics)
         {
             return RunGit("-C " + Quote(cacheDirectory) + " sparse-checkout set --no-cone " + string.Join(" ", SparseCheckoutPatterns().Select(Quote)), repositoryId, diagnostics);
+        }
+
+        private static bool DeleteStaleFetchHead(string cacheDirectory, string repositoryId, ICollection<DiagnosticMessage> diagnostics)
+        {
+            var fetchHeadPath = Path.Combine(cacheDirectory, ".git", "FETCH_HEAD");
+            if (!File.Exists(fetchHeadPath))
+            {
+                return true;
+            }
+
+            try
+            {
+                File.Delete(fetchHeadPath);
+                return true;
+            }
+            catch (IOException ex)
+            {
+                AddDiagnostic(diagnostics, repositoryId, "PH-REPOSITORY-FETCHHEAD", "Could not delete stale FETCH_HEAD: " + fetchHeadPath + " " + ex.Message);
+                return false;
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                AddDiagnostic(diagnostics, repositoryId, "PH-REPOSITORY-FETCHHEAD", "Could not delete stale FETCH_HEAD: " + fetchHeadPath + " " + ex.Message);
+                return false;
+            }
         }
 
         private static IEnumerable<string> SparseCheckoutPatterns()
