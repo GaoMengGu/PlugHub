@@ -87,12 +87,32 @@ namespace PlugHub.Revit2020
 
         private void AddRibbonLayoutItems(RibbonPanel panel, IEnumerable<RibbonItemViewModel> items, IReadOnlyDictionary<string, int> featureIdToSlot)
         {
+            var smallPushButtons = new List<RibbonItemData>();
             foreach (var item in items ?? new List<RibbonItemViewModel>())
             {
                 if (item == null)
                 {
                     continue;
                 }
+
+                if (IsSmallPushButton(item))
+                {
+                    var smallData = CreateRibbonItemData(item, featureIdToSlot);
+                    if (smallData == null || ContainsRibbonItem(panel, smallData.Name))
+                    {
+                        continue;
+                    }
+
+                    smallPushButtons.Add(smallData);
+                    if (smallPushButtons.Count == 3)
+                    {
+                        FlushSmallPushButtons(panel, smallPushButtons);
+                    }
+
+                    continue;
+                }
+
+                FlushSmallPushButtons(panel, smallPushButtons);
 
                 if (IsRibbonItemType(item, RibbonItemViewModel.Stack))
                 {
@@ -109,6 +129,8 @@ namespace PlugHub.Revit2020
                 var added = panel.AddItem(data);
                 PopulateContainer(added, item, featureIdToSlot);
             }
+
+            FlushSmallPushButtons(panel, smallPushButtons);
         }
 
         private RibbonItemData? CreateRibbonItemData(RibbonItemViewModel item, IReadOnlyDictionary<string, int> featureIdToSlot)
@@ -228,6 +250,24 @@ namespace PlugHub.Revit2020
             return new List<RibbonItem>();
         }
 
+        private static void FlushSmallPushButtons(RibbonPanel panel, List<RibbonItemData> smallPushButtons)
+        {
+            if (smallPushButtons.Count == 0) return;
+            if (smallPushButtons.Count == 1)
+            {
+                if (!ContainsRibbonItem(panel, smallPushButtons[0].Name))
+                {
+                    panel.AddItem(smallPushButtons[0]);
+                }
+
+                smallPushButtons.Clear();
+                return;
+            }
+
+            AddStackItemData(panel, smallPushButtons);
+            smallPushButtons.Clear();
+        }
+
         private PushButtonData? CreateFeatureButtonData(RibbonItemViewModel item, IReadOnlyDictionary<string, int> featureIdToSlot)
         {
             if (item == null || item.Feature == null || string.IsNullOrWhiteSpace(item.Feature.FeatureId))
@@ -341,6 +381,16 @@ namespace PlugHub.Revit2020
         private static bool IsRibbonItemType(RibbonItemViewModel item, string type)
         {
             return string.Equals(item.Type, type, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsSmallPushButton(RibbonItemViewModel item)
+        {
+            return IsRibbonItemType(item, RibbonItemViewModel.PushButton) && IsSmall(item.Size);
+        }
+
+        private static bool IsSmall(string value)
+        {
+            return string.Equals(value, "small", StringComparison.OrdinalIgnoreCase);
         }
 
         private static SlotAssignmentResult BuildSlotAssignments(IReadOnlyList<FeatureViewModel> orderedFeatures)

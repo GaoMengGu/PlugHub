@@ -656,6 +656,7 @@ namespace PlugHub.StaticValidation
             Require(ribbonBuilder.Contains("AddStackItemData"), "Ribbon builder must render stacked layout item data.");
             Require(ribbonBuilder.Contains("RibbonItemData"), "Ribbon builder must pass generic RibbonItemData into AddStackedItems.");
             Require(ribbonBuilder.Contains("layout.ClickableFeatures"), "Ribbon slot assignment must use clickable features from the layout tree.");
+            Require(ribbonBuilder.Contains("FlushSmallPushButtons") && ribbonBuilder.Contains("IsSmall(item.Size)") && ribbonBuilder.Contains("AddStackItemData(panel, smallPushButtons)"), "Ribbon builder must preserve legacy small push button stacking.");
             Require(!featureCommand.Contains("Assembly.LoadFrom"), "FrameworkFeatureCommand must delegate business command loading to ICommandAssemblyLoader.");
             Require(featureExecutionGate.Contains("CanExecuteFeatureId") && featureExecutionGate.Contains("matchCommandKey"), "FeatureExecutionGate must expose an id-only execution path for slot routing.");
             Require(featureDispatcher.Contains("CanExecuteFeatureId(featureId)"), "FeatureCommandDispatcher must validate slot-routed feature ids without matching command keys.");
