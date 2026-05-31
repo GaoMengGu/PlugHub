@@ -44,6 +44,7 @@ namespace PlugHub.StaticValidation
                 ValidateRibbonLayoutConfigurationModels();
                 ValidateRibbonLayoutComposerShape();
                 ValidateRibbonLayoutRules();
+                ValidateRibbonLayoutSettingsRows();
                 ValidateRevitRibbonAdapter();
                 ValidateRuntimeRoutingSpecification();
                 ValidateRevit2025AlcReadinessSpecification();
@@ -701,6 +702,23 @@ namespace PlugHub.StaticValidation
                 .Select(child => child as Dictionary<string, object>)
                 .Where(child => child != null)
                 .Any(child => string.Equals(StringValue(child!, "featureId"), featureId, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static void ValidateRibbonLayoutSettingsRows()
+        {
+            var viewModel = ReadText("src/PlugHub.Revit2020/Settings/FrameworkSettingsViewModel.cs");
+            var nodeRowPath = "src/PlugHub.Revit2020/Settings/Rows/RibbonLayoutNodeRow.cs";
+            var poolRowPath = "src/PlugHub.Revit2020/Settings/Rows/RibbonFeaturePoolRow.cs";
+            Require(File.Exists(FullPath(nodeRowPath)), "RibbonLayoutNodeRow must exist.");
+            Require(File.Exists(FullPath(poolRowPath)), "RibbonFeaturePoolRow must exist.");
+            var nodeRow = ReadText(nodeRowPath);
+            var poolRow = ReadText(poolRowPath);
+            Require(viewModel.Contains("RibbonLayoutNodes"), "settings view model must expose RibbonLayoutNodes.");
+            Require(viewModel.Contains("RibbonFeaturePool"), "settings view model must expose RibbonFeaturePool.");
+            Require(nodeRow.Contains("ObservableCollection<RibbonLayoutNodeRow> Children"), "RibbonLayoutNodeRow must expose child nodes.");
+            Require(nodeRow.Contains("ToPanelConfiguration"), "RibbonLayoutNodeRow must convert panel nodes to configuration.");
+            Require(nodeRow.Contains("ToItemConfiguration"), "RibbonLayoutNodeRow must convert item nodes to configuration.");
+            Require(poolRow.Contains("FeatureId") && poolRow.Contains("ModuleName"), "RibbonFeaturePoolRow must identify feature and module.");
         }
 
         private static void ValidateRevitRibbonAdapter()

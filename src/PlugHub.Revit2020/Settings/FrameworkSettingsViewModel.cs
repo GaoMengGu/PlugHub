@@ -12,5 +12,7 @@ namespace PlugHub.Revit2020.Settings
         public ObservableCollection<RepositoryPackageRow> RepositoryPackages { get; } = new ObservableCollection<RepositoryPackageRow>();
         public ObservableCollection<PendingPackageOperationRow> PendingOperations { get; } = new ObservableCollection<PendingPackageOperationRow>();
         public ObservableCollection<DiagnosticRow> Diagnostics { get; } = new ObservableCollection<DiagnosticRow>();
+        public ObservableCollection<RibbonLayoutNodeRow> RibbonLayoutNodes { get; } = new ObservableCollection<RibbonLayoutNodeRow>();
+        public ObservableCollection<RibbonFeaturePoolRow> RibbonFeaturePool { get; } = new ObservableCollection<RibbonFeaturePoolRow>();
     }
 }
