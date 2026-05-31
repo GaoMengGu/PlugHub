@@ -958,6 +958,7 @@ namespace PlugHub.StaticValidation
             var modulesText = ReadText("config/sources.example.json");
             var settingsWindow = ReadText("src/PlugHub.Revit2020/FrameworkSettingsWindow.cs");
             var sourceResolver = ReadText("src/PlugHub.Framework/Sources/ModuleSourceResolver.cs");
+            var configurationLoader = ReadText("src/PlugHub.Framework/Configuration/FrameworkConfigurationLoader.cs");
             var packageRepositoryService = ReadText("src/PlugHub.Framework/Packages/PackageRepositoryService.cs");
             var credentialService = ReadText("src/PlugHub.Framework/Packages/RepositoryCredentialService.cs");
             var redactor = ReadText("src/PlugHub.Framework/Diagnostics/SensitiveTextRedactor.cs");
@@ -998,6 +999,13 @@ namespace PlugHub.StaticValidation
             Require(redactor.Contains("Redact") && redactor.Contains("x-access-token") && redactor.Contains("oauth2"), "diagnostic redactor must mask repository tokens.");
             Require(configurationModels.Contains("EncryptedApiKey"), "repository configuration must persist encrypted apiKey separately.");
             Require(packageRepositoryService.Contains("ResolveApiKey(repository)") && packageRepositoryService.Contains("SensitiveTextRedactor.Redact"), "repository service must resolve protected credentials and redact git diagnostics.");
+            Require(settingsWindow.Contains("RepositoryCredentialService") && settingsWindow.Contains("ProtectForSave(repository)"), "settings save must protect repository apiKey before serializing sources.");
+            Require(settingsWindow.Contains("ApiKey = string.Empty") && settingsWindow.Contains("PlainApiKey = repository.ApiKey"), "settings repository rows must keep legacy plaintext apiKey available without echoing it in the UI.");
+            Require(settingsWindow.Contains("string.IsNullOrWhiteSpace(ApiKey) ? PlainApiKey"), "repository row ToConfiguration must preserve legacy plaintext apiKey when the user did not enter a replacement token.");
+            Require(settingsWindow.Contains("EncryptedApiKey = repository.EncryptedApiKey") && settingsWindow.Contains("ApiKeyProtection = repository.ApiKeyProtection"), "settings repository rows must preserve encrypted apiKey metadata.");
+            Require(settingsWindow.Contains("EncryptedApiKey = EncryptedApiKey ?? string.Empty") && settingsWindow.Contains("ApiKeyProtection = ApiKeyProtection ?? string.Empty"), "repository row ToConfiguration must retain encrypted apiKey metadata.");
+            Require(configurationLoader.Contains("EncryptedApiKey = repository.EncryptedApiKey") && configurationLoader.Contains("ApiKeyProtection = repository.ApiKeyProtection"), "configuration loader must preserve encrypted repository credentials when applying presets.");
+            Require(sourceResolver.Contains("EncryptedApiKey = repository.EncryptedApiKey") && sourceResolver.Contains("ApiKeyProtection = repository.ApiKeyProtection"), "module source resolver must preserve encrypted repository credentials.");
             ValidateRepositoryCredentialAndRedactionBehavior();
             var pendingStore = ReadText("src/PlugHub.Framework/Packages/PendingPackageOperationStore.cs");
             Require(pendingStore.Contains("AddOrReplace") && pendingStore.Contains("Remove") && pendingStore.Contains("Read"), "pending operation store must read, add, and remove operations.");
@@ -1027,6 +1035,7 @@ namespace PlugHub.StaticValidation
             credentialService.ProtectForSave(repository);
             Require(string.IsNullOrWhiteSpace(repository.ApiKey), "protecting repository credentials must clear plaintext apiKey.");
             Require(!string.IsNullOrWhiteSpace(repository.EncryptedApiKey), "protecting repository credentials must persist encrypted apiKey.");
+            Require(!Json.Serialize(repository).Contains("secret-token"), "serialized repository configuration must not retain plaintext apiKey after protection.");
             Require(credentialService.ResolveApiKey(repository) == "secret-token", "protected repository credentials must round-trip through DPAPI.");
 
             repository.ApiKey = "replacement-token";
@@ -1040,6 +1049,24 @@ namespace PlugHub.StaticValidation
                 ApiKeyProtection = "dpapi-current-user"
             };
             Require(credentialService.ResolveApiKey(damagedRepository) == string.Empty, "damaged encrypted repository credentials must not throw or resolve to plaintext.");
+
+            var encryptedOnlyRepository = new PlugHub.Framework.Configuration.PackageRepositoryConfiguration
+            {
+                Id = "encrypted-private",
+                Visibility = "private",
+                EncryptedApiKey = "ciphertext",
+                ApiKeyProtection = "dpapi-current-user",
+                Enabled = true
+            };
+            var modules = new PlugHub.Framework.Configuration.ModulesConfiguration
+            {
+                Repositories = new List<PlugHub.Framework.Configuration.PackageRepositoryConfiguration> { encryptedOnlyRepository }
+            };
+            var applied = new PlugHub.Framework.Configuration.FrameworkConfigurationLoader().ApplyPreset(modules, null);
+            Require(applied.Repositories[0].EncryptedApiKey == "ciphertext" && applied.Repositories[0].ApiKeyProtection == "dpapi-current-user", "configuration loader preset application must keep encrypted repository credentials.");
+
+            var resolved = new PlugHub.Framework.Sources.ModuleSourceResolver().Resolve(Path.GetTempPath(), modules);
+            Require(resolved.Modules.Repositories[0].EncryptedApiKey == "ciphertext" && resolved.Modules.Repositories[0].ApiKeyProtection == "dpapi-current-user", "module source resolver must keep encrypted repository credentials.");
 
             var redactedOauth = PlugHub.Framework.Diagnostics.SensitiveTextRedactor.Redact("https://oauth2:secret@gitee.com/owner/repo.git");
             Require(!redactedOauth.Contains("secret") && redactedOauth.Contains("gitee.com/owner/repo.git"), "diagnostic redactor must mask oauth2 tokens while preserving repository host.");

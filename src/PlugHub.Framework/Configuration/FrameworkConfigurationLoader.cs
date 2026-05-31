@@ -147,6 +147,8 @@ namespace PlugHub.Framework.Configuration
                     Ref = repository.Ref,
                     ManifestPath = repository.ManifestPath,
                     ApiKey = repository.ApiKey,
+                    EncryptedApiKey = repository.EncryptedApiKey,
+                    ApiKeyProtection = repository.ApiKeyProtection,
                     Enabled = repository.Enabled
                 }).ToList(),
                 ConflictPolicy = new ConflictPolicyConfiguration

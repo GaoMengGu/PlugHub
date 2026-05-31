@@ -31,6 +31,7 @@ namespace PlugHub.Revit2020
         private FrameworkConfiguration _configuration;
         private readonly JavaScriptSerializer _serializer = new JavaScriptSerializer { MaxJsonLength = int.MaxValue, RecursionLimit = 128 };
         private readonly PackageRepositoryService _packageRepositoryService = new PackageRepositoryService();
+        private readonly RepositoryCredentialService _credentialService = new RepositoryCredentialService();
         private readonly DataGrid _pluginPackagesGrid = CreateGrid();
         private readonly DataGrid _featuresGrid = CreateGrid();
         private readonly DataGrid _groupsGrid = CreateGrid();
@@ -449,7 +450,10 @@ namespace PlugHub.Revit2020
                     Repository = repository.Repository,
                     Ref = string.IsNullOrWhiteSpace(repository.Ref) ? "main" : repository.Ref,
                     ManifestPath = string.IsNullOrWhiteSpace(repository.ManifestPath) ? DefaultPackageManifestName : repository.ManifestPath,
-                    ApiKey = repository.ApiKey,
+                    ApiKey = string.Empty,
+                    PlainApiKey = repository.ApiKey,
+                    EncryptedApiKey = repository.EncryptedApiKey,
+                    ApiKeyProtection = repository.ApiKeyProtection,
                     Status = repository.Enabled ? "可浏览" : "停用"
                 }));
             _repositoriesGrid.ItemsSource = _repositoryRows;
@@ -763,16 +767,11 @@ namespace PlugHub.Revit2020
         {
             _configuration.Modules.Repositories = _repositoryRows
                 .Where(row => !string.IsNullOrWhiteSpace(row.Id))
-                .Select(row => new PackageRepositoryConfiguration
+                .Select(row =>
                 {
-                    Id = row.Id.Trim(),
-                    Provider = string.IsNullOrWhiteSpace(row.Provider) ? DefaultRepositoryProvider : row.Provider.Trim(),
-                    Visibility = string.Equals(row.Visibility, "private", StringComparison.OrdinalIgnoreCase) ? "private" : "public",
-                    Repository = row.Repository ?? string.Empty,
-                    Ref = string.IsNullOrWhiteSpace(row.Ref) ? "main" : row.Ref.Trim(),
-                    ManifestPath = string.IsNullOrWhiteSpace(row.ManifestPath) ? DefaultPackageManifestName : row.ManifestPath.Trim(),
-                    ApiKey = row.ApiKey ?? string.Empty,
-                    Enabled = row.Enabled
+                    var repository = row.ToConfiguration();
+                    _credentialService.ProtectForSave(repository);
+                    return repository;
                 })
                 .ToList();
         }
@@ -2088,6 +2087,9 @@ namespace PlugHub.Revit2020
             public string Ref { get; set; } = "main";
             public string ManifestPath { get; set; } = DefaultPackageManifestName;
             public string ApiKey { get; set; } = string.Empty;
+            public string PlainApiKey { get; set; } = string.Empty;
+            public string EncryptedApiKey { get; set; } = string.Empty;
+            public string ApiKeyProtection { get; set; } = string.Empty;
             public string Status { get; set; } = string.Empty;
 
             public PackageRepositoryConfiguration ToConfiguration()
@@ -2101,7 +2103,9 @@ namespace PlugHub.Revit2020
                     Repository = Repository ?? string.Empty,
                     Ref = string.IsNullOrWhiteSpace(Ref) ? "main" : Ref.Trim(),
                     ManifestPath = string.IsNullOrWhiteSpace(ManifestPath) ? DefaultPackageManifestName : ManifestPath.Trim(),
-                    ApiKey = ApiKey ?? string.Empty
+                    ApiKey = string.IsNullOrWhiteSpace(ApiKey) ? PlainApiKey ?? string.Empty : ApiKey ?? string.Empty,
+                    EncryptedApiKey = EncryptedApiKey ?? string.Empty,
+                    ApiKeyProtection = ApiKeyProtection ?? string.Empty
                 };
             }
         }

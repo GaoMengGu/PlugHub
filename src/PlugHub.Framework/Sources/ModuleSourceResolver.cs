@@ -201,6 +201,8 @@ namespace PlugHub.Framework.Sources
                         Ref = repository.Ref,
                         ManifestPath = repository.ManifestPath,
                         ApiKey = repository.ApiKey,
+                        EncryptedApiKey = repository.EncryptedApiKey,
+                        ApiKeyProtection = repository.ApiKeyProtection,
                         Enabled = repository.Enabled
                     })
                     .ToList(),
