@@ -1492,6 +1492,28 @@ namespace PlugHub.StaticValidation
                 Require(!uninstallDiagnostics.Any(message => message.Severity == PlugHub.Contracts.Modules.DiagnosticSeverity.Error), "pending locked uninstall must apply on next startup: " + string.Join("; ", uninstallDiagnostics.Select(item => item.Message)));
                 Require(!Directory.Exists(uninstallDirectory), "pending locked uninstall must delete package files after restart.");
 
+                var unlockedUninstallDirectory = Path.Combine(tempRoot, "packages", "unlocked-uninstall");
+                var unlockedUninstallDuplicateDirectory = Path.Combine(tempRoot, "packages", "unlocked-uninstall-duplicate");
+                Directory.CreateDirectory(unlockedUninstallDirectory);
+                Directory.CreateDirectory(unlockedUninstallDuplicateDirectory);
+                File.WriteAllText(Path.Combine(unlockedUninstallDirectory, "UnlockedUninstall.dll"), "unlocked");
+                File.WriteAllText(Path.Combine(unlockedUninstallDirectory, "package.json"), "{\"schemaVersion\":\"1.0\",\"modules\":[{\"id\":\"unlocked-uninstall\",\"assembly\":\"UnlockedUninstall.dll\",\"type\":\"Demo.UnlockedUninstallModule\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
+                File.WriteAllText(Path.Combine(unlockedUninstallDuplicateDirectory, "UnlockedUninstallDuplicate.dll"), "duplicate");
+                File.WriteAllText(Path.Combine(unlockedUninstallDuplicateDirectory, "package.json"), "{\"schemaVersion\":\"1.0\",\"modules\":[{\"id\":\"unlocked-uninstall\",\"assembly\":\"UnlockedUninstallDuplicate.dll\",\"type\":\"Demo.UnlockedUninstallDuplicateModule\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
+                var unlockedUninstallDescriptor = new PlugHub.Framework.Packages.RepositoryPackageDescriptor
+                {
+                    RepositoryId = "test-repository",
+                    PackageId = "unlocked-uninstall",
+                    ModuleId = "unlocked-uninstall",
+                    DisplayName = "Unlocked Uninstall",
+                    InstallDirectory = unlockedUninstallDirectory,
+                    IsInstalled = true
+                };
+                var unlockedUninstallResult = new PlugHub.Framework.Packages.PackageRepositoryService().Uninstall(tempRoot, unlockedUninstallDescriptor);
+                Require(unlockedUninstallResult.Success, "unlocked uninstall with duplicate module manifests must succeed: " + unlockedUninstallResult.Message);
+                Require(!Directory.Exists(unlockedUninstallDirectory), "unlocked uninstall must delete the selected package directory.");
+                Require(!Directory.Exists(unlockedUninstallDuplicateDirectory), "unlocked uninstall must delete duplicate package directories that only contain the same module.");
+
                 var cancelUninstallDirectory = Path.Combine(tempRoot, "packages", "cancel-locked-uninstall");
                 var cancelUninstallDuplicateDirectory = Path.Combine(tempRoot, "packages", "cancel-locked-uninstall-duplicate");
                 Directory.CreateDirectory(cancelUninstallDirectory);

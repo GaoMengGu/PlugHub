@@ -182,23 +182,28 @@ namespace PlugHub.Framework.Packages
 
             try
             {
-                var manifestBackups = new List<PendingManifestBackup>();
-                if (!TryRemoveModuleFromInstalledManifests(installRoot, moduleId, string.Empty, manifestBackups, false, out var cleanedManifests, out var cleanupError))
+                if (Directory.Exists(installDirectory) && TryFindLockedFile(installDirectory, out var lockedFile))
+                {
+                    var manifestBackups = new List<PendingManifestBackup>();
+                    if (!TryRemoveModuleFromInstalledManifests(installRoot, moduleId, string.Empty, manifestBackups, false, out var lockedCleanedManifests, out var lockedCleanupError))
+                    {
+                        return PackageRepositoryOperationResult.Failed("无法清理插件包清单。请关闭并重启 Revit 后重试: " + lockedCleanupError);
+                    }
+
+                    var operation = PendingPackageOperation.Delete(package.PackageId, moduleId, installDirectory);
+                    operation.ManifestBackups = manifestBackups;
+                    QueuePendingOperation(baseDirectory, operation);
+                    var queuedCleanupMessage = lockedCleanedManifests > 0 ? " 已先从 package.json 移除插件声明。" : string.Empty;
+                    return PackageRepositoryOperationResult.Succeeded("插件包已标记为待卸载。当前 DLL 正被 Revit 占用，请重启 Revit 后自动删除: " + package.PackageId + queuedCleanupMessage + " 占用文件: " + lockedFile);
+                }
+
+                if (!TryRemoveModuleFromInstalledManifests(installRoot, moduleId, string.Empty, out var cleanedManifests, out var cleanupError))
                 {
                     return PackageRepositoryOperationResult.Failed("无法清理插件包清单。请关闭并重启 Revit 后重试: " + cleanupError);
                 }
 
                 if (Directory.Exists(installDirectory))
                 {
-                    if (TryFindLockedFile(installDirectory, out var lockedFile))
-                    {
-                        var operation = PendingPackageOperation.Delete(package.PackageId, moduleId, installDirectory);
-                        operation.ManifestBackups = manifestBackups;
-                        QueuePendingOperation(baseDirectory, operation);
-                        var queuedCleanupMessage = cleanedManifests > 0 ? " 已先从 package.json 移除插件声明。" : string.Empty;
-                        return PackageRepositoryOperationResult.Succeeded("插件包已标记为待卸载。当前 DLL 正被 Revit 占用，请重启 Revit 后自动删除: " + package.PackageId + queuedCleanupMessage + " 占用文件: " + lockedFile);
-                    }
-
                     Directory.Delete(installDirectory, true);
                 }
 
