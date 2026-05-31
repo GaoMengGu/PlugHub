@@ -83,11 +83,6 @@ namespace PlugHub.Revit2020.Settings
             return documents;
         }
 
-        public void Save(FrameworkConfiguration configuration)
-        {
-            Save(configuration, LoadModuleDocuments(configuration));
-        }
-
         public void Save(FrameworkConfiguration configuration, IEnumerable<ModuleManifestDocument> moduleDocuments)
         {
             if (configuration == null) throw new ArgumentNullException(nameof(configuration));

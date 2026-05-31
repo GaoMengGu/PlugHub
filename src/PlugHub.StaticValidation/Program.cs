@@ -859,7 +859,11 @@ namespace PlugHub.StaticValidation
             Require(settingsWindow.Contains("SettingsConfigurationStore"), "FrameworkSettingsWindow must use SettingsConfigurationStore.");
             Require(settingsWindow.Contains("ExportLogs"), "FrameworkSettingsWindow must expose log export.");
             Require(!settingsWindow.Contains("Path.Combine(BaseDirectory(), \"logs\", \"plughub-logs.zip\")"), "settings log export target must not be inside the logs directory.");
+            Require(settingsWindow.Contains("_configurationStore.Save(_configuration, _moduleDocuments)"), "FrameworkSettingsWindow must save the current in-memory module documents explicitly.");
+            Require(settingsWindow.Contains("Path.Combine(BaseDirectory(), \"exports\", \"plughub-logs.zip\")"), "settings log export target must be under the exports directory.");
+            Require(settingsWindow.Contains("new PlugHubLogExporter().Export(BaseDirectory(), targetPath)"), "settings log export must call PlugHubLogExporter with BaseDirectory and targetPath.");
             Require(settingsWindow.Contains("_viewModel") && !settingsWindow.Contains("ObservableCollection<ModuleRow> _moduleRows") && !settingsWindow.Contains("ObservableCollection<FeatureRow> _featureRows") && !settingsWindow.Contains("ObservableCollection<GroupRow> _groupRows"), "FrameworkSettingsWindow row state must be held by FrameworkSettingsViewModel.");
+            Require(!settingsWindow.Contains("private sealed class ModuleManifestDocument"), "FrameworkSettingsWindow must not keep a stale private ModuleManifestDocument type.");
             foreach (var collection in new[] { "Modules", "Features", "Groups", "Repositories", "RepositoryPackages", "PendingOperations", "Diagnostics" })
             {
                 Require(settingsViewModel.Contains("ObservableCollection") && settingsViewModel.Contains(collection), "FrameworkSettingsViewModel must expose " + collection + ".");
@@ -896,6 +900,8 @@ namespace PlugHub.StaticValidation
 
             Require(settingsWindow.Contains("LoadModuleDocuments") && !settingsWindow.Contains(RemovedSamplesDirectory()), "settings must not reference removed sample module manifests.");
             Require(settingsStore.Contains("Save(") && settingsStore.Contains("ModuleManifestDocument"), "settings must save edits back to their owning module manifest through SettingsConfigurationStore.");
+            Require(!settingsStore.Contains("Save(configuration, LoadModuleDocuments(configuration))"), "SettingsConfigurationStore must not expose a Save overload that reloads module documents from disk.");
+            Require(settingsStore.Contains("foreach (var document in moduleDocuments)") && settingsStore.Contains("SaveJson(document.Path, document.Modules)"), "SettingsConfigurationStore Save must persist the provided moduleDocuments.");
             Require(!settingsWindow.Contains("nameof(FeatureRow.Panel)") && !settingsWindow.Contains("feature.Group = row.Panel"), "feature settings must not expose user-editable panel ownership.");
             Require(!settingsWindow.Contains("点击 Ribbon 的「刷新配置」"), "settings UI must not point users to the removed refresh Ribbon button.");
 

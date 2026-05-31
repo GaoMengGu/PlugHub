@@ -1962,16 +1962,5 @@ namespace PlugHub.Revit2020
             public string DisplayText { get; set; } = string.Empty;
         }
 
-        private sealed class ModuleManifestDocument
-        {
-            public ModuleManifestDocument(string path, ModulesConfiguration modules)
-            {
-                Path = path ?? string.Empty;
-                Modules = modules ?? new ModulesConfiguration();
-            }
-
-            public string Path { get; }
-            public ModulesConfiguration Modules { get; }
-        }
     }
 }
