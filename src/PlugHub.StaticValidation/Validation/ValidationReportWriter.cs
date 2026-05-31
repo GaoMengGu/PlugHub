@@ -21,7 +21,7 @@ namespace PlugHub.StaticValidation.Validation
                     message = issue.Message,
                     suggestion = issue.Suggestion
                 }).ToList()
-            }));
+            }), Encoding.UTF8);
         }
 
         public static void WriteHtml(string path, ValidationReport report)

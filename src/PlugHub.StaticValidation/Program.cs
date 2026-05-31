@@ -9,11 +9,27 @@ namespace PlugHub.StaticValidation
 {
     internal static class Program
     {
+        private const int ValidationFailedExitCode = 1;
+        private const int ArgumentErrorExitCode = 2;
+        private const int ReportWriteErrorExitCode = 3;
+
         private static readonly JavaScriptSerializer Json = new JavaScriptSerializer();
         private static readonly string Root = FindRepositoryRoot();
 
         private static int Main(string[] args)
         {
+            ValidationArguments arguments;
+            try
+            {
+                arguments = ParseArguments(args);
+            }
+            catch (ArgumentException ex)
+            {
+                Console.Error.WriteLine(ex.Message);
+                PrintUsage();
+                return ArgumentErrorExitCode;
+            }
+
             try
             {
                 ValidateRequiredFiles();
@@ -55,7 +71,10 @@ namespace PlugHub.StaticValidation
                 var featureCount = modules.SelectMany(Features).Count();
 
                 var report = new PlugHub.StaticValidation.Validation.ValidationReport();
-                WriteReports(args, report);
+                if (!TryWriteReports(arguments, report))
+                {
+                    return ReportWriteErrorExitCode;
+                }
 
                 Console.WriteLine(
                     $"passed: modules={modules.Count}, features={featureCount}, views={Views(views).Count()}, presets={Presets(presets).Count()}");
@@ -65,26 +84,87 @@ namespace PlugHub.StaticValidation
             {
                 var report = new PlugHub.StaticValidation.Validation.ValidationReport();
                 report.Error("PH-VALIDATION-FAILED", string.Empty, ex.Message, "Read the failing validation message and update the referenced PlugHub file.");
-                WriteReports(args, report);
                 Console.Error.WriteLine("validation failed: " + ex.Message);
-                return 1;
+                TryWriteReports(arguments, report);
+                return ValidationFailedExitCode;
             }
         }
 
-        private static void WriteReports(string[] args, PlugHub.StaticValidation.Validation.ValidationReport report)
+        private static ValidationArguments ParseArguments(string[] args)
         {
+            var result = new ValidationArguments();
             for (var index = 0; index < args.Length; index++)
             {
-                if (args[index] == "--report-json" && index + 1 < args.Length)
+                if (args[index] == "--report-json")
                 {
-                    PlugHub.StaticValidation.Validation.ValidationReportWriter.WriteJson(args[index + 1], report);
+                    result.JsonReportPath = ReadReportPath(args, ref index, args[index]);
+                    continue;
                 }
 
-                if (args[index] == "--report-html" && index + 1 < args.Length)
+                if (args[index] == "--report-html")
                 {
-                    PlugHub.StaticValidation.Validation.ValidationReportWriter.WriteHtml(args[index + 1], report);
+                    result.HtmlReportPath = ReadReportPath(args, ref index, args[index]);
+                    continue;
                 }
+
+                throw new ArgumentException("Unknown argument: " + args[index]);
             }
+
+            return result;
+        }
+
+        private static string ReadReportPath(string[] args, ref int index, string option)
+        {
+            if (index + 1 >= args.Length || args[index + 1].StartsWith("--", StringComparison.Ordinal))
+            {
+                throw new ArgumentException(option + " requires a path.");
+            }
+
+            index++;
+            return args[index];
+        }
+
+        private static void PrintUsage()
+        {
+            Console.Error.WriteLine("Usage: PlugHub.StaticValidation [--report-json <path>] [--report-html <path>]");
+        }
+
+        private static bool TryWriteReports(ValidationArguments arguments, PlugHub.StaticValidation.Validation.ValidationReport report)
+        {
+            var success = true;
+            if (!string.IsNullOrWhiteSpace(arguments.JsonReportPath))
+            {
+                success &= TryWriteReport("--report-json", () =>
+                    PlugHub.StaticValidation.Validation.ValidationReportWriter.WriteJson(arguments.JsonReportPath, report));
+            }
+
+            if (!string.IsNullOrWhiteSpace(arguments.HtmlReportPath))
+            {
+                success &= TryWriteReport("--report-html", () =>
+                    PlugHub.StaticValidation.Validation.ValidationReportWriter.WriteHtml(arguments.HtmlReportPath, report));
+            }
+
+            return success;
+        }
+
+        private static bool TryWriteReport(string option, Action write)
+        {
+            try
+            {
+                write();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine("report write failed (" + option + "): " + ex.Message);
+                return false;
+            }
+        }
+
+        private sealed class ValidationArguments
+        {
+            public string JsonReportPath { get; set; } = string.Empty;
+            public string HtmlReportPath { get; set; } = string.Empty;
         }
 
         private static void ValidateRequiredFiles()
@@ -138,8 +218,13 @@ namespace PlugHub.StaticValidation
             var validationProgram = ReadText("src/PlugHub.StaticValidation/Program.cs");
             Require(validationProgram.Contains("string[] args"), "Static validation entrypoint must accept command-line arguments.");
             Require(validationProgram.Contains("--report-json") && validationProgram.Contains("--report-html"), "Static validation must support JSON and HTML report arguments.");
+            Require(validationProgram.Contains("Validation" + "Arguments Parse" + "Arguments("), "Static validation arguments must be parsed centrally.");
+            Require(validationProgram.Contains("\"" + "Usage:"), "Invalid static validation arguments must print usage.");
+            Require(validationProgram.Contains("Argument" + "Error" + "Exit" + "Code ="), "Invalid static validation arguments must return a fixed error code.");
+            Require(validationProgram.Contains("bool Try" + "Write" + "Reports("), "Validation and report writing failures must be handled separately.");
             var reportWriter = ReadText("src/PlugHub.StaticValidation/Validation/ValidationReportWriter.cs");
             Require(reportWriter.Contains("issues"), "JSON validation report must emit an issues field.");
+            Require(reportWriter.Contains("Encoding.UTF8"), "JSON validation report must be written with UTF-8 encoding.");
             foreach (var field in new[] { "severity", "code", "file", "message", "suggestion" })
             {
                 Require(reportWriter.Contains(field), "Validation report issue fields must use lowercase names: " + field);

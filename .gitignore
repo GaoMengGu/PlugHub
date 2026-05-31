@@ -1,6 +1,7 @@
 bin/
 obj/
 dist/
+build/validation-report.*
 .vs/
 .superpowers/
 docs/superpowers/
