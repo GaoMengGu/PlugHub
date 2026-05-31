@@ -279,11 +279,16 @@ namespace PlugHub.StaticValidation
             }
 
             var index = ReadText("docs/README.md");
-            foreach (var requiredLink in new[] { "project-overview.md", "architecture.md", "development.md", "signing.md" })
+            foreach (var requiredLink in new[] { "project-overview.md", "architecture.md", "development.md", "plugin-development.md", "signing.md" })
             {
                 Require(index.Contains(requiredLink), "docs index must link to " + requiredLink);
             }
 
+            Require(ReadText("docs/plugin-development.md").Contains("package.json"), "plugin development docs must describe package.json.");
+            Require(ReadText("docs/plugin-development.md").Contains("IExternalCommand"), "plugin development docs must describe IExternalCommand integration.");
+            Require(ReadText("docs/development.md").Contains("StagePlugHubOutput=false"), "development docs must document staging opt-out.");
+            Require(ReadText("docs/architecture.md").Contains("DPAPI"), "architecture docs must document credential protection.");
+            Require(ReadText("docs/project-overview.md").Contains("V1.2"), "project overview must mention V1.2 architecture hardening.");
             Require(!ReadText("README.md").Contains("D:\\AI\\code\\PlugHub_Modules"), "root README must not expose local external module paths.");
         }
 

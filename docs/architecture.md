@@ -98,6 +98,10 @@ Revit 2020 适配层的业务命令加载器是 `Net48ShadowCopyCommandAssemblyL
 
 这个机制只减少 Revit 锁住安装目录业务 DLL 的概率，不提供 .NET Framework 程序集卸载能力，也不承诺同一 Revit 会话内替换已加载的同名程序集。
 
+## V1.2 稳定性和安全边界
+
+V1.2 保持 Revit 2020 / net48 主线，不引入 ALC 或 AppDomain 沙箱。框架通过 pending package operations、业务命令异常兜底、文件日志、DPAPI 凭据保护和包兼容字段提高稳定性和可诊断性。
+
 ## Revit 2025+ ALC 准备
 
 当前仓库的可运行入口仍是 `PlugHub.Revit2020`。第四阶段先固化 Revit 2025+ ALC 的共享程序集规则，不在 Revit 2020 适配层中引入 `AssemblyLoadContext`。

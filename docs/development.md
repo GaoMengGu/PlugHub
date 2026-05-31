@@ -68,6 +68,16 @@ CI 发布构建使用 `NuGet` 引用模式，只把 Revit API 当作编译引用
 
 如果复制到 `dist\Revit2020` 失败，优先检查 Revit 是否正在占用 DLL。
 
+### 跳过 dist staging
+
+Revit 正在运行时可能占用 `dist\Revit2020` 中的 DLL，导致构建后的复制输出失败。只需要验证编译、不需要刷新 `dist` 目录时，可以显式关闭 staging：
+
+```powershell
+dotnet build src\PlugHub.Revit2020\PlugHub.Revit2020.csproj /p:RevitApiReferenceMode=NuGet /p:StagePlugHubOutput=false
+```
+
+该参数只跳过复制输出到 `dist\Revit2020`，不代表 Revit 实机加载通过。
+
 ## Revit 实机验收
 
 实机验收必须在 Windows + Revit 2020 中进行。建议使用测试模型副本和族文件副本。
