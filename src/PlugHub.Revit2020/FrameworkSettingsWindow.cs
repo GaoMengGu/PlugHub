@@ -1273,7 +1273,9 @@ namespace PlugHub.Revit2020
         {
             if (!(_pendingPackageOperationsGrid.SelectedItem is PendingPackageOperationRow row)) return;
             var result = _packageRepositoryService.CancelPendingOperation(BaseDirectory(), row.PackageId, row.ModuleId);
+            RefreshRepositoryPackageInstallState(row.PackageId, row.InstallDirectory);
             LoadPendingPackageOperationRows();
+            SafeRefreshGrid(_repositoryPackagesGrid);
             RefreshStatus(result.Message);
         }
 

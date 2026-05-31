@@ -934,9 +934,25 @@ namespace PlugHub.StaticValidation
             Require(settingsWindow.Contains("PositionText") && settingsWindow.Contains("RefreshPluginPackagePositions") && settingsWindow.Contains("RefreshFeaturePositions") && settingsWindow.Contains("RefreshGroupPositions"), "settings must show human-readable position text and maintain drag/up-down sorting.");
             Require(settingsWindow.Contains("AddCustomGroup") && settingsWindow.Contains("RemoveSelectedGroup"), "settings must allow custom workspace groups to be created and removed.");
             Require(!settingsWindow.Contains("CreateButton(\"新增分组\"") && !settingsWindow.Contains("CreateButton(\"删除分组\""), "custom group create/delete actions must remain in the right-click menu only.");
-            Require(!settingsWindow.Contains("private sealed class RepositoryPackageRow"), "RepositoryPackageRow must be extracted from FrameworkSettingsWindow.");
+            foreach (var rowClass in new[] { "ModuleRow", "FeatureRow", "GroupRow", "RepositoryRow", "RepositoryPackageRow", "DiagnosticRow" })
+            {
+                Require(!settingsWindow.Contains("private sealed class " + rowClass), rowClass + " must be extracted from FrameworkSettingsWindow.");
+            }
+
             Require(settingsWindow.Contains("PendingPackageOperationRow"), "settings window must display pending package operations.");
             Require(settingsWindow.Contains("CancelSelectedPendingPackageOperation"), "settings window must allow cancelling selected pending package operations.");
+            Require(settingsWindow.Contains("ListPendingOperations(BaseDirectory())"), "settings window must load pending package operations from the repository service.");
+            Require(settingsWindow.Contains("CancelPendingOperation(BaseDirectory(), row.PackageId, row.ModuleId)"), "settings window must cancel the selected pending package operation by package and module.");
+            var packageOperationStart = settingsWindow.IndexOf("private void RunRepositoryPackageOperation(", StringComparison.Ordinal);
+            var packageOperationResult = packageOperationStart < 0 ? -1 : settingsWindow.IndexOf("var result = operation(row.ToDescriptor());", packageOperationStart, StringComparison.Ordinal);
+            var packageOperationReload = packageOperationResult < 0 ? -1 : settingsWindow.IndexOf("LoadPendingPackageOperationRows();", packageOperationResult, StringComparison.Ordinal);
+            Require(packageOperationStart >= 0 && packageOperationResult >= 0 && packageOperationReload > packageOperationResult, "repository package operations must refresh pending package operations.");
+            var cancelOperationStart = settingsWindow.IndexOf("private void CancelSelectedPendingPackageOperation()", StringComparison.Ordinal);
+            var cancelOperationResult = cancelOperationStart < 0 ? -1 : settingsWindow.IndexOf("CancelPendingOperation(BaseDirectory(), row.PackageId, row.ModuleId)", cancelOperationStart, StringComparison.Ordinal);
+            var cancelOperationRefreshState = cancelOperationResult < 0 ? -1 : settingsWindow.IndexOf("RefreshRepositoryPackageInstallState(row.PackageId, row.InstallDirectory);", cancelOperationResult, StringComparison.Ordinal);
+            var cancelOperationReload = cancelOperationResult < 0 ? -1 : settingsWindow.IndexOf("LoadPendingPackageOperationRows();", cancelOperationResult, StringComparison.Ordinal);
+            Require(cancelOperationStart >= 0 && cancelOperationResult >= 0 && cancelOperationReload > cancelOperationResult, "pending package operation cancellation must reload pending operations.");
+            Require(cancelOperationStart >= 0 && cancelOperationResult >= 0 && cancelOperationRefreshState > cancelOperationResult && cancelOperationRefreshState < cancelOperationReload, "pending package operation cancellation must refresh repository package install state.");
         }
 
         private static void ValidateDefaultIconSpecification()
