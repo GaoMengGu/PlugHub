@@ -78,7 +78,14 @@ namespace PlugHub.Revit2020
             {
                 message = "插件功能执行时发生异常，已记录到 PlugHub 日志。";
                 new PlugHubLogger().Error(FrameworkRuntimeState.BaseDirectory, "PH-COMMAND-EXECUTE", feature.ModuleId, feature.Id, "Execute", message, ex);
-                ShowFailure("PlugHub 功能执行失败", message, "PH-COMMAND-EXECUTE", feature.ModuleId, DiagnosticSeverity.Error);
+                try
+                {
+                    ShowFailure("PlugHub 功能执行失败", message, "PH-COMMAND-EXECUTE", feature.ModuleId, DiagnosticSeverity.Error);
+                }
+                catch
+                {
+                }
+
                 return Result.Failed;
             }
         }

@@ -16,9 +16,11 @@ namespace PlugHub.Framework.Diagnostics
             var logsDirectory = PlugHubLogger.LogsDirectory(baseDirectory);
             Directory.CreateDirectory(logsDirectory);
 
-            var fullLogsDirectory = EnsureTrailingSeparator(Path.GetFullPath(logsDirectory));
-            var fullTargetPath = Path.GetFullPath(targetZipPath);
-            if (IsPathInside(fullTargetPath, fullLogsDirectory))
+            var fullLogsPath = TrimTrailingSeparator(Path.GetFullPath(logsDirectory));
+            var fullLogsDirectory = EnsureTrailingSeparator(fullLogsPath);
+            var fullTargetPath = TrimTrailingSeparator(Path.GetFullPath(targetZipPath));
+            if (string.Equals(fullTargetPath, fullLogsPath, StringComparison.OrdinalIgnoreCase)
+                || IsPathInside(fullTargetPath, fullLogsDirectory))
             {
                 throw new InvalidOperationException("PlugHub log export target must not be inside the source logs directory.");
             }
@@ -56,6 +58,11 @@ namespace PlugHub.Framework.Diagnostics
                 || path.EndsWith(Path.AltDirectorySeparatorChar.ToString(), StringComparison.Ordinal)
                 ? path
                 : path + Path.DirectorySeparatorChar;
+        }
+
+        private static string TrimTrailingSeparator(string path)
+        {
+            return path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         }
     }
 }

@@ -18,9 +18,8 @@ namespace PlugHub.Framework.Diagnostics
             string message,
             Exception exception)
         {
-            Write(new PlugHubLogEntry
+            Write(baseDirectory, new PlugHubLogEntry
             {
-                TimestampUtc = DateTime.UtcNow,
                 Severity = DiagnosticSeverity.Error,
                 Code = code ?? string.Empty,
                 ModuleId = moduleId ?? string.Empty,
@@ -28,13 +27,19 @@ namespace PlugHub.Framework.Diagnostics
                 Operation = operation ?? string.Empty,
                 Message = message ?? string.Empty,
                 Exception = exception?.ToString() ?? string.Empty
-            }, baseDirectory);
+            });
         }
 
-        private static void Write(PlugHubLogEntry entry, string baseDirectory)
+        public void Write(string baseDirectory, PlugHubLogEntry entry)
         {
             try
             {
+                if (entry == null) return;
+                if (entry.TimestampUtc == default(DateTime))
+                {
+                    entry.TimestampUtc = DateTime.UtcNow;
+                }
+
                 var logsDirectory = LogsDirectory(baseDirectory);
                 Directory.CreateDirectory(logsDirectory);
                 var logPath = Path.Combine(logsDirectory, "plughub-" + entry.TimestampUtc.ToString("yyyyMMdd") + ".log");

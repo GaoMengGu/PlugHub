@@ -601,8 +601,15 @@ namespace PlugHub.StaticValidation
             Require(featureDispatcher.Contains("CanExecuteFeatureId(featureId)"), "FeatureCommandDispatcher must validate slot-routed feature ids without matching command keys.");
             Require(featureDispatcher.Contains("CanExecute(featureKey)"), "FeatureCommandDispatcher.ExecuteFeature must preserve legacy journal routing by feature id or command key.");
             Require(featureDispatcher.Contains("catch (Exception ex)") && featureDispatcher.Contains("PH-COMMAND-EXECUTE"), "FeatureCommandDispatcher must catch business command Execute exceptions.");
+            Require(featureDispatcher.Contains("try\r\n                {\r\n                    ShowFailure(\"PlugHub 功能执行失败\", message, \"PH-COMMAND-EXECUTE\"") || featureDispatcher.Contains("try\n                {\n                    ShowFailure(\"PlugHub 功能执行失败\", message, \"PH-COMMAND-EXECUTE\""), "FeatureCommandDispatcher must isolate failure UI exceptions after business Execute failures.");
             var logger = ReadText("src/PlugHub.Framework/Diagnostics/PlugHubLogger.cs");
+            var exporter = ReadText("src/PlugHub.Framework/Diagnostics/PlugHubLogExporter.cs");
             Require(logger.Contains("plughub-") && logger.Contains(".log"), "PlugHub logger must write daily log files.");
+            Require(logger.Contains("public void Write(string baseDirectory, PlugHubLogEntry entry)") || logger.Contains("public void Write(string baseDirectory,\r\n            PlugHubLogEntry entry)") || logger.Contains("public void Write(string baseDirectory,\n            PlugHubLogEntry entry)"), "PlugHub logger must expose public Write(string baseDirectory, PlugHubLogEntry entry).");
+            Require(logger.Contains("SensitiveTextRedactor.Redact(entry.Message)") && logger.Contains("SensitiveTextRedactor.Redact(entry.Exception)"), "PlugHub logger must redact message and exception fields.");
+            Require(logger.Contains(".Replace(\"\\t\"") && logger.Contains(".Replace(\"\\n\""), "PlugHub logger must normalize tab and newline characters.");
+            Require(logger.Contains("catch"), "PlugHub logger writes must catch failures.");
+            Require(exporter.Contains("IsPathInside") && exporter.Contains("StartsWith") && (exporter.Contains("string.Equals(fullTargetPath, fullLogsPath") || exporter.Contains("fullTargetPath == fullLogsDirectory")), "PlugHub log exporter must reject targets inside or equal to the logs directory.");
             Require(!featureSlotRegistry.Contains("new Dictionary<int, string>(slotToFeatureId ??"), "FeatureSlotRegistry must not construct Dictionary directly from an IReadOnlyDictionary fallback under net48.");
             Require(featureSlotRegistry.Contains(".ToDictionary(pair => pair.Key, pair => pair.Value)"), "FeatureSlotRegistry.Replace must clone slot mappings through an enumerable-compatible Dictionary shape.");
 
