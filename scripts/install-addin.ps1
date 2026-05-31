@@ -1,8 +1,25 @@
 param(
-    [string]$BuiltDir = "$PSScriptRoot\..\dist\Revit2020"
+    [string]$BuiltDir = "$PSScriptRoot\..\dist\Revit2020",
+    [switch]$Silent
 )
 
 $ErrorActionPreference = "Stop"
+
+function Backup-ExistingAddin {
+    param([string]$Target)
+    if (!(Test-Path $Target)) { return "" }
+    $backup = "$Target.bak"
+    Copy-Item -LiteralPath $Target -Destination $backup -Force
+    return $backup
+}
+
+function Restore-AddinBackup {
+    param([string]$Target, [string]$Backup)
+    if (![string]::IsNullOrWhiteSpace($Backup) -and (Test-Path $Backup)) {
+        Copy-Item -LiteralPath $Backup -Destination $Target -Force
+    }
+}
+
 $BuiltDir = Resolve-Path $BuiltDir
 $Dll = Join-Path $BuiltDir "PlugHub.Revit2020.dll"
 $Addin = Join-Path $BuiltDir "PlugHub.addin"
@@ -29,5 +46,16 @@ $xml.Save($Addin)
 
 $AddinsDir = Join-Path $env:APPDATA "Autodesk\Revit\Addins\2020"
 New-Item -ItemType Directory -Force -Path $AddinsDir | Out-Null
-Copy-Item $Addin (Join-Path $AddinsDir "PlugHub.addin") -Force
-Write-Host "Installed: $AddinsDir\PlugHub.addin"
+$TargetAddin = Join-Path $AddinsDir "PlugHub.addin"
+$Backup = Backup-ExistingAddin $TargetAddin
+try {
+    Copy-Item $Addin $TargetAddin -Force
+}
+catch {
+    Restore-AddinBackup $TargetAddin $Backup
+    throw
+}
+
+if (!$Silent) {
+    Write-Host "Installed: $TargetAddin"
+}

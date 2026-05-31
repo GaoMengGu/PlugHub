@@ -1122,6 +1122,7 @@ namespace PlugHub.StaticValidation
             var revitProject = ReadText("src/PlugHub.Revit2020/PlugHub.Revit2020.csproj");
             var buildProps = ReadText("build/Directory.Build.props");
             var buildScript = ReadText("scripts/build-revit2020.ps1");
+            var installScript = ReadText("scripts/install-addin.ps1");
             var workflow = ReadText(".github/workflows/release.yml");
 
             foreach (var token in new[] { "RevitApiReferenceMode", "Installed", "NuGet", "RevitApiNuGetVersion" })
@@ -1141,8 +1142,14 @@ namespace PlugHub.StaticValidation
             }
 
             Require(buildProps.Contains("dist\\Revit$(RevitVersion)"), "output path must be version-derived for future Revit adapters.");
+            Require(revitProject.Contains("<StagePlugHubOutput Condition=\"'$(StagePlugHubOutput)' == ''\">true</StagePlugHubOutput>"), "Revit project must default StagePlugHubOutput to true.");
+            Require(revitProject.Contains("Condition=\"'$(StagePlugHubOutput)' == 'true'\""), "StagePlugHubOutput target must be guarded by StagePlugHubOutput=true.");
             Require(buildScript.Contains("[switch]$UseRevitApiNuGet"), "build script must offer an explicit NuGet API reference mode for CI.");
             Require(buildScript.Contains("/p:RevitApiReferenceMode=NuGet"), "build script must pass NuGet reference mode when requested.");
+            Require(buildScript.Contains("[switch]$NoStage"), "build script must expose -NoStage.");
+            Require(buildScript.Contains("[switch]$Clean"), "build script must expose -Clean.");
+            Require(buildScript.Contains("Assert-PathInsideRoot"), "build script must verify clean targets stay inside the repository.");
+            Require(installScript.Contains("Backup-ExistingAddin") && installScript.Contains("Restore-AddinBackup"), "addin install script must backup and restore the addin manifest.");
             Require(workflow.Contains("-UseRevitApiNuGet"), "release workflow must build through NuGet API references.");
             Require(!workflow.Contains("REVIT2020_API_ZIP_BASE64"), "release workflow must not require a secret containing Autodesk Revit API DLLs.");
         }

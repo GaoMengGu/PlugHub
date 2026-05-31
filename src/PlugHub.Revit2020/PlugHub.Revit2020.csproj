@@ -8,6 +8,7 @@
     <OutputType>Library</OutputType>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <StagePlugHubOutput Condition="'$(StagePlugHubOutput)' == ''">true</StagePlugHubOutput>
   </PropertyGroup>
 
   <ItemGroup>
@@ -56,7 +57,7 @@
     <Error Condition="!Exists('$(RevitApiDir)\RevitAPIUI.dll')" Text="RevitAPIUI.dll not found. Pass /p:RevitApiDir=&quot;C:\Program Files\Autodesk\Revit $(RevitVersion)&quot; or build with /p:RevitApiReferenceMode=NuGet for CI compile references." />
   </Target>
 
-  <Target Name="StagePlugHubOutput" AfterTargets="Build">
+  <Target Name="StagePlugHubOutput" AfterTargets="Build" Condition="'$(StagePlugHubOutput)' == 'true'">
     <MakeDir Directories="$(PlugHubOutputDir)" />
     <MakeDir Directories="$(PlugHubOutputDir)\config" />
     <MakeDir Directories="$(PlugHubOutputDir)\packages" />
