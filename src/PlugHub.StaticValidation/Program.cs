@@ -1018,6 +1018,14 @@ namespace PlugHub.StaticValidation
                 Require(settingsWindow.Contains(token), "WPF settings UI token missing: " + token);
             }
 
+            Require(settingsWindow.Contains("BuildRibbonLayoutTab"), "settings window must expose a Ribbon layout tab.");
+            Require(settingsWindow.Contains("LoadRibbonLayoutRows"), "settings window must load ribbon layout rows.");
+            Require(settingsWindow.Contains("ApplyRibbonLayoutRows"), "settings window must save ribbon layout rows.");
+            Require(settingsWindow.Contains("MigrateBasicRibbonLayout"), "settings window must migrate basic layout into advanced ribbon layout.");
+            Require(settingsWindow.Contains("RestoreBasicRibbonLayout"), "settings window must restore basic group layout.");
+            Require(settingsWindow.Contains("TreeView"), "settings window must use TreeView for ribbon layout editing.");
+            Require(settingsWindow.Contains("Ribbon 布局"), "settings window must label the ribbon layout tab.");
+
             Require(settingsWindow.Contains("SettingsConfigurationStore"), "FrameworkSettingsWindow must use SettingsConfigurationStore.");
             Require(settingsWindow.Contains("ExportLogs"), "FrameworkSettingsWindow must expose log export.");
             Require(!settingsWindow.Contains("Path.Combine(BaseDirectory(), \"logs\", \"plughub-logs.zip\")"), "settings log export target must not be inside the logs directory.");

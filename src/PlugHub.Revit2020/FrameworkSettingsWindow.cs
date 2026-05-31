@@ -46,9 +46,18 @@ namespace PlugHub.Revit2020
         private readonly TextBlock _selectedFeatureName = new TextBlock();
         private readonly ComboBox _selectedFeatureGroupCombo = new ComboBox();
         private readonly ComboBox _selectedFeatureButtonSizeCombo = new ComboBox();
+        private readonly TreeView _ribbonLayoutTree = new TreeView();
+        private readonly ListBox _ribbonFeaturePoolList = new ListBox();
+        private readonly TextBox _selectedRibbonNodeIdText = new TextBox();
+        private readonly TextBox _selectedRibbonNodeText = new TextBox();
+        private readonly TextBox _selectedRibbonNodeFeatureIdText = new TextBox();
+        private readonly TextBox _selectedRibbonNodeDefaultFeatureIdText = new TextBox();
+        private readonly ComboBox _selectedRibbonNodeTypeCombo = new ComboBox();
+        private readonly ComboBox _selectedRibbonNodeSizeCombo = new ComboBox();
         private int _dragSourceRowIndex = -1;
         private DataGrid? _dragSourceGrid;
         private bool _syncingSelectedFeatureEditor;
+        private bool _syncingSelectedRibbonNodeEditor;
 
         public FrameworkSettingsWindow(string configDirectory, FrameworkConfiguration configuration)
         {
@@ -97,6 +106,7 @@ namespace PlugHub.Revit2020
             };
             tabs.Items.Add(BuildFeaturesTab());
             tabs.Items.Add(BuildGroupsTab());
+            tabs.Items.Add(BuildRibbonLayoutTab());
             tabs.Items.Add(BuildRepositoriesTab());
             tabs.Items.Add(BuildLogsTab());
             Grid.SetRow(tabs, 1);
@@ -191,6 +201,126 @@ namespace PlugHub.Revit2020
             };
             AttachGridBehaviors(_groupsGrid);
             return BuildTab("分组", _groupsGrid);
+        }
+
+        private TabItem BuildRibbonLayoutTab()
+        {
+            _selectedRibbonNodeTypeCombo.ItemsSource = new[] { "panel", "pushButton", "pulldownButton", "splitButton", "stack" };
+            _selectedRibbonNodeSizeCombo.ItemsSource = _buttonSizeOptions;
+
+            _ribbonLayoutTree.ItemsSource = _viewModel.RibbonLayoutNodes;
+            _ribbonLayoutTree.ItemTemplate = CreateRibbonLayoutItemTemplate();
+            _ribbonLayoutTree.Margin = new Thickness(8);
+            _ribbonLayoutTree.SelectedItemChanged += (sender, args) => SyncSelectedRibbonNodeEditor();
+
+            _ribbonFeaturePoolList.ItemsSource = _viewModel.RibbonFeaturePool;
+            _ribbonFeaturePoolList.DisplayMemberPath = nameof(RibbonFeaturePoolRow.FeatureName);
+            _ribbonFeaturePoolList.Margin = new Thickness(8);
+
+            var root = new DockPanel();
+            var actions = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Margin = new Thickness(0, 0, 0, 8)
+            };
+            actions.Children.Add(CreateButton("迁移为高级布局", (sender, args) => MigrateBasicRibbonLayout()));
+            actions.Children.Add(CreateButton("恢复基础布局", (sender, args) => RestoreBasicRibbonLayout()));
+            actions.Children.Add(CreateButton("新增面板", (sender, args) => AddRibbonPanelNode()));
+            actions.Children.Add(CreateButton("添加功能", (sender, args) => AddSelectedFeatureToRibbonLayout()));
+            actions.Children.Add(CreateButton("新增下拉", (sender, args) => AddRibbonContainerNode("pulldownButton")));
+            actions.Children.Add(CreateButton("新增拆分", (sender, args) => AddRibbonContainerNode("splitButton")));
+            actions.Children.Add(CreateButton("新增堆叠", (sender, args) => AddRibbonContainerNode("stack")));
+            actions.Children.Add(CreateButton("删除布局项", (sender, args) => RemoveSelectedRibbonLayoutNode()));
+            DockPanel.SetDock(actions, Dock.Top);
+            root.Children.Add(actions);
+
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(0.9, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.25, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(0.95, GridUnitType.Star) });
+
+            var poolColumn = BuildRibbonLayoutColumn("功能池", _ribbonFeaturePoolList);
+            var layoutColumn = BuildRibbonLayoutColumn("布局树", _ribbonLayoutTree);
+            var propertyColumn = BuildRibbonLayoutColumn("属性", BuildRibbonNodePropertyPanel());
+            Grid.SetColumn(poolColumn, 0);
+            Grid.SetColumn(layoutColumn, 1);
+            Grid.SetColumn(propertyColumn, 2);
+            grid.Children.Add(poolColumn);
+            grid.Children.Add(layoutColumn);
+            grid.Children.Add(propertyColumn);
+            root.Children.Add(grid);
+
+            SyncSelectedRibbonNodeEditor();
+            return BuildTab("Ribbon 布局", root);
+        }
+
+        private static HierarchicalDataTemplate CreateRibbonLayoutItemTemplate()
+        {
+            var template = new HierarchicalDataTemplate(typeof(RibbonLayoutNodeRow))
+            {
+                ItemsSource = new Binding(nameof(RibbonLayoutNodeRow.Children))
+            };
+
+            var panel = new FrameworkElementFactory(typeof(StackPanel));
+            panel.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
+
+            var type = new FrameworkElementFactory(typeof(TextBlock));
+            type.SetBinding(TextBlock.TextProperty, new Binding(nameof(RibbonLayoutNodeRow.NodeType)));
+            type.SetValue(TextBlock.ForegroundProperty, new SolidColorBrush(Color.FromRgb(86, 104, 128)));
+            type.SetValue(TextBlock.MarginProperty, new Thickness(0, 0, 6, 0));
+            panel.AppendChild(type);
+
+            var text = new FrameworkElementFactory(typeof(TextBlock));
+            text.SetBinding(TextBlock.TextProperty, new Binding(nameof(RibbonLayoutNodeRow.Text)));
+            text.SetValue(TextBlock.ForegroundProperty, new SolidColorBrush(Color.FromRgb(24, 34, 48)));
+            panel.AppendChild(text);
+
+            template.VisualTree = panel;
+            return template;
+        }
+
+        private static UIElement BuildRibbonLayoutColumn(string title, UIElement content)
+        {
+            var panel = new DockPanel();
+            var header = SectionHeader(title);
+            DockPanel.SetDock(header, Dock.Top);
+            panel.Children.Add(header);
+            panel.Children.Add(content);
+            return panel;
+        }
+
+        private UIElement BuildRibbonNodePropertyPanel()
+        {
+            var panel = new StackPanel { Margin = new Thickness(8) };
+
+            _selectedRibbonNodeTypeCombo.Height = 26;
+            _selectedRibbonNodeTypeCombo.Margin = new Thickness(0, 2, 0, 8);
+            _selectedRibbonNodeIdText.Height = 26;
+            _selectedRibbonNodeIdText.Margin = new Thickness(0, 2, 0, 8);
+            _selectedRibbonNodeText.Height = 26;
+            _selectedRibbonNodeText.Margin = new Thickness(0, 2, 0, 8);
+            _selectedRibbonNodeFeatureIdText.Height = 26;
+            _selectedRibbonNodeFeatureIdText.Margin = new Thickness(0, 2, 0, 8);
+            _selectedRibbonNodeDefaultFeatureIdText.Height = 26;
+            _selectedRibbonNodeDefaultFeatureIdText.Margin = new Thickness(0, 2, 0, 8);
+            _selectedRibbonNodeSizeCombo.Height = 26;
+            _selectedRibbonNodeSizeCombo.Margin = new Thickness(0, 2, 0, 10);
+
+            panel.Children.Add(EditorLabel("类型"));
+            panel.Children.Add(_selectedRibbonNodeTypeCombo);
+            panel.Children.Add(EditorLabel("ID"));
+            panel.Children.Add(_selectedRibbonNodeIdText);
+            panel.Children.Add(EditorLabel("显示名"));
+            panel.Children.Add(_selectedRibbonNodeText);
+            panel.Children.Add(EditorLabel("功能 ID"));
+            panel.Children.Add(_selectedRibbonNodeFeatureIdText);
+            panel.Children.Add(EditorLabel("默认功能 ID"));
+            panel.Children.Add(_selectedRibbonNodeDefaultFeatureIdText);
+            panel.Children.Add(EditorLabel("按钮大小"));
+            panel.Children.Add(_selectedRibbonNodeSizeCombo);
+            panel.Children.Add(CreateButton("应用属性", (sender, args) => ApplySelectedRibbonNodeEditor()));
+
+            return panel;
         }
 
         private TabItem BuildRepositoriesTab()
@@ -313,6 +443,7 @@ namespace PlugHub.Revit2020
         {
             LoadGroupRows();
             LoadFeatureRows();
+            LoadRibbonLayoutRows();
             LoadRepositoryRows();
             LoadRepositoryPackageRows(new List<RepositoryPackageDescriptor>());
             LoadPendingPackageOperationRows();
@@ -461,6 +592,38 @@ namespace PlugHub.Revit2020
             }
 
             SyncSelectedFeatureEditor();
+        }
+
+        private void LoadRibbonLayoutRows()
+        {
+            _viewModel.RibbonLayoutNodes.Clear();
+            _viewModel.RibbonFeaturePool.Clear();
+
+            var ribbon = WorkspaceView().Ribbon ?? new RibbonConfiguration();
+            foreach (var panel in (ribbon.Panels ?? new List<RibbonPanelLayoutConfiguration>())
+                .OrderBy(panel => panel.Order)
+                .ThenBy(panel => DisplayName(panel.Name, panel.Id, panel.Id), StringComparer.OrdinalIgnoreCase))
+            {
+                _viewModel.RibbonLayoutNodes.Add(RibbonLayoutNodeRow.FromPanel(panel));
+            }
+
+            foreach (var row in _viewModel.Features
+                .OrderBy(feature => feature.ModuleName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(feature => feature.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(feature => feature.FeatureId, StringComparer.OrdinalIgnoreCase))
+            {
+                _viewModel.RibbonFeaturePool.Add(new RibbonFeaturePoolRow
+                {
+                    ModuleId = row.ModuleId,
+                    ModuleName = row.ModuleName,
+                    FeatureId = row.FeatureId,
+                    FeatureName = row.Name,
+                    Group = row.Group,
+                    IconPath = row.IconPath
+                });
+            }
+
+            RefreshRibbonLayoutTree();
         }
 
         private void LoadRepositoryRows()
@@ -738,6 +901,7 @@ namespace PlugHub.Revit2020
             EndGridEdits();
             ApplyGroupRows();
             ApplyFeatureRows();
+            ApplyRibbonLayoutRows();
             ApplyRepositoryRows();
 
             _configurationStore.Save(_configuration, _moduleDocuments);
@@ -828,6 +992,26 @@ namespace PlugHub.Revit2020
             }
         }
 
+        private void ApplyRibbonLayoutRows()
+        {
+            var view = WorkspaceView();
+            if (view.Ribbon == null)
+            {
+                view.Ribbon = new RibbonConfiguration { TabName = "PlugHub", FallbackPanelName = "其他工具" };
+            }
+
+            view.Ribbon.LayoutVersion = _viewModel.RibbonLayoutNodes.Any() ? "1.0" : string.Empty;
+            view.Ribbon.Panels = _viewModel.RibbonLayoutNodes
+                .Where(row => string.Equals(row.NodeType, "panel", StringComparison.OrdinalIgnoreCase))
+                .Select((row, index) =>
+                {
+                    row.Order = (index + 1) * 100;
+                    AssignRibbonNodeOrders(row.Children);
+                    return row.ToPanelConfiguration();
+                })
+                .ToList();
+        }
+
         private void ApplyRepositoryRows()
         {
             _configuration.Modules.Repositories = _viewModel.Repositories
@@ -839,6 +1023,320 @@ namespace PlugHub.Revit2020
                     return repository;
                 })
                 .ToList();
+        }
+
+        private static void AssignRibbonNodeOrders(IEnumerable<RibbonLayoutNodeRow> rows)
+        {
+            var index = 0;
+            foreach (var row in rows ?? new List<RibbonLayoutNodeRow>())
+            {
+                index++;
+                row.Order = index * 100;
+                AssignRibbonNodeOrders(row.Children);
+            }
+        }
+
+        private void MigrateBasicRibbonLayout()
+        {
+            _viewModel.RibbonLayoutNodes.Clear();
+            foreach (var group in _viewModel.Groups.OrderBy(group => group.Order).ThenBy(group => group.Name, StringComparer.OrdinalIgnoreCase))
+            {
+                var panel = new RibbonLayoutNodeRow
+                {
+                    NodeType = "panel",
+                    Id = group.Id,
+                    Text = DisplayName(group.Name, group.Id, group.Id),
+                    Order = group.Order
+                };
+
+                foreach (var feature in _viewModel.Features
+                    .Where(feature => feature.Visible && string.Equals(feature.Group, group.Id, StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(feature => feature.Order)
+                    .ThenBy(feature => feature.Name, StringComparer.OrdinalIgnoreCase))
+                {
+                    panel.Children.Add(CreateRibbonFeatureNode(feature, panel.Children.Count + 1));
+                }
+
+                if (panel.Children.Count > 0)
+                {
+                    _viewModel.RibbonLayoutNodes.Add(panel);
+                }
+            }
+
+            RefreshRibbonLayoutTree();
+            RefreshStatus("已从当前分组生成高级 Ribbon 布局，保存并重启 Revit 后生效。");
+        }
+
+        private void RestoreBasicRibbonLayout()
+        {
+            _viewModel.RibbonLayoutNodes.Clear();
+            RefreshRibbonLayoutTree();
+            RefreshStatus("已恢复为基础分组布局，保存并重启 Revit 后生效。");
+        }
+
+        private void AddRibbonPanelNode()
+        {
+            var panel = CreateRibbonPanelNode();
+            _viewModel.RibbonLayoutNodes.Add(panel);
+            RefreshRibbonLayoutTree();
+            RefreshStatus("已新增 Ribbon 面板，保存并重启 Revit 后生效。");
+        }
+
+        private void AddRibbonContainerNode(string type)
+        {
+            var parent = SelectedRibbonContainerOrPanel();
+            if (parent == null)
+            {
+                RefreshStatus("请先选择一个 Ribbon 面板。");
+                return;
+            }
+
+            if (string.Equals(parent.NodeType, "pulldownButton", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(parent.NodeType, "splitButton", StringComparison.OrdinalIgnoreCase))
+            {
+                RefreshStatus("下拉和拆分按钮内只放置功能按钮。");
+                return;
+            }
+
+            if (string.Equals(parent.NodeType, "stack", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(type, "pulldownButton", StringComparison.OrdinalIgnoreCase))
+            {
+                RefreshStatus("堆叠控件内只能放置功能按钮或下拉按钮。");
+                return;
+            }
+
+            var index = parent.Children.Count + 1;
+            var row = new RibbonLayoutNodeRow
+            {
+                NodeType = type,
+                Id = type + "-" + index,
+                Text = RibbonNodeTypeDisplayName(type) + " " + index,
+                Order = index * 100
+            };
+            parent.Children.Add(row);
+            RefreshRibbonLayoutTree();
+            RefreshStatus("已新增 Ribbon 容器，保存并重启 Revit 后生效。");
+        }
+
+        private void AddSelectedFeatureToRibbonLayout()
+        {
+            var poolRow = _ribbonFeaturePoolList.SelectedItem as RibbonFeaturePoolRow;
+            if (poolRow == null)
+            {
+                RefreshStatus("请先在功能池选择一个功能。");
+                return;
+            }
+
+            var parent = SelectedRibbonContainerOrPanel();
+            if (parent == null)
+            {
+                parent = CreateRibbonPanelNode();
+                _viewModel.RibbonLayoutNodes.Add(parent);
+            }
+
+            if (string.Equals(parent.NodeType, "stack", StringComparison.OrdinalIgnoreCase) && parent.Children.Count >= 3)
+            {
+                RefreshStatus("堆叠控件最多包含 3 个子项。");
+                return;
+            }
+
+            var feature = _viewModel.Features.FirstOrDefault(row => string.Equals(row.FeatureId, poolRow.FeatureId, StringComparison.OrdinalIgnoreCase));
+            var node = feature == null
+                ? CreateRibbonFeatureNode(poolRow, parent.Children.Count + 1)
+                : CreateRibbonFeatureNode(feature, parent.Children.Count + 1);
+            parent.Children.Add(node);
+
+            if (string.Equals(parent.NodeType, "splitButton", StringComparison.OrdinalIgnoreCase)
+                && string.IsNullOrWhiteSpace(parent.DefaultFeatureId))
+            {
+                parent.DefaultFeatureId = node.FeatureId;
+            }
+
+            RefreshRibbonLayoutTree();
+            RefreshStatus("已添加功能到 Ribbon 布局，保存并重启 Revit 后生效。");
+        }
+
+        private void RemoveSelectedRibbonLayoutNode()
+        {
+            var row = _ribbonLayoutTree.SelectedItem as RibbonLayoutNodeRow;
+            if (row == null)
+            {
+                RefreshStatus("请先选择要删除的 Ribbon 布局项。");
+                return;
+            }
+
+            if (_viewModel.RibbonLayoutNodes.Remove(row))
+            {
+                RefreshRibbonLayoutTree();
+                RefreshStatus("已删除 Ribbon 面板，保存并重启 Revit 后生效。");
+                return;
+            }
+
+            foreach (var panel in _viewModel.RibbonLayoutNodes)
+            {
+                if (RemoveRibbonNode(panel, row))
+                {
+                    RefreshRibbonLayoutTree();
+                    RefreshStatus("已删除 Ribbon 布局项，保存并重启 Revit 后生效。");
+                    return;
+                }
+            }
+        }
+
+        private void SyncSelectedRibbonNodeEditor()
+        {
+            _syncingSelectedRibbonNodeEditor = true;
+            var row = _ribbonLayoutTree.SelectedItem as RibbonLayoutNodeRow;
+            var hasSelection = row != null;
+            _selectedRibbonNodeTypeCombo.IsEnabled = hasSelection;
+            _selectedRibbonNodeIdText.IsEnabled = hasSelection;
+            _selectedRibbonNodeText.IsEnabled = hasSelection;
+            _selectedRibbonNodeFeatureIdText.IsEnabled = hasSelection;
+            _selectedRibbonNodeDefaultFeatureIdText.IsEnabled = hasSelection;
+            _selectedRibbonNodeSizeCombo.IsEnabled = hasSelection;
+
+            _selectedRibbonNodeTypeCombo.SelectedItem = hasSelection ? row!.NodeType : null;
+            _selectedRibbonNodeIdText.Text = hasSelection ? row!.Id : string.Empty;
+            _selectedRibbonNodeText.Text = hasSelection ? row!.Text : string.Empty;
+            _selectedRibbonNodeFeatureIdText.Text = hasSelection ? row!.FeatureId : string.Empty;
+            _selectedRibbonNodeDefaultFeatureIdText.Text = hasSelection ? row!.DefaultFeatureId : string.Empty;
+            _selectedRibbonNodeSizeCombo.SelectedItem = hasSelection ? NormalizeButtonSize(row!.Size) : null;
+            _syncingSelectedRibbonNodeEditor = false;
+        }
+
+        private void ApplySelectedRibbonNodeEditor()
+        {
+            if (_syncingSelectedRibbonNodeEditor) return;
+            var row = _ribbonLayoutTree.SelectedItem as RibbonLayoutNodeRow;
+            if (row == null)
+            {
+                RefreshStatus("请先选择一个 Ribbon 布局项。");
+                return;
+            }
+
+            row.NodeType = Convert.ToString(_selectedRibbonNodeTypeCombo.SelectedItem) ?? row.NodeType;
+            row.Id = _selectedRibbonNodeIdText.Text ?? string.Empty;
+            row.Text = _selectedRibbonNodeText.Text ?? string.Empty;
+            row.FeatureId = _selectedRibbonNodeFeatureIdText.Text ?? string.Empty;
+            row.DefaultFeatureId = _selectedRibbonNodeDefaultFeatureIdText.Text ?? string.Empty;
+            row.Size = NormalizeButtonSize(Convert.ToString(_selectedRibbonNodeSizeCombo.SelectedItem) ?? row.Size);
+            RefreshRibbonLayoutTree();
+            RefreshStatus("已更新 Ribbon 布局项属性，保存并重启 Revit 后生效。");
+        }
+
+        private RibbonLayoutNodeRow? SelectedRibbonContainerOrPanel()
+        {
+            var row = _ribbonLayoutTree.SelectedItem as RibbonLayoutNodeRow;
+            if (row == null)
+            {
+                return _viewModel.RibbonLayoutNodes.FirstOrDefault();
+            }
+
+            if (CanContainRibbonChildren(row))
+            {
+                return row;
+            }
+
+            return FindParentRibbonNode(row);
+        }
+
+        private static bool CanContainRibbonChildren(RibbonLayoutNodeRow row)
+        {
+            return row != null
+                && (string.Equals(row.NodeType, "panel", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(row.NodeType, "pulldownButton", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(row.NodeType, "splitButton", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(row.NodeType, "stack", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private RibbonLayoutNodeRow? FindParentRibbonNode(RibbonLayoutNodeRow target)
+        {
+            foreach (var panel in _viewModel.RibbonLayoutNodes)
+            {
+                var parent = FindParentRibbonNode(panel, target);
+                if (parent != null) return parent;
+            }
+
+            return null;
+        }
+
+        private static RibbonLayoutNodeRow? FindParentRibbonNode(RibbonLayoutNodeRow current, RibbonLayoutNodeRow target)
+        {
+            foreach (var child in current.Children)
+            {
+                if (ReferenceEquals(child, target)) return current;
+                var parent = FindParentRibbonNode(child, target);
+                if (parent != null) return parent;
+            }
+
+            return null;
+        }
+
+        private static bool RemoveRibbonNode(RibbonLayoutNodeRow parent, RibbonLayoutNodeRow target)
+        {
+            if (parent.Children.Remove(target)) return true;
+            foreach (var child in parent.Children)
+            {
+                if (RemoveRibbonNode(child, target)) return true;
+            }
+
+            return false;
+        }
+
+        private RibbonLayoutNodeRow CreateRibbonPanelNode()
+        {
+            var index = _viewModel.RibbonLayoutNodes.Count + 1;
+            return new RibbonLayoutNodeRow
+            {
+                NodeType = "panel",
+                Id = "custom-panel-" + index,
+                Text = "自定义面板 " + index,
+                Order = index * 100
+            };
+        }
+
+        private RibbonLayoutNodeRow CreateRibbonFeatureNode(FeatureRow feature, int index)
+        {
+            return new RibbonLayoutNodeRow
+            {
+                NodeType = "pushButton",
+                Id = feature.FeatureId,
+                Text = DisplayName(feature.DisplayName, feature.Name, feature.FeatureId),
+                FeatureId = feature.FeatureId,
+                Size = NormalizeButtonSize(feature.ButtonSize),
+                IconPath = feature.IconPath,
+                Order = index * 100
+            };
+        }
+
+        private static RibbonLayoutNodeRow CreateRibbonFeatureNode(RibbonFeaturePoolRow feature, int index)
+        {
+            return new RibbonLayoutNodeRow
+            {
+                NodeType = "pushButton",
+                Id = feature.FeatureId,
+                Text = feature.FeatureName,
+                FeatureId = feature.FeatureId,
+                Size = "large",
+                IconPath = feature.IconPath,
+                Order = index * 100
+            };
+        }
+
+        private void RefreshRibbonLayoutTree()
+        {
+            _ribbonLayoutTree.ItemsSource = null;
+            _ribbonLayoutTree.ItemsSource = _viewModel.RibbonLayoutNodes;
+            SyncSelectedRibbonNodeEditor();
+        }
+
+        private static string RibbonNodeTypeDisplayName(string type)
+        {
+            if (string.Equals(type, "pulldownButton", StringComparison.OrdinalIgnoreCase)) return "下拉按钮";
+            if (string.Equals(type, "splitButton", StringComparison.OrdinalIgnoreCase)) return "拆分按钮";
+            if (string.Equals(type, "stack", StringComparison.OrdinalIgnoreCase)) return "堆叠";
+            if (string.Equals(type, "pushButton", StringComparison.OrdinalIgnoreCase)) return "功能按钮";
+            return "布局项";
         }
 
         private IEnumerable<ModuleConfiguration> EditableModules()
