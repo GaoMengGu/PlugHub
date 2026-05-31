@@ -4,6 +4,7 @@ using System;
 using System.IO;
 using System.Linq;
 using PlugHub.Contracts.Modules;
+using PlugHub.Framework.Diagnostics;
 using PlugHub.Framework.Runtime;
 
 namespace PlugHub.Revit2020
@@ -69,7 +70,17 @@ namespace PlugHub.Revit2020
                 return Result.Failed;
             }
 
-            return command.Execute(commandData, ref message, elements);
+            try
+            {
+                return command.Execute(commandData, ref message, elements);
+            }
+            catch (Exception ex)
+            {
+                message = "插件功能执行时发生异常，已记录到 PlugHub 日志。";
+                new PlugHubLogger().Error(FrameworkRuntimeState.BaseDirectory, "PH-COMMAND-EXECUTE", feature.ModuleId, feature.Id, "Execute", message, ex);
+                ShowFailure("PlugHub 功能执行失败", message, "PH-COMMAND-EXECUTE", feature.ModuleId, DiagnosticSeverity.Error);
+                return Result.Failed;
+            }
         }
 
         private static string ResolveAssemblyPath(string commandAssembly)

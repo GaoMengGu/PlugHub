@@ -196,6 +196,9 @@ namespace PlugHub.StaticValidation
                 "src/PlugHub.Framework/Runtime/FrameworkRuntime.cs",
                 "src/PlugHub.Framework/Registry/FeatureRegistry.cs",
                 "src/PlugHub.Framework/Packages/RepositoryCredentialService.cs",
+                "src/PlugHub.Framework/Diagnostics/PlugHubLogEntry.cs",
+                "src/PlugHub.Framework/Diagnostics/PlugHubLogger.cs",
+                "src/PlugHub.Framework/Diagnostics/PlugHubLogExporter.cs",
                 "src/PlugHub.Framework/Diagnostics/SensitiveTextRedactor.cs",
                 "src/PlugHub.Framework/Packages/PendingPackageOperationStore.cs",
                 "src/PlugHub.Revit2020/ExternalApplicationEntry.cs",
@@ -597,6 +600,9 @@ namespace PlugHub.StaticValidation
             Require(featureExecutionGate.Contains("CanExecuteFeatureId") && featureExecutionGate.Contains("matchCommandKey"), "FeatureExecutionGate must expose an id-only execution path for slot routing.");
             Require(featureDispatcher.Contains("CanExecuteFeatureId(featureId)"), "FeatureCommandDispatcher must validate slot-routed feature ids without matching command keys.");
             Require(featureDispatcher.Contains("CanExecute(featureKey)"), "FeatureCommandDispatcher.ExecuteFeature must preserve legacy journal routing by feature id or command key.");
+            Require(featureDispatcher.Contains("catch (Exception ex)") && featureDispatcher.Contains("PH-COMMAND-EXECUTE"), "FeatureCommandDispatcher must catch business command Execute exceptions.");
+            var logger = ReadText("src/PlugHub.Framework/Diagnostics/PlugHubLogger.cs");
+            Require(logger.Contains("plughub-") && logger.Contains(".log"), "PlugHub logger must write daily log files.");
             Require(!featureSlotRegistry.Contains("new Dictionary<int, string>(slotToFeatureId ??"), "FeatureSlotRegistry must not construct Dictionary directly from an IReadOnlyDictionary fallback under net48.");
             Require(featureSlotRegistry.Contains(".ToDictionary(pair => pair.Key, pair => pair.Value)"), "FeatureSlotRegistry.Replace must clone slot mappings through an enumerable-compatible Dictionary shape.");
 

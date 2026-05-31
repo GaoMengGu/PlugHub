@@ -6,6 +6,8 @@
     <RootNamespace>PlugHub.Framework</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
     <Reference Include="System.Security" />
     <Reference Include="System.Web.Extensions" />
     <ProjectReference Include="..\PlugHub.Contracts\PlugHub.Contracts.csproj" />
