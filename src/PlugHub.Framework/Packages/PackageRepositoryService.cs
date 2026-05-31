@@ -433,6 +433,7 @@ namespace PlugHub.Framework.Packages
             var publicUrl = RepositoryUrl(repository, false);
             var authenticatedUrl = RepositoryUrl(repository, true);
             var gitRef = string.IsNullOrWhiteSpace(repository.Ref) ? "main" : repository.Ref.Trim();
+            var fetchRef = "refs/plughub/fetch";
 
             if (!Directory.Exists(Path.Combine(cacheDirectory, ".git")))
             {
@@ -453,12 +454,12 @@ namespace PlugHub.Framework.Packages
                 return false;
             }
 
-            if (!RunGit("-C " + Quote(cacheDirectory) + " fetch --quiet --filter=blob:none --depth 1 " + Quote(authenticatedUrl) + " " + Quote(gitRef), repository.Id, diagnostics))
+            if (!RunGit("-C " + Quote(cacheDirectory) + " fetch --quiet --no-write-fetch-head --filter=blob:none --depth 1 " + Quote(authenticatedUrl) + " " + Quote(gitRef + ":" + fetchRef), repository.Id, diagnostics))
             {
                 return false;
             }
 
-            return RunGit("-C " + Quote(cacheDirectory) + " checkout --quiet FETCH_HEAD", repository.Id, diagnostics)
+            return RunGit("-C " + Quote(cacheDirectory) + " checkout --quiet " + Quote(fetchRef), repository.Id, diagnostics)
                 && ConfigureSparseCheckout(cacheDirectory, repository.Id, diagnostics);
         }
 
