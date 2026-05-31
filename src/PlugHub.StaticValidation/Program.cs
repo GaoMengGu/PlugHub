@@ -12,7 +12,7 @@ namespace PlugHub.StaticValidation
         private static readonly JavaScriptSerializer Json = new JavaScriptSerializer();
         private static readonly string Root = FindRepositoryRoot();
 
-        private static int Main()
+        private static int Main(string[] args)
         {
             try
             {
@@ -54,14 +54,36 @@ namespace PlugHub.StaticValidation
                 var presets = ReadObject("config/feature-combinations.example.json");
                 var featureCount = modules.SelectMany(Features).Count();
 
+                var report = new PlugHub.StaticValidation.Validation.ValidationReport();
+                WriteReports(args, report);
+
                 Console.WriteLine(
                     $"passed: modules={modules.Count}, features={featureCount}, views={Views(views).Count()}, presets={Presets(presets).Count()}");
                 return 0;
             }
             catch (Exception ex)
             {
+                var report = new PlugHub.StaticValidation.Validation.ValidationReport();
+                report.Error("PH-VALIDATION-FAILED", string.Empty, ex.Message, "Read the failing validation message and update the referenced PlugHub file.");
+                WriteReports(args, report);
                 Console.Error.WriteLine("validation failed: " + ex.Message);
                 return 1;
+            }
+        }
+
+        private static void WriteReports(string[] args, PlugHub.StaticValidation.Validation.ValidationReport report)
+        {
+            for (var index = 0; index < args.Length; index++)
+            {
+                if (args[index] == "--report-json" && index + 1 < args.Length)
+                {
+                    PlugHub.StaticValidation.Validation.ValidationReportWriter.WriteJson(args[index + 1], report);
+                }
+
+                if (args[index] == "--report-html" && index + 1 < args.Length)
+                {
+                    PlugHub.StaticValidation.Validation.ValidationReportWriter.WriteHtml(args[index + 1], report);
+                }
             }
         }
 
@@ -79,6 +101,10 @@ namespace PlugHub.StaticValidation
                 "src/PlugHub.Framework/PlugHub.Framework.csproj",
                 "src/PlugHub.Revit2020/PlugHub.Revit2020.csproj",
                 "src/PlugHub.StaticValidation/PlugHub.StaticValidation.csproj",
+                "src/PlugHub.StaticValidation/Validation/ValidationSeverity.cs",
+                "src/PlugHub.StaticValidation/Validation/ValidationIssue.cs",
+                "src/PlugHub.StaticValidation/Validation/ValidationReport.cs",
+                "src/PlugHub.StaticValidation/Validation/ValidationReportWriter.cs",
                 "src/PlugHub.Contracts/Modules/IPlugHubModule.cs",
                 "src/PlugHub.Contracts/Loading/AlcLoadRules.cs",
                 "src/PlugHub.Framework/Composition/FeatureViewComposer.cs",
@@ -109,6 +135,9 @@ namespace PlugHub.StaticValidation
 
             var missing = required.Where(path => !File.Exists(FullPath(path))).ToList();
             Require(!missing.Any(), "missing required files: " + string.Join(", ", missing));
+            var validationProgram = ReadText("src/PlugHub.StaticValidation/Program.cs");
+            Require(validationProgram.Contains("string[] args"), "Static validation entrypoint must accept command-line arguments.");
+            Require(validationProgram.Contains("--report-json") && validationProgram.Contains("--report-html"), "Static validation must support JSON and HTML report arguments.");
             Require(!File.Exists(FullPath("config/modules.example.json")), "framework source config must be named sources.example.json, not modules.example.json.");
             Require(!File.Exists(FullPath("config/plugin-sources.example.json")), "framework source config must be named sources.example.json, not plugin-sources.example.json.");
             Require(!Directory.Exists(FullPath("modules")), "source workspace must not keep a modules drop-in directory; build output creates package drop-ins.");
