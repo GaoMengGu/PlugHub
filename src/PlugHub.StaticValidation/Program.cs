@@ -209,6 +209,8 @@ namespace PlugHub.StaticValidation
                 "src/PlugHub.Revit2020/FrameworkFeatureCommand.cs",
                 "src/PlugHub.Revit2020/FrameworkRefreshCommand.cs",
                 "src/PlugHub.Revit2020/FrameworkSettingsWindow.cs",
+                "src/PlugHub.Revit2020/Settings/SettingsConfigurationStore.cs",
+                "src/PlugHub.Revit2020/Settings/FrameworkSettingsViewModel.cs",
                 "src/PlugHub.Revit2020/Settings/RepositorySettingsController.cs",
                 "src/PlugHub.Revit2020/Settings/Rows/ModuleRow.cs",
                 "src/PlugHub.Revit2020/Settings/Rows/FeatureRow.cs",
@@ -827,6 +829,7 @@ namespace PlugHub.StaticValidation
         private static void ValidateSettingsPaneV21Specification()
         {
             var settingsWindow = ReadText("src/PlugHub.Revit2020/FrameworkSettingsWindow.cs");
+            var settingsViewModel = ReadText("src/PlugHub.Revit2020/Settings/FrameworkSettingsViewModel.cs");
             var settingsCommand = ReadText("src/PlugHub.Revit2020/FrameworkSettingsCommand.cs");
             var refreshCommand = ReadText("src/PlugHub.Revit2020/FrameworkRefreshCommand.cs");
             var statusWindow = ReadText("src/PlugHub.Revit2020/FrameworkStatusWindow.cs");
@@ -853,6 +856,15 @@ namespace PlugHub.StaticValidation
                 Require(settingsWindow.Contains(token), "WPF settings UI token missing: " + token);
             }
 
+            Require(settingsWindow.Contains("SettingsConfigurationStore"), "FrameworkSettingsWindow must use SettingsConfigurationStore.");
+            Require(settingsWindow.Contains("ExportLogs"), "FrameworkSettingsWindow must expose log export.");
+            Require(!settingsWindow.Contains("Path.Combine(BaseDirectory(), \"logs\", \"plughub-logs.zip\")"), "settings log export target must not be inside the logs directory.");
+            Require(settingsWindow.Contains("_viewModel") && !settingsWindow.Contains("ObservableCollection<ModuleRow> _moduleRows") && !settingsWindow.Contains("ObservableCollection<FeatureRow> _featureRows") && !settingsWindow.Contains("ObservableCollection<GroupRow> _groupRows"), "FrameworkSettingsWindow row state must be held by FrameworkSettingsViewModel.");
+            foreach (var collection in new[] { "Modules", "Features", "Groups", "Repositories", "RepositoryPackages", "PendingOperations", "Diagnostics" })
+            {
+                Require(settingsViewModel.Contains("ObservableCollection") && settingsViewModel.Contains(collection), "FrameworkSettingsViewModel must expose " + collection + ".");
+            }
+
             foreach (var forbidden in new[] { "FrameworkRuntimeState.Refresh", "Assembly.LoadFrom" })
             {
                 Require(!settingsWindow.Contains(forbidden), "settings window must only save configuration and must not run runtime work: " + forbidden);
@@ -876,13 +888,14 @@ namespace PlugHub.StaticValidation
         private static void ValidateSettingsRibbonCleanupSpecification()
         {
             var settingsWindow = ReadText("src/PlugHub.Revit2020/FrameworkSettingsWindow.cs");
+            var settingsStore = ReadText("src/PlugHub.Revit2020/Settings/SettingsConfigurationStore.cs");
             var ribbonBuilder = ReadText("src/PlugHub.Revit2020/FeatureRibbonBuilder.cs");
             var addinTemplate = ReadText("manifests/PlugHub.addin.template");
             var buildProps = ReadText("build/Directory.Build.props");
             var views = ReadObject("config/views.example.json");
 
             Require(settingsWindow.Contains("LoadModuleDocuments") && !settingsWindow.Contains(RemovedSamplesDirectory()), "settings must not reference removed sample module manifests.");
-            Require(settingsWindow.Contains("SaveModuleDocuments"), "settings must save edits back to their owning module manifest.");
+            Require(settingsStore.Contains("Save(") && settingsStore.Contains("ModuleManifestDocument"), "settings must save edits back to their owning module manifest through SettingsConfigurationStore.");
             Require(!settingsWindow.Contains("nameof(FeatureRow.Panel)") && !settingsWindow.Contains("feature.Group = row.Panel"), "feature settings must not expose user-editable panel ownership.");
             Require(!settingsWindow.Contains("点击 Ribbon 的「刷新配置」"), "settings UI must not point users to the removed refresh Ribbon button.");
 

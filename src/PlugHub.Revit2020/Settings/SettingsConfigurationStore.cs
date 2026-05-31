@@ -1,0 +1,209 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Web.Script.Serialization;
+using PlugHub.Framework.Configuration;
+
+namespace PlugHub.Revit2020.Settings
+{
+    internal sealed class SettingsConfigurationStore
+    {
+        private const string SourcesFileName = "sources.json";
+        private const string DefaultPackageManifestName = "package.json";
+        private const string AdjacentPackageManifestPattern = "*.package.json";
+
+        private readonly JavaScriptSerializer _serializer = new JavaScriptSerializer { MaxJsonLength = int.MaxValue, RecursionLimit = 128 };
+
+        public SettingsConfigurationStore(string configDirectory)
+        {
+            ConfigDirectory = configDirectory ?? throw new ArgumentNullException(nameof(configDirectory));
+        }
+
+        public string ConfigDirectory { get; }
+
+        public FrameworkConfiguration Load(FrameworkConfiguration current)
+        {
+            return current ?? throw new ArgumentNullException(nameof(current));
+        }
+
+        public FrameworkConfiguration LoadConfiguration()
+        {
+            return FrameworkConfigurationLoader.LoadFromDirectory(ConfigDirectory);
+        }
+
+        public List<ModuleManifestDocument> LoadModuleDocuments(FrameworkConfiguration configuration)
+        {
+            if (configuration == null) throw new ArgumentNullException(nameof(configuration));
+
+            var documents = new List<ModuleManifestDocument>();
+            var seenPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            AddModuleDocument(documents, seenPaths, Path.Combine(ConfigDirectory, SourcesFileName), configuration.Modules);
+
+            var baseDirectory = BaseDirectory();
+            foreach (var packageDirectory in configuration.Modules.PackageDirectories ?? new List<string>())
+            {
+                // Configured packageDirectories are editable manifests too.
+                foreach (var manifestPath in FindModuleManifests(ResolvePath(baseDirectory, packageDirectory)))
+                {
+                    var manifest = TryReadModulesConfiguration(manifestPath);
+                    if (manifest != null)
+                    {
+                        AddModuleDocument(documents, seenPaths, manifestPath, manifest);
+                    }
+                }
+            }
+
+            foreach (var source in (configuration.Modules.ModuleSources ?? new List<ModuleSourceConfiguration>())
+                .Where(source => source.Enabled && string.Equals(source.Type, "localFolder", StringComparison.OrdinalIgnoreCase)))
+            {
+                var sourceDirectory = ResolveSourceDirectory(baseDirectory, source);
+                if (IsDefaultManifestPath(source.ManifestPath))
+                {
+                    foreach (var manifestPath in FindModuleManifests(sourceDirectory))
+                    {
+                        var manifest = TryReadModulesConfiguration(manifestPath);
+                        if (manifest != null)
+                        {
+                            AddModuleDocument(documents, seenPaths, manifestPath, manifest);
+                        }
+                    }
+
+                    continue;
+                }
+
+                var explicitManifestPath = Path.Combine(sourceDirectory, source.ManifestPath.Trim());
+                var explicitManifest = TryReadModulesConfiguration(explicitManifestPath);
+                if (explicitManifest != null)
+                {
+                    AddModuleDocument(documents, seenPaths, explicitManifestPath, explicitManifest);
+                }
+            }
+
+            return documents;
+        }
+
+        public void Save(FrameworkConfiguration configuration)
+        {
+            Save(configuration, LoadModuleDocuments(configuration));
+        }
+
+        public void Save(FrameworkConfiguration configuration, IEnumerable<ModuleManifestDocument> moduleDocuments)
+        {
+            if (configuration == null) throw new ArgumentNullException(nameof(configuration));
+            if (moduleDocuments == null) throw new ArgumentNullException(nameof(moduleDocuments));
+
+            Directory.CreateDirectory(ConfigDirectory);
+            foreach (var document in moduleDocuments)
+            {
+                SaveJson(document.Path, document.Modules);
+            }
+
+            SaveJson(Path.Combine(ConfigDirectory, "views.json"), configuration.Views);
+            SaveJson(Path.Combine(ConfigDirectory, "feature-combinations.json"), configuration.FeatureCombinations);
+        }
+
+        public string BaseDirectory()
+        {
+            return Directory.GetParent(ConfigDirectory)?.FullName ?? ConfigDirectory;
+        }
+
+        private void SaveJson(string path, object value)
+        {
+            File.WriteAllText(path, _serializer.Serialize(value));
+        }
+
+        private ModulesConfiguration? TryReadModulesConfiguration(string path)
+        {
+            if (!File.Exists(path)) return null;
+
+            Dictionary<string, object>? root;
+            try
+            {
+                root = _serializer.Deserialize<Dictionary<string, object>>(File.ReadAllText(path));
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+
+            if (root == null || !ContainsKey(root, "schemaVersion") || !ContainsKey(root, "modules")) return null;
+
+            return _serializer.Deserialize<ModulesConfiguration>(File.ReadAllText(path));
+        }
+
+        private static bool ContainsKey(Dictionary<string, object> source, string key)
+        {
+            return source.Keys.Any(item => string.Equals(item, key, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static void AddModuleDocument(ICollection<ModuleManifestDocument> documents, ISet<string> seenPaths, string path, ModulesConfiguration modules)
+        {
+            if (string.IsNullOrWhiteSpace(path) || modules == null) return;
+            var fullPath = Path.GetFullPath(path);
+            if (!File.Exists(fullPath) && !IsPackageManifestFileName(Path.GetFileName(fullPath))) return;
+            if (!seenPaths.Add(fullPath)) return;
+            documents.Add(new ModuleManifestDocument(fullPath, modules));
+        }
+
+        private static IEnumerable<string> FindModuleManifests(string sourceDirectory)
+        {
+            if (!Directory.Exists(sourceDirectory)) yield break;
+
+            var rootManifest = Path.Combine(sourceDirectory, DefaultPackageManifestName);
+            if (File.Exists(rootManifest))
+            {
+                yield return rootManifest;
+            }
+
+            var manifests = Directory.GetFiles(sourceDirectory, DefaultPackageManifestName, SearchOption.AllDirectories)
+                .Concat(Directory.GetFiles(sourceDirectory, AdjacentPackageManifestPattern, SearchOption.AllDirectories))
+                .Where(path => !string.Equals(path, rootManifest, StringComparison.OrdinalIgnoreCase))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var manifest in manifests)
+            {
+                yield return manifest;
+            }
+        }
+
+        private static bool IsPackageManifestFileName(string fileName)
+        {
+            return string.Equals(fileName, DefaultPackageManifestName, StringComparison.OrdinalIgnoreCase)
+                || fileName.EndsWith(".package.json", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string ResolvePath(string baseDirectory, string path)
+        {
+            if (string.IsNullOrWhiteSpace(path)) return baseDirectory;
+            return Path.IsPathRooted(path) ? path : Path.GetFullPath(Path.Combine(baseDirectory, path));
+        }
+
+        private static string ResolveSourceDirectory(string baseDirectory, ModuleSourceConfiguration source)
+        {
+            if (source == null) return baseDirectory;
+            if (!string.IsNullOrWhiteSpace(source.Path)) return ResolvePath(baseDirectory, source.Path);
+
+            return baseDirectory;
+        }
+
+        private static bool IsDefaultManifestPath(string manifestPath)
+        {
+            return string.IsNullOrWhiteSpace(manifestPath)
+                || string.Equals(manifestPath.Trim(), DefaultPackageManifestName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal sealed class ModuleManifestDocument
+        {
+            public ModuleManifestDocument(string path, ModulesConfiguration modules)
+            {
+                Path = path ?? string.Empty;
+                Modules = modules ?? new ModulesConfiguration();
+            }
+
+            public string Path { get; }
+            public ModulesConfiguration Modules { get; }
+        }
+    }
+}

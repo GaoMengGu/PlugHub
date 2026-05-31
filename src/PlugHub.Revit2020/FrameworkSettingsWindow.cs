@@ -4,7 +4,6 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Web.Script.Serialization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -14,23 +13,23 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using PlugHub.Contracts.Modules;
 using PlugHub.Framework.Configuration;
+using PlugHub.Framework.Diagnostics;
 using PlugHub.Framework.Packages;
 using PlugHub.Framework.Runtime;
+using PlugHub.Revit2020.Settings;
 using PlugHub.Revit2020.Settings.Rows;
 
 namespace PlugHub.Revit2020
 {
     internal sealed class FrameworkSettingsWindow : Window
     {
-        private const string SourcesFileName = "sources.json";
         private const string DefaultPackageManifestName = "package.json";
-        private const string AdjacentPackageManifestPattern = "*.package.json";
         private const string DefaultRepositoryProvider = "gitee";
         private const string DefaultPublicRepository = "https://gitee.com/GaoMengGu/PlugHub_Packages";
 
-        private readonly string _configDirectory;
+        private readonly SettingsConfigurationStore _configurationStore;
+        private readonly FrameworkSettingsViewModel _viewModel = new FrameworkSettingsViewModel();
         private FrameworkConfiguration _configuration;
-        private readonly JavaScriptSerializer _serializer = new JavaScriptSerializer { MaxJsonLength = int.MaxValue, RecursionLimit = 128 };
         private readonly PackageRepositoryService _packageRepositoryService = new PackageRepositoryService();
         private readonly RepositoryCredentialService _credentialService = new RepositoryCredentialService();
         private readonly DataGrid _pluginPackagesGrid = CreateGrid();
@@ -41,27 +40,21 @@ namespace PlugHub.Revit2020
         private readonly DataGrid _pendingPackageOperationsGrid = CreateGrid();
         private readonly DataGrid _diagnosticsGrid = CreateGrid();
         private readonly TextBlock _statusText = new TextBlock();
-        private List<ModuleManifestDocument> _moduleDocuments = new List<ModuleManifestDocument>();
-        private ObservableCollection<ModuleRow> _moduleRows = new ObservableCollection<ModuleRow>();
-        private ObservableCollection<FeatureRow> _featureRows = new ObservableCollection<FeatureRow>();
-        private ObservableCollection<GroupRow> _groupRows = new ObservableCollection<GroupRow>();
+        private List<SettingsConfigurationStore.ModuleManifestDocument> _moduleDocuments = new List<SettingsConfigurationStore.ModuleManifestDocument>();
         private readonly ObservableCollection<GroupOption> _groupOptions = new ObservableCollection<GroupOption>();
         private readonly IReadOnlyList<string> _buttonSizeOptions = new[] { "large", "small" };
         private readonly TextBlock _selectedFeatureName = new TextBlock();
         private readonly ComboBox _selectedFeatureGroupCombo = new ComboBox();
         private readonly ComboBox _selectedFeatureButtonSizeCombo = new ComboBox();
-        private ObservableCollection<RepositoryRow> _repositoryRows = new ObservableCollection<RepositoryRow>();
-        private ObservableCollection<RepositoryPackageRow> _repositoryPackageRows = new ObservableCollection<RepositoryPackageRow>();
-        private ObservableCollection<PendingPackageOperationRow> _pendingPackageOperationRows = new ObservableCollection<PendingPackageOperationRow>();
         private int _dragSourceRowIndex = -1;
         private DataGrid? _dragSourceGrid;
         private bool _syncingSelectedFeatureEditor;
 
         public FrameworkSettingsWindow(string configDirectory, FrameworkConfiguration configuration)
         {
-            _configDirectory = configDirectory ?? throw new ArgumentNullException(nameof(configDirectory));
-            _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
-            _moduleDocuments = LoadModuleDocuments(_configuration);
+            _configurationStore = new SettingsConfigurationStore(configDirectory ?? throw new ArgumentNullException(nameof(configDirectory)));
+            _configuration = _configurationStore.Load(configuration ?? throw new ArgumentNullException(nameof(configuration)));
+            _moduleDocuments = _configurationStore.LoadModuleDocuments(_configuration);
 
             Title = "PlugHub 设置";
             Width = 1060;
@@ -238,7 +231,23 @@ namespace PlugHub.Revit2020
         private TabItem BuildLogsTab()
         {
             _diagnosticsGrid.IsReadOnly = true;
-            return BuildTab("日志", _diagnosticsGrid);
+            var layout = new Grid();
+            layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+            var buttons = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(8, 8, 8, 6)
+            };
+            buttons.Children.Add(CreateButton("导出日志", (sender, args) => ExportLogs()));
+            Grid.SetRow(buttons, 0);
+            layout.Children.Add(buttons);
+
+            Grid.SetRow(_diagnosticsGrid, 1);
+            layout.Children.Add(_diagnosticsGrid);
+            return BuildTab("日志", layout);
         }
 
         private static TabItem BuildTab(string title, UIElement content)
@@ -323,7 +332,8 @@ namespace PlugHub.Revit2020
             _pluginPackagesGrid.Columns.Add(CheckColumn(nameof(ModuleRow.Visible), "显示"));
             _pluginPackagesGrid.Columns.Add(TextColumn(nameof(ModuleRow.SourceId), "来源", false, 1.2));
 
-            _moduleRows = new ObservableCollection<ModuleRow>(EditableModules()
+            _viewModel.Modules.Clear();
+            foreach (var row in EditableModules()
                 .OrderBy(module => module.Order)
                 .ThenBy(module => DisplayName(module.DisplayName, module.Name, module.Id), StringComparer.OrdinalIgnoreCase)
                 .Select(module => new ModuleRow
@@ -335,9 +345,12 @@ namespace PlugHub.Revit2020
                     Visible = module.Visible,
                     SourceId = string.IsNullOrWhiteSpace(module.SourceId) ? "custom" : module.SourceId,
                     Order = module.Order
-                }));
+                }))
+            {
+                _viewModel.Modules.Add(row);
+            }
             RefreshPluginPackagePositions();
-            _pluginPackagesGrid.ItemsSource = _moduleRows;
+            _pluginPackagesGrid.ItemsSource = _viewModel.Modules;
         }
 
         private void LoadGroupRows()
@@ -385,13 +398,17 @@ namespace PlugHub.Revit2020
                     FeatureCount = 0
                 }));
 
-            _groupRows = new ObservableCollection<GroupRow>(featureGroups
+            _viewModel.Groups.Clear();
+            foreach (var row in featureGroups
                 .OrderBy(group => group.Order)
                 .ThenBy(group => group.Name, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(group => group.Id, StringComparer.OrdinalIgnoreCase));
+                .ThenBy(group => group.Id, StringComparer.OrdinalIgnoreCase))
+            {
+                _viewModel.Groups.Add(row);
+            }
             RefreshGroupPositions();
             RefreshFeatureGroupOptions();
-            _groupsGrid.ItemsSource = _groupRows;
+            _groupsGrid.ItemsSource = _viewModel.Groups;
         }
 
         private void LoadFeatureRows()
@@ -406,7 +423,8 @@ namespace PlugHub.Revit2020
             _featuresGrid.Columns.Add(TextColumn(nameof(FeatureRow.ButtonSizeDisplayText), "图标大小", true, 0.8));
             _featuresGrid.Columns.Add(TextColumn(nameof(FeatureRow.IconPath), "图标", false, 1.5));
 
-            _featureRows = new ObservableCollection<FeatureRow>(EditableModules()
+            _viewModel.Features.Clear();
+            foreach (var row in EditableModules()
                 .SelectMany(module => (module.Features ?? new List<FeatureConfiguration>()).Select(feature => new FeatureRow
                 {
                     ModuleId = module.Id,
@@ -430,11 +448,14 @@ namespace PlugHub.Revit2020
                 }))
                 .OrderBy(row => row.ModuleName, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(row => row.Order)
-                .ThenBy(row => row.Name, StringComparer.OrdinalIgnoreCase));
+                .ThenBy(row => row.Name, StringComparer.OrdinalIgnoreCase))
+            {
+                _viewModel.Features.Add(row);
+            }
             SortFeatureRowsForRuntimeOrder();
             RefreshFeaturePositionsByGroup();
-            _featuresGrid.ItemsSource = _featureRows;
-            if (_featureRows.Count > 0)
+            _featuresGrid.ItemsSource = _viewModel.Features;
+            if (_viewModel.Features.Count > 0)
             {
                 _featuresGrid.SelectedIndex = 0;
             }
@@ -453,7 +474,8 @@ namespace PlugHub.Revit2020
             _repositoriesGrid.Columns.Add(TextColumn(nameof(RepositoryRow.ApiKey), "私有 ApiKey", false, 1.1));
             _repositoriesGrid.Columns.Add(TextColumn(nameof(RepositoryRow.Status), "状态", true, 1.4));
 
-            _repositoryRows = new ObservableCollection<RepositoryRow>((_configuration.Modules.Repositories ?? new List<PackageRepositoryConfiguration>())
+            _viewModel.Repositories.Clear();
+            foreach (var row in (_configuration.Modules.Repositories ?? new List<PackageRepositoryConfiguration>())
                 .Select(repository => new RepositoryRow
                 {
                     Id = repository.Id,
@@ -468,8 +490,11 @@ namespace PlugHub.Revit2020
                     EncryptedApiKey = repository.EncryptedApiKey,
                     ApiKeyProtection = repository.ApiKeyProtection,
                     Status = repository.Enabled ? "可浏览" : "停用"
-                }));
-            _repositoriesGrid.ItemsSource = _repositoryRows;
+                }))
+            {
+                _viewModel.Repositories.Add(row);
+            }
+            _repositoriesGrid.ItemsSource = _viewModel.Repositories;
         }
 
         private void LoadRepositoryPackageRows(IEnumerable<RepositoryPackageDescriptor> packages)
@@ -481,9 +506,13 @@ namespace PlugHub.Revit2020
             _repositoryPackagesGrid.Columns.Add(TextColumn(nameof(RepositoryPackageRow.Version), "版本", true, 0.8));
             _repositoryPackagesGrid.Columns.Add(TextColumn(nameof(RepositoryPackageRow.InstallState), "安装状态", true, 0.9));
 
-            _repositoryPackageRows = new ObservableCollection<RepositoryPackageRow>((packages ?? new List<RepositoryPackageDescriptor>())
-                .Select(package => RepositoryPackageRow.FromDescriptor(package, IsLoadedInCurrentRuntime(package.PackageId, package.ModuleId))));
-            _repositoryPackagesGrid.ItemsSource = _repositoryPackageRows;
+            _viewModel.RepositoryPackages.Clear();
+            foreach (var row in (packages ?? new List<RepositoryPackageDescriptor>())
+                .Select(package => RepositoryPackageRow.FromDescriptor(package, IsLoadedInCurrentRuntime(package.PackageId, package.ModuleId))))
+            {
+                _viewModel.RepositoryPackages.Add(row);
+            }
+            _repositoryPackagesGrid.ItemsSource = _viewModel.RepositoryPackages;
         }
 
         private void LoadPendingPackageOperationRows()
@@ -493,9 +522,12 @@ namespace PlugHub.Revit2020
             _pendingPackageOperationsGrid.Columns.Add(TextColumn(nameof(PendingPackageOperationRow.PackageId), "插件包", true, 1.2));
             _pendingPackageOperationsGrid.Columns.Add(TextColumn(nameof(PendingPackageOperationRow.CreatedAtUtc), "创建时间", true, 1.0));
 
-            _pendingPackageOperationRows = new ObservableCollection<PendingPackageOperationRow>(
-                _packageRepositoryService.ListPendingOperations(BaseDirectory()).Select(PendingPackageOperationRow.FromOperation));
-            _pendingPackageOperationsGrid.ItemsSource = _pendingPackageOperationRows;
+            _viewModel.PendingOperations.Clear();
+            foreach (var row in _packageRepositoryService.ListPendingOperations(BaseDirectory()).Select(PendingPackageOperationRow.FromOperation))
+            {
+                _viewModel.PendingOperations.Add(row);
+            }
+            _pendingPackageOperationsGrid.ItemsSource = _viewModel.PendingOperations;
         }
 
         private void LoadCachedRepositoryPackages()
@@ -571,7 +603,7 @@ namespace PlugHub.Revit2020
                         LoadDiagnosticRowsFromMessages(messages);
                     }
 
-                    foreach (var row in _repositoryRows)
+                    foreach (var row in _viewModel.Repositories)
                     {
                         var count = packages.Count(package => string.Equals(package.RepositoryId, row.Id, StringComparison.OrdinalIgnoreCase));
                         if (count > 0)
@@ -589,7 +621,7 @@ namespace PlugHub.Revit2020
         private IEnumerable<RepositoryRow> EnabledRepositoriesWithCache()
         {
             var baseDirectory = BaseDirectory();
-            return _repositoryRows
+            return _viewModel.Repositories
                 .Where(row => row.Enabled)
                 .Where(row => _packageRepositoryService.HasRepositoryCache(baseDirectory, row.ToConfiguration()))
                 .ToList();
@@ -624,7 +656,7 @@ namespace PlugHub.Revit2020
                 });
             }
 
-            _diagnosticsGrid.ItemsSource = rows;
+            SetDiagnosticRows(rows);
         }
 
         private void LoadDiagnosticRowsFromMessages(IReadOnlyList<DiagnosticMessage> messages)
@@ -656,7 +688,7 @@ namespace PlugHub.Revit2020
                 });
             }
 
-            _diagnosticsGrid.ItemsSource = rows;
+            SetDiagnosticRows(rows);
         }
 
         private void LoadPostSaveDiagnosticRows()
@@ -666,7 +698,7 @@ namespace PlugHub.Revit2020
             _diagnosticsGrid.Columns.Add(TextColumn(nameof(DiagnosticRow.Code), "代码", true, 1.1));
             _diagnosticsGrid.Columns.Add(TextColumn(nameof(DiagnosticRow.Scope), "对象", true, 1.4));
             _diagnosticsGrid.Columns.Add(TextColumn(nameof(DiagnosticRow.Message), "消息", true, 4.6));
-            _diagnosticsGrid.ItemsSource = new[]
+            SetDiagnosticRows(new[]
             {
                 new DiagnosticRow
                 {
@@ -675,7 +707,18 @@ namespace PlugHub.Revit2020
                     Scope = "settings",
                     Message = "配置已保存。仓库设置和 Ribbon 布局会在重启 Revit 后重新加载；此处不显示保存前的运行时日志。"
                 }
-            };
+            });
+        }
+
+        private void SetDiagnosticRows(IEnumerable<DiagnosticRow> rows)
+        {
+            _viewModel.Diagnostics.Clear();
+            foreach (var row in rows)
+            {
+                _viewModel.Diagnostics.Add(row);
+            }
+
+            _diagnosticsGrid.ItemsSource = _viewModel.Diagnostics;
         }
 
         private void TrySave()
@@ -697,10 +740,7 @@ namespace PlugHub.Revit2020
             ApplyFeatureRows();
             ApplyRepositoryRows();
 
-            Directory.CreateDirectory(_configDirectory);
-            SaveModuleDocuments();
-            SaveJson(Path.Combine(_configDirectory, "views.json"), _configuration.Views);
-            SaveJson(Path.Combine(_configDirectory, "feature-combinations.json"), _configuration.FeatureCombinations);
+            _configurationStore.Save(_configuration, _moduleDocuments);
 
             LoadPostSaveDiagnosticRows();
             LoadRepositoryRows();
@@ -711,8 +751,8 @@ namespace PlugHub.Revit2020
         {
             try
             {
-                _configuration = FrameworkConfigurationLoader.LoadFromDirectory(_configDirectory);
-                _moduleDocuments = LoadModuleDocuments(_configuration);
+                _configuration = _configurationStore.LoadConfiguration();
+                _moduleDocuments = _configurationStore.LoadModuleDocuments(_configuration);
                 LoadRows();
                 RefreshStatus("已从配置文件重新加载。");
             }
@@ -724,7 +764,7 @@ namespace PlugHub.Revit2020
 
         private void ApplyPluginPackageRows()
         {
-            var rows = _moduleRows.ToDictionary(row => row.Id, StringComparer.OrdinalIgnoreCase);
+            var rows = _viewModel.Modules.ToDictionary(row => row.Id, StringComparer.OrdinalIgnoreCase);
             foreach (var module in EditableModules())
             {
                 if (!rows.TryGetValue(module.Id, out var row)) continue;
@@ -739,7 +779,7 @@ namespace PlugHub.Revit2020
         private void ApplyGroupRows()
         {
             var view = WorkspaceView();
-            view.Groups = _groupRows
+            view.Groups = _viewModel.Groups
                 .Where(row => !string.IsNullOrWhiteSpace(row.Id))
                 .Select(row => new ViewGroupConfiguration
                 {
@@ -764,7 +804,7 @@ namespace PlugHub.Revit2020
                 module.Features = new List<FeatureConfiguration>();
             }
 
-            foreach (var row in _featureRows)
+            foreach (var row in _viewModel.Features)
             {
                 if (!modulesById.TryGetValue(row.ModuleId, out var module))
                 {
@@ -790,7 +830,7 @@ namespace PlugHub.Revit2020
 
         private void ApplyRepositoryRows()
         {
-            _configuration.Modules.Repositories = _repositoryRows
+            _configuration.Modules.Repositories = _viewModel.Repositories
                 .Where(row => !string.IsNullOrWhiteSpace(row.Id))
                 .Select(row =>
                 {
@@ -801,152 +841,9 @@ namespace PlugHub.Revit2020
                 .ToList();
         }
 
-        private void SaveJson(string path, object value)
-        {
-            File.WriteAllText(path, _serializer.Serialize(value));
-        }
-
-        private List<ModuleManifestDocument> LoadModuleDocuments(FrameworkConfiguration configuration)
-        {
-            var documents = new List<ModuleManifestDocument>();
-            var seenPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            AddModuleDocument(documents, seenPaths, Path.Combine(_configDirectory, SourcesFileName), configuration.Modules);
-
-            var baseDirectory = Directory.GetParent(_configDirectory)?.FullName ?? _configDirectory;
-            foreach (var packageDirectory in configuration.Modules.PackageDirectories ?? new List<string>())
-            {
-                // Configured packageDirectories are editable manifests too.
-                foreach (var manifestPath in FindModuleManifests(ResolvePath(baseDirectory, packageDirectory)))
-                {
-                    var manifest = TryReadModulesConfiguration(manifestPath);
-                    if (manifest != null)
-                    {
-                        AddModuleDocument(documents, seenPaths, manifestPath, manifest);
-                    }
-                }
-            }
-
-            foreach (var source in (configuration.Modules.ModuleSources ?? new List<ModuleSourceConfiguration>())
-                .Where(source => source.Enabled && string.Equals(source.Type, "localFolder", StringComparison.OrdinalIgnoreCase)))
-            {
-                var sourceDirectory = ResolveSourceDirectory(baseDirectory, source);
-                if (IsDefaultManifestPath(source.ManifestPath))
-                {
-                    foreach (var manifestPath in FindModuleManifests(sourceDirectory))
-                    {
-                        var manifest = TryReadModulesConfiguration(manifestPath);
-                        if (manifest != null)
-                        {
-                            AddModuleDocument(documents, seenPaths, manifestPath, manifest);
-                        }
-                    }
-
-                    continue;
-                }
-
-                var explicitManifestPath = Path.Combine(sourceDirectory, source.ManifestPath.Trim());
-                var explicitManifest = TryReadModulesConfiguration(explicitManifestPath);
-                if (explicitManifest != null)
-                {
-                    AddModuleDocument(documents, seenPaths, explicitManifestPath, explicitManifest);
-                }
-            }
-
-            return documents;
-        }
-
-        private void SaveModuleDocuments()
-        {
-            foreach (var document in _moduleDocuments)
-            {
-                SaveJson(document.Path, document.Modules);
-            }
-        }
-
         private IEnumerable<ModuleConfiguration> EditableModules()
         {
             return _moduleDocuments.SelectMany(document => document.Modules.Modules ?? new List<ModuleConfiguration>());
-        }
-
-        private ModulesConfiguration? TryReadModulesConfiguration(string path)
-        {
-            if (!File.Exists(path)) return null;
-
-            Dictionary<string, object>? root;
-            try
-            {
-                root = _serializer.Deserialize<Dictionary<string, object>>(File.ReadAllText(path));
-            }
-            catch (Exception)
-            {
-                return null;
-            }
-
-            if (root == null || !ContainsKey(root, "schemaVersion") || !ContainsKey(root, "modules")) return null;
-
-            return _serializer.Deserialize<ModulesConfiguration>(File.ReadAllText(path));
-        }
-
-        private static bool ContainsKey(Dictionary<string, object> source, string key)
-        {
-            return source.Keys.Any(item => string.Equals(item, key, StringComparison.OrdinalIgnoreCase));
-        }
-
-        private static void AddModuleDocument(ICollection<ModuleManifestDocument> documents, ISet<string> seenPaths, string path, ModulesConfiguration modules)
-        {
-            if (string.IsNullOrWhiteSpace(path) || modules == null) return;
-            var fullPath = Path.GetFullPath(path);
-            if (!File.Exists(fullPath) && !IsPackageManifestFileName(Path.GetFileName(fullPath))) return;
-            if (!seenPaths.Add(fullPath)) return;
-            documents.Add(new ModuleManifestDocument(fullPath, modules));
-        }
-
-        private static IEnumerable<string> FindModuleManifests(string sourceDirectory)
-        {
-            if (!Directory.Exists(sourceDirectory)) yield break;
-
-            var rootManifest = Path.Combine(sourceDirectory, DefaultPackageManifestName);
-            if (File.Exists(rootManifest))
-            {
-                yield return rootManifest;
-            }
-
-            var manifests = Directory.GetFiles(sourceDirectory, DefaultPackageManifestName, SearchOption.AllDirectories)
-                .Concat(Directory.GetFiles(sourceDirectory, AdjacentPackageManifestPattern, SearchOption.AllDirectories))
-                .Where(path => !string.Equals(path, rootManifest, StringComparison.OrdinalIgnoreCase))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase);
-
-            foreach (var manifest in manifests)
-            {
-                yield return manifest;
-            }
-        }
-
-        private static bool IsPackageManifestFileName(string fileName)
-        {
-            return string.Equals(fileName, DefaultPackageManifestName, StringComparison.OrdinalIgnoreCase)
-                || fileName.EndsWith(".package.json", StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static string ResolvePath(string baseDirectory, string path)
-        {
-            if (string.IsNullOrWhiteSpace(path)) return baseDirectory;
-            return Path.IsPathRooted(path) ? path : Path.GetFullPath(Path.Combine(baseDirectory, path));
-        }
-
-        private static string ResolveSourceDirectory(string baseDirectory, ModuleSourceConfiguration source)
-        {
-            if (source == null) return baseDirectory;
-            if (!string.IsNullOrWhiteSpace(source.Path)) return ResolvePath(baseDirectory, source.Path);
-
-            return baseDirectory;
-        }
-
-        private static bool IsDefaultManifestPath(string manifestPath)
-        {
-            return string.IsNullOrWhiteSpace(manifestPath)
-                || string.Equals(manifestPath.Trim(), DefaultPackageManifestName, StringComparison.OrdinalIgnoreCase);
         }
 
         private static DataGridTextColumn TextColumn(string propertyName, string header, bool readOnly, double starWidth)
@@ -1185,7 +1082,7 @@ namespace PlugHub.Revit2020
 
         private void AddRepository()
         {
-            var id = UniqueRepositoryId(_repositoryRows, "repository");
+            var id = UniqueRepositoryId(_viewModel.Repositories, "repository");
             var row = new RepositoryRow
             {
                 Id = id,
@@ -1198,7 +1095,7 @@ namespace PlugHub.Revit2020
                 ApiKey = string.Empty,
                 Status = "待保存"
             };
-            _repositoryRows.Add(row);
+            _viewModel.Repositories.Add(row);
             _repositoriesGrid.SelectedItem = row;
             SafeRefreshGrid(_repositoriesGrid);
         }
@@ -1212,8 +1109,7 @@ namespace PlugHub.Revit2020
 
                 if (!(_repositoriesGrid.SelectedItem is RepositoryRow row)) return;
                 var repository = row.ToConfiguration();
-                var baseDirectory = Directory.GetParent(_configDirectory)?.FullName ?? _configDirectory;
-                var packages = _packageRepositoryService.Browse(baseDirectory, repository, out var diagnostics);
+                var packages = _packageRepositoryService.Browse(BaseDirectory(), repository, out var diagnostics);
 
                 row.Status = diagnostics.Any()
                     ? diagnostics.Last().Message
@@ -1258,7 +1154,7 @@ namespace PlugHub.Revit2020
                 LoadPendingPackageOperationRows();
                 SafeRefreshGrid(_repositoryPackagesGrid);
 
-                _moduleDocuments = LoadModuleDocuments(_configuration);
+                _moduleDocuments = _configurationStore.LoadModuleDocuments(_configuration);
                 LoadGroupRows();
                 LoadFeatureRows();
                 RefreshStatus(result.Message);
@@ -1281,7 +1177,7 @@ namespace PlugHub.Revit2020
 
         private void RefreshRepositoryPackageInstallState(string packageId, string installDirectory)
         {
-            foreach (var row in _repositoryPackageRows.Where(item =>
+            foreach (var row in _viewModel.RepositoryPackages.Where(item =>
                 string.Equals(item.PackageId, packageId, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(item.InstallDirectory, installDirectory, StringComparison.OrdinalIgnoreCase)))
             {
@@ -1305,17 +1201,17 @@ namespace PlugHub.Revit2020
         private void AddCustomGroup()
         {
             EndGridEdits();
-            var id = UniqueGroupId(_groupRows, "custom-group");
-            var index = _groupRows.Count + 1;
+            var id = UniqueGroupId(_viewModel.Groups, "custom-group");
+            var index = _viewModel.Groups.Count + 1;
             var row = new GroupRow
             {
                 Id = id,
                 Name = "自定义分组 " + index,
                 FeatureCount = 0,
-                Order = (_groupRows.Count + 1) * 100
+                Order = (_viewModel.Groups.Count + 1) * 100
             };
 
-            _groupRows.Add(row);
+            _viewModel.Groups.Add(row);
             RefreshGroupPositions();
             RefreshFeatureGroupOptions();
             _groupsGrid.SelectedItem = row;
@@ -1327,14 +1223,14 @@ namespace PlugHub.Revit2020
             if (!(_groupsGrid.SelectedItem is GroupRow row)) return;
 
             EndGridEdits();
-            var isInUse = _featureRows.Any(feature => string.Equals(feature.Group, row.Id, StringComparison.OrdinalIgnoreCase));
+            var isInUse = _viewModel.Features.Any(feature => string.Equals(feature.Group, row.Id, StringComparison.OrdinalIgnoreCase));
             if (isInUse)
             {
                 RefreshStatus("该分组仍有功能使用。请先在功能页把功能移动到其他分组。");
                 return;
             }
 
-            _groupRows.Remove(row);
+            _viewModel.Groups.Remove(row);
             RefreshGroupPositions();
             RefreshFeatureGroupOptions();
             RefreshStatus("已删除未使用的自定义分组。");
@@ -1342,8 +1238,8 @@ namespace PlugHub.Revit2020
 
         private List<GroupOption> GroupOptionsForFeatureRows()
         {
-            var rows = _groupRows.Any()
-                ? _groupRows
+            var rows = _viewModel.Groups.Any()
+                ? _viewModel.Groups
                 : new ObservableCollection<GroupRow>(EditableModules()
                     .SelectMany(module => (module.Features ?? new List<FeatureConfiguration>()).Select(feature => new GroupRow
                     {
@@ -1481,7 +1377,7 @@ namespace PlugHub.Revit2020
             }
 
             var groupId = feature.Group.Trim();
-            var row = _groupRows.FirstOrDefault(item => string.Equals(item.Id, groupId, StringComparison.OrdinalIgnoreCase));
+            var row = _viewModel.Groups.FirstOrDefault(item => string.Equals(item.Id, groupId, StringComparison.OrdinalIgnoreCase));
             EnsureViewGroup(
                 groupId,
                 DisplayName(row?.Name ?? string.Empty, groupId, groupId),
@@ -1600,7 +1496,7 @@ namespace PlugHub.Revit2020
         {
             if (_repositoriesGrid.SelectedItem is RepositoryRow row)
             {
-                _repositoryRows.Remove(row);
+                _viewModel.Repositories.Remove(row);
             }
         }
 
@@ -1612,7 +1508,7 @@ namespace PlugHub.Revit2020
             var targetIndex = sourceIndex + direction;
             if (grid == _pluginPackagesGrid)
             {
-                MoveRow(_moduleRows, sourceIndex, targetIndex);
+                MoveRow(_viewModel.Modules, sourceIndex, targetIndex);
                 RecalculatePluginPackageOrders();
                 _pluginPackagesGrid.SelectedIndex = targetIndex;
                 return;
@@ -1626,7 +1522,7 @@ namespace PlugHub.Revit2020
 
             if (grid == _groupsGrid)
             {
-                MoveRow(_groupRows, sourceIndex, targetIndex);
+                MoveRow(_viewModel.Groups, sourceIndex, targetIndex);
                 RecalculateGroupOrders();
                 _groupsGrid.SelectedIndex = targetIndex;
             }
@@ -1643,16 +1539,16 @@ namespace PlugHub.Revit2020
             var row = SelectedFeatureRow();
             if (row == null) return;
 
-            var sameGroupIndexes = _featureRows
+            var sameGroupIndexes = _viewModel.Features
                 .Select((feature, index) => new { Feature = feature, Index = index })
                 .Where(item => string.Equals(item.Feature.Group, row.Group, StringComparison.OrdinalIgnoreCase))
                 .Select(item => item.Index)
                 .ToList();
-            var groupPosition = sameGroupIndexes.IndexOf(_featureRows.IndexOf(row));
+            var groupPosition = sameGroupIndexes.IndexOf(_viewModel.Features.IndexOf(row));
             var targetGroupPosition = groupPosition + direction;
             if (groupPosition < 0 || targetGroupPosition < 0 || targetGroupPosition >= sameGroupIndexes.Count) return;
 
-            MoveRow(_featureRows, _featureRows.IndexOf(row), sameGroupIndexes[targetGroupPosition]);
+            MoveRow(_viewModel.Features, _viewModel.Features.IndexOf(row), sameGroupIndexes[targetGroupPosition]);
             RecalculateFeatureOrders();
             SelectFeatureRow(row);
         }
@@ -1674,10 +1570,10 @@ namespace PlugHub.Revit2020
 
         private void RefreshPluginPackagePositions()
         {
-            for (var index = 0; index < _moduleRows.Count; index++)
+            for (var index = 0; index < _viewModel.Modules.Count; index++)
             {
-                _moduleRows[index].Order = (index + 1) * 100;
-                _moduleRows[index].PositionText = "第 " + (index + 1) + " 项";
+                _viewModel.Modules[index].Order = (index + 1) * 100;
+                _viewModel.Modules[index].PositionText = "第 " + (index + 1) + " 项";
             }
 
             SafeRefreshGrid(_pluginPackagesGrid);
@@ -1685,7 +1581,7 @@ namespace PlugHub.Revit2020
 
         private void SortFeatureRowsForRuntimeOrder()
         {
-            var sorted = _featureRows
+            var sorted = _viewModel.Features
                 .OrderBy(row => GroupOrderForFeature(row.Group))
                 .ThenBy(row => GroupDisplayName(row.Group), StringComparer.OrdinalIgnoreCase)
                 .ThenBy(row => row.Order)
@@ -1693,19 +1589,19 @@ namespace PlugHub.Revit2020
                 .ThenBy(row => row.FeatureId, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            _featureRows.Clear();
+            _viewModel.Features.Clear();
             foreach (var row in sorted)
             {
-                _featureRows.Add(row);
+                _viewModel.Features.Add(row);
             }
         }
 
         private void RefreshFeaturePositionsByGroup()
         {
             var groupIndexes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            for (var index = 0; index < _featureRows.Count; index++)
+            for (var index = 0; index < _viewModel.Features.Count; index++)
             {
-                var row = _featureRows[index];
+                var row = _viewModel.Features[index];
                 var groupKey = string.IsNullOrWhiteSpace(row.Group) ? string.Empty : row.Group.Trim();
                 groupIndexes.TryGetValue(groupKey, out var groupIndex);
                 groupIndex++;
@@ -1722,11 +1618,11 @@ namespace PlugHub.Revit2020
 
         private void RefreshGroupPositions()
         {
-            for (var index = 0; index < _groupRows.Count; index++)
+            for (var index = 0; index < _viewModel.Groups.Count; index++)
             {
-                _groupRows[index].Order = (index + 1) * 100;
-                _groupRows[index].PositionText = "第 " + (index + 1) + " 项";
-                _groupRows[index].FeatureCountText = _groupRows[index].FeatureCount + " 个";
+                _viewModel.Groups[index].Order = (index + 1) * 100;
+                _viewModel.Groups[index].PositionText = "第 " + (index + 1) + " 项";
+                _viewModel.Groups[index].FeatureCountText = _viewModel.Groups[index].FeatureCount + " 个";
             }
 
             SafeRefreshGrid(_groupsGrid);
@@ -1734,9 +1630,9 @@ namespace PlugHub.Revit2020
 
         private void RefreshFeatureCounts()
         {
-            foreach (var group in _groupRows)
+            foreach (var group in _viewModel.Groups)
             {
-                group.FeatureCount = _featureRows.Count(feature => string.Equals(feature.Group, group.Id, StringComparison.OrdinalIgnoreCase));
+                group.FeatureCount = _viewModel.Features.Count(feature => string.Equals(feature.Group, group.Id, StringComparison.OrdinalIgnoreCase));
                 group.FeatureCountText = group.FeatureCount + " 个";
             }
 
@@ -1832,20 +1728,20 @@ namespace PlugHub.Revit2020
 
             if (grid == _pluginPackagesGrid)
             {
-                MoveRow(_moduleRows, _dragSourceRowIndex, targetIndex);
+                MoveRow(_viewModel.Modules, _dragSourceRowIndex, targetIndex);
                 RecalculatePluginPackageOrders();
             }
             else if (grid == _featuresGrid)
             {
-                var dragged = _featureRows[_dragSourceRowIndex];
-                var target = _featureRows[targetIndex];
+                var dragged = _viewModel.Features[_dragSourceRowIndex];
+                var target = _viewModel.Features[targetIndex];
                 if (!string.Equals(dragged.Group, target.Group, StringComparison.OrdinalIgnoreCase))
                 {
                     dragged.Group = target.Group;
                     UpdateFeatureDisplayFields(dragged);
                 }
 
-                MoveRow(_featureRows, _dragSourceRowIndex, targetIndex);
+                MoveRow(_viewModel.Features, _dragSourceRowIndex, targetIndex);
                 RecalculateFeatureOrders();
                 SelectFeatureRow(dragged);
                 ResetDragSource();
@@ -1853,7 +1749,7 @@ namespace PlugHub.Revit2020
             }
             else if (grid == _groupsGrid)
             {
-                MoveRow(_groupRows, _dragSourceRowIndex, targetIndex);
+                MoveRow(_viewModel.Groups, _dragSourceRowIndex, targetIndex);
                 RecalculateGroupOrders();
             }
 
@@ -1938,6 +1834,20 @@ namespace PlugHub.Revit2020
             RefreshStatus(message);
         }
 
+        private void ExportLogs()
+        {
+            try
+            {
+                var targetPath = Path.Combine(BaseDirectory(), "exports", "plughub-logs.zip");
+                new PlugHubLogExporter().Export(BaseDirectory(), targetPath);
+                RefreshStatus("日志已导出: " + targetPath);
+            }
+            catch (Exception ex)
+            {
+                ReportSettingsError("导出日志失败", ex);
+            }
+        }
+
         private string ToPluginRelativePath(string path)
         {
             var baseDirectory = BaseDirectory();
@@ -1952,7 +1862,7 @@ namespace PlugHub.Revit2020
 
         private string BaseDirectory()
         {
-            return Directory.GetParent(_configDirectory)?.FullName ?? _configDirectory;
+            return _configurationStore.BaseDirectory();
         }
 
         private static T? FindAncestor<T>(DependencyObject? current) where T : DependencyObject
@@ -1992,13 +1902,13 @@ namespace PlugHub.Revit2020
 
         private int GroupOrderForFeature(string groupId)
         {
-            var group = _groupRows.FirstOrDefault(row => string.Equals(row.Id, groupId, StringComparison.OrdinalIgnoreCase));
+            var group = _viewModel.Groups.FirstOrDefault(row => string.Equals(row.Id, groupId, StringComparison.OrdinalIgnoreCase));
             return group?.Order > 0 ? group.Order : int.MaxValue;
         }
 
         private string GroupDisplayName(string groupId)
         {
-            var group = _groupRows.FirstOrDefault(row => string.Equals(row.Id, groupId, StringComparison.OrdinalIgnoreCase));
+            var group = _viewModel.Groups.FirstOrDefault(row => string.Equals(row.Id, groupId, StringComparison.OrdinalIgnoreCase));
             return DisplayName(group?.Name ?? string.Empty, groupId, "未分组");
         }
 
