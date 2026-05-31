@@ -42,6 +42,7 @@ namespace PlugHub.StaticValidation
                 ValidateContractsMultiTargetReadiness();
                 ValidatePackageManifestSchemaAndCompatibility();
                 ValidateRibbonLayoutConfigurationModels();
+                ValidateRibbonLayoutComposerShape();
                 ValidateRevitRibbonAdapter();
                 ValidateRuntimeRoutingSpecification();
                 ValidateRevit2025AlcReadinessSpecification();
@@ -582,6 +583,28 @@ namespace PlugHub.StaticValidation
             Require(configurationModels.Contains("public string Type { get; set; }"), "Ribbon item layout configuration must expose Type.");
             Require(configurationModels.Contains("public string FeatureId { get; set; }"), "Ribbon item layout configuration must expose FeatureId.");
             Require(configurationModels.Contains("public string DefaultFeatureId { get; set; }"), "Ribbon item layout configuration must expose DefaultFeatureId.");
+        }
+
+        private static void ValidateRibbonLayoutComposerShape()
+        {
+            var composerPath = "src/PlugHub.Framework/Composition/RibbonLayoutComposer.cs";
+            var viewModelPath = "src/PlugHub.Framework/Composition/RibbonLayoutViewModel.cs";
+            Require(File.Exists(FullPath(composerPath)), "RibbonLayoutComposer must exist.");
+            Require(File.Exists(FullPath(viewModelPath)), "RibbonLayoutViewModel must exist.");
+
+            var composer = ReadText(composerPath);
+            var viewModel = ReadText(viewModelPath);
+            Require(composer.Contains("class RibbonLayoutComposer"), "RibbonLayoutComposer class must exist.");
+            Require(composer.Contains("Compose(ViewConfiguration view, IReadOnlyList<FeatureViewModel> features)"), "RibbonLayoutComposer must expose Compose(ViewConfiguration, features).");
+            Require(composer.Contains("BuildLegacyLayout"), "RibbonLayoutComposer must preserve legacy group-based layout.");
+            Require(composer.Contains("BuildConfiguredLayout"), "RibbonLayoutComposer must support configured ribbon panels.");
+            Require(composer.Contains("AppendUnplacedFeatures"), "RibbonLayoutComposer must keep visible unplaced features reachable.");
+            Require(!composer.Contains("Autodesk.Revit"), "RibbonLayoutComposer must not reference Revit API.");
+            Require(viewModel.Contains("public sealed class RibbonLayoutViewModel"), "RibbonLayoutViewModel type must exist.");
+            Require(viewModel.Contains("public const string PushButton = \"pushButton\""), "Ribbon layout item type constants must include pushButton.");
+            Require(viewModel.Contains("public const string PulldownButton = \"pulldownButton\""), "Ribbon layout item type constants must include pulldownButton.");
+            Require(viewModel.Contains("public const string SplitButton = \"splitButton\""), "Ribbon layout item type constants must include splitButton.");
+            Require(viewModel.Contains("public const string Stack = \"stack\""), "Ribbon layout item type constants must include stack.");
         }
 
         private static void ValidateRevitRibbonAdapter()
