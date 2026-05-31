@@ -25,6 +25,7 @@ namespace PlugHub.StaticValidation
                 ValidateCoreContracts();
                 ValidateRevitRibbonAdapter();
                 ValidateRuntimeRoutingSpecification();
+                ValidateManifestAuthoritativeDiscoverySpecification();
                 ValidateRuntimeConfigurationLoader();
                 ValidateFrameworkRuntimeLoadIsolation();
                 ValidateExternalModuleCommandResolution();
@@ -296,6 +297,43 @@ namespace PlugHub.StaticValidation
             const string commandAssemblyLoaderPath = "src/PlugHub.Revit2020/CommandAssemblyLoader.cs";
             Require(File.Exists(FullPath(commandAssemblyLoaderPath)), "runtime routing must keep the net48 direct LoadFrom strategy in CommandAssemblyLoader.cs.");
             Require(ReadText(commandAssemblyLoaderPath).Contains("Assembly.LoadFrom"), "net48 command loader must keep the direct LoadFrom strategy in one file.");
+        }
+
+        private static void ValidateManifestAuthoritativeDiscoverySpecification()
+        {
+            var discovery = ReadText("src/PlugHub.Framework/Discovery/ModuleDiscoveryService.cs");
+            Require(!discovery.Contains("Assembly.LoadFrom"), "manifest-authoritative discovery must not load module assemblies at startup.");
+            Require(!discovery.Contains("Activator.CreateInstance"), "manifest-authoritative discovery must not instantiate module types at startup.");
+            Require(!discovery.Contains(".Describe("), "manifest-authoritative discovery must not call IPlugHubModule.Describe() at startup.");
+            Require(!discovery.Contains("GetType(module.Type"), "manifest-authoritative discovery must not reflect configured module types at startup.");
+            Require(discovery.Contains("ToDescriptor(baseDirectory, module)") && discovery.Contains("descriptors.Add(descriptor)"), "manifest-authoritative discovery must build module descriptors directly from package manifests.");
+
+            var tempRoot = Path.Combine(Path.GetTempPath(), "PlugHub.StaticValidation", Guid.NewGuid().ToString("N"));
+            try
+            {
+                var baseDirectory = tempRoot;
+                var configDirectory = Path.Combine(baseDirectory, "config");
+                var packageDirectory = Path.Combine(baseDirectory, "packages", "manifest-authority");
+                Directory.CreateDirectory(configDirectory);
+                Directory.CreateDirectory(packageDirectory);
+
+                WriteRuntimeIsolationConfiguration(configDirectory);
+                File.WriteAllText(
+                    Path.Combine(packageDirectory, "package.json"),
+                    "{\"schemaVersion\":\"1.0\",\"modules\":[{\"id\":\"manifest-authority-module\",\"assembly\":\"MissingBusiness.dll\",\"type\":\"Missing.Plugin.Module\",\"enabled\":true,\"visible\":true,\"order\":10,\"features\":[{\"id\":\"manifest-authority-feature\",\"displayName\":\"Manifest Feature\",\"defaultState\":\"Visible\",\"order\":10}]}]}");
+
+                var runtime = new PlugHub.Framework.Runtime.FrameworkRuntime();
+                var snapshot = runtime.Load(baseDirectory, configDirectory);
+                Require(snapshot.Features.Any(feature => feature.Id == "manifest-authority-feature"), "package manifest features must load even when the optional module assembly/type cannot be validated at startup.");
+                Require(!snapshot.Diagnostics.Any(message => message.Code == "RT-MODULE-MANIFEST" || message.Code == "RT-MODULE-ASSEMBLY" || message.Code == "RT-MODULE-TYPE" || message.Code == "RT-MODULE-LOAD"), "manifest-authoritative discovery must not warn or fail only because optional module assembly/type validation is unavailable at startup.");
+            }
+            finally
+            {
+                if (Directory.Exists(tempRoot))
+                {
+                    Directory.Delete(tempRoot, true);
+                }
+            }
         }
 
         private static void ValidateRuntimeConfigurationLoader()

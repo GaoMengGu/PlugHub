@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using PlugHub.Contracts.Features;
 using PlugHub.Contracts.Modules;
 using PlugHub.Framework.Configuration;
@@ -27,77 +26,10 @@ namespace PlugHub.Framework.Discovery
                 if (!module.Enabled || !module.Visible)
                 {
                     diagnostics.Add(BuildDiagnostic(module.Id, DiagnosticSeverity.Info, "RT-MODULE-SKIP", "Module is disabled or hidden and was not discovered."));
-                    continue;
-                }
-
-                if (string.IsNullOrWhiteSpace(module.Assembly) || string.IsNullOrWhiteSpace(module.Type))
-                {
-                    diagnostics.Add(BuildDiagnostic(module.Id, DiagnosticSeverity.Warning, "RT-MODULE-MANIFEST", "Module manifest is missing assembly or type."));
-                    continue;
-                }
-
-                var assemblyPath = ResolveAssemblyPath(baseDirectory, module);
-                if (!File.Exists(assemblyPath))
-                {
-                    diagnostics.Add(BuildDiagnostic(module.Id, SeverityFor(modulesConfiguration.ConflictPolicy.MissingModuleType), "RT-MODULE-ASSEMBLY", "Module assembly was not found: " + assemblyPath));
-                    continue;
-                }
-
-                try
-                {
-                    var assembly = Assembly.LoadFrom(assemblyPath);
-                    var type = assembly.GetType(module.Type, throwOnError: false, ignoreCase: false);
-                    if (type == null)
-                    {
-                        diagnostics.Add(BuildDiagnostic(module.Id, SeverityFor(modulesConfiguration.ConflictPolicy.MissingModuleType), "RT-MODULE-TYPE", "Module type was not found: " + module.Type));
-                        continue;
-                    }
-
-                    if (!typeof(IPlugHubModule).IsAssignableFrom(type))
-                    {
-                        diagnostics.Add(BuildDiagnostic(module.Id, DiagnosticSeverity.Warning, "RT-MODULE-CONTRACT", "Configured type does not implement IPlugHubModule."));
-                        continue;
-                    }
-
-                    var instance = (IPlugHubModule)Activator.CreateInstance(type)!;
-                    var runtimeDescriptor = instance.Describe();
-                    ValidateDescriptor(module, runtimeDescriptor, diagnostics);
-                }
-                catch (Exception ex)
-                {
-                    diagnostics.Add(BuildDiagnostic(module.Id, SeverityFor(modulesConfiguration.ConflictPolicy.MissingModuleType), "RT-MODULE-LOAD", ex.Message));
                 }
             }
 
             return new ModuleDiscoveryResult(descriptors, diagnostics);
-        }
-
-        private static void ValidateDescriptor(ModuleConfiguration manifest, ModuleDescriptor runtimeDescriptor, ICollection<DiagnosticMessage> diagnostics)
-        {
-            if (runtimeDescriptor == null)
-            {
-                diagnostics.Add(BuildDiagnostic(manifest.Id, DiagnosticSeverity.Warning, "RT-MODULE-DESCRIPTOR", "Runtime module returned an empty descriptor."));
-                return;
-            }
-
-            if (!string.Equals(manifest.Id, runtimeDescriptor.Id, StringComparison.OrdinalIgnoreCase))
-            {
-                diagnostics.Add(BuildDiagnostic(manifest.Id, DiagnosticSeverity.Warning, "RT-MODULE-ID", "Runtime module id does not match manifest id: " + runtimeDescriptor.Id));
-            }
-
-            if (string.IsNullOrWhiteSpace(manifest.Name) && !string.IsNullOrWhiteSpace(runtimeDescriptor.Name))
-            {
-                diagnostics.Add(BuildDiagnostic(manifest.Id, DiagnosticSeverity.Info, "RT-MODULE-NAME", "Runtime descriptor supplies the module name."));
-            }
-        }
-
-        private static string ResolveAssemblyPath(string baseDirectory, ModuleConfiguration module)
-        {
-            var assemblyName = module.Assembly;
-            if (Path.IsPathRooted(assemblyName)) return assemblyName;
-
-            var sourceDirectory = string.IsNullOrWhiteSpace(module.ResolvedBaseDirectory) ? baseDirectory : module.ResolvedBaseDirectory;
-            return Path.Combine(sourceDirectory, assemblyName);
         }
 
         private static ModuleDescriptor ToDescriptor(string baseDirectory, ModuleConfiguration module)
@@ -147,13 +79,6 @@ namespace PlugHub.Framework.Discovery
 
             var sourceDirectory = string.IsNullOrWhiteSpace(module.ResolvedBaseDirectory) ? baseDirectory : module.ResolvedBaseDirectory;
             return Path.Combine(sourceDirectory, assetPath);
-        }
-
-        private static DiagnosticSeverity SeverityFor(string policy)
-        {
-            return string.Equals(policy, "fail-module", StringComparison.OrdinalIgnoreCase)
-                ? DiagnosticSeverity.Error
-                : DiagnosticSeverity.Warning;
         }
 
         private static DiagnosticMessage BuildDiagnostic(string moduleId, DiagnosticSeverity severity, string code, string message)

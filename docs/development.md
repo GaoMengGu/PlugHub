@@ -88,7 +88,7 @@ CI 发布构建使用 `NuGet` 引用模式，只把 Revit API 当作编译引用
 
 不要把静态验证或本机构建表述为实机通过。
 
-在 Revit 2020 中，PlugHub 不承诺已加载业务 DLL 的真正热重载。Ribbon 按钮不再直接绑定业务 `commandAssembly`，而是绑定到框架 slot 命令；命令实例由 `FeatureCommandDispatcher` 在用户点击功能的路径上创建或加载。当前第一阶段仍保留 `ModuleDiscoveryService` 启动发现行为，模块程序集仍可能在启动发现阶段被加载；如果功能没有配置 `commandAssembly`，框架会默认解析为 `module.Assembly`。真正减少启动阶段业务 DLL 加载属于后续“清单权威化”阶段。后续 shadow copy 加载器会接入 dispatcher 这个调度点，但不能承诺 Revit 2020 对已加载 DLL 真热重载。
+在 Revit 2020 中，PlugHub 不承诺已加载业务 DLL 的真正热重载。Ribbon 按钮不再直接绑定业务 `commandAssembly`，而是绑定到框架 slot 命令；`ModuleDiscoveryService` 以插件包清单为权威来源，启动发现不加载业务 DLL，也不调用 `IPlugHubModule.Describe()`。命令实例由 `FeatureCommandDispatcher` 在用户点击功能的路径上创建或加载；如果功能没有配置 `commandAssembly`，框架会默认解析为 `module.Assembly`，但该路径只在点击执行时交给命令加载器。后续 shadow copy 加载器会接入 dispatcher 这个调度点，但不能承诺 Revit 2020 对已加载 DLL 真热重载。
 
 ## 配置变更注意事项
 

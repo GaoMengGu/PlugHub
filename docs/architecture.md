@@ -25,7 +25,7 @@ PlugHub.StaticValidation      # 静态验证入口
 2. `FrameworkRuntime.Load` 加载运行时配置。
 3. `FrameworkConfigurationLoader` 读取 `sources.json`、`views.json`、`feature-combinations.json`。
 4. `ModuleSourceResolver` 合并根配置和本地 `packageDirectories`。
-5. `ModuleDiscoveryService` 根据 `assembly` 和 `type` 做模块发现并产生日志。
+5. `ModuleDiscoveryService` 以 `package.json` / `*.package.json` 清单为权威来源生成模块和功能描述，并产生日志；启动发现不加载业务 DLL，也不调用模块 `Describe()`。
 6. `FeatureRegistry` 注册 enabled 且 visible 的模块功能，处理重复模块和重复 feature。
 7. `FeatureViewComposer` 按 `workspace` 的 group、category、tag 和 sort 组合功能。
 8. `FeatureRibbonBuilder` 创建 `PlugHub` Ribbon tab、panel 和按钮；业务功能按钮绑定到 `PlugHub.Revit2020.dll` 内的稳定 slot 命令。
@@ -42,7 +42,7 @@ PlugHub.StaticValidation      # 静态验证入口
 - `moduleSources`：兼容保留，默认为空；不再配置启动时拉取或加载的仓库来源。
 - `repositories`：设置页可浏览的插件包仓库。`provider` 支持 GitHub 和 Gitee；默认公开仓库使用 Gitee `https://gitee.com/GaoMengGu/PlugHub_Packages`；公开仓库无需凭据，私有仓库需要 `apiKey`；仓库内容只有在用户选择安装或更新后才会复制到 `packages`。
 - `modules`：根配置内联插件包列表，当前默认为空，框架不随包提供业务模块。
-- `conflictPolicy`：重复模块、重复功能、缺失模块类型等冲突策略。
+- `conflictPolicy`：重复模块、重复功能等冲突策略；`missingModuleType` 为兼容旧配置保留，默认启动发现不再按模块类型做强制校验。
 
 ### `package.json` / `*.package.json`
 
@@ -51,7 +51,7 @@ PlugHub.StaticValidation      # 静态验证入口
 模块关键字段：
 
 - `id`：模块唯一 ID。
-- `assembly` / `type`：模块程序集和实现 `IPlugHubModule` 的类型。
+- `assembly` / `type`：可选模块实现元数据。启动发现不依赖它们加载模块；当功能未单独配置 `commandAssembly` 时，`assembly` 仍作为默认命令程序集路径。
 - `displayName`：用户可见模块名。
 - `enabled` / `visible`：是否加载、是否进入功能列表。
 - `order`：模块排序，设置页以「第 N 项」展示，不暴露裸数字。
@@ -94,7 +94,7 @@ PlugHub.StaticValidation      # 静态验证入口
 
 ## 模块契约
 
-模块实现 `IPlugHubModule`，通过 `Describe()` 返回 `ModuleDescriptor` 和 `FeatureDescriptor`。框架会将运行时描述与配置清单合并，用于发现、校验、日志和 Ribbon 组合。
+插件包清单是模块和功能入口的权威来源。`IPlugHubModule` 与 `Describe()` 保留为模块侧契约和后续可选诊断/校验扩展点，但默认启动链路不实例化模块类型，也不把运行时描述合并回 Ribbon 组合。
 
 业务功能如果需要调用 Revit API，应在外部业务模块中实现 `IExternalCommand`。业务功能仍通过 feature 的 `commandAssembly` / `commandType` 指向实际 `IExternalCommand`，但 Revit Ribbon 不直接绑定该业务程序集。Revit 2020 适配层先进入稳定框架 slot 命令，再由框架调度器在点击时加载业务命令。已安装插件包中的相对 `commandAssembly` 和 `iconPath` 按模块清单所在目录解析。Revit 适配层负责路由，Framework 不直接执行 Revit API。
 
