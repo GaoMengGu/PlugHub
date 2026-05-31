@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["schemaVersion", "modules"],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "version": { "type": "string" },
+    "revitVersions": { "type": "array", "items": { "type": "string" } },
+    "frameworkVersionRange": { "type": "string" },
+    "sha256": { "type": "string" },
+    "signature": { "type": "string" },
+    "modules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "enabled", "visible", "features"],
+        "properties": {
+          "id": { "type": "string" },
+          "assembly": { "type": "string" },
+          "type": { "type": "string" },
+          "displayName": { "type": "string" },
+          "enabled": { "type": "boolean" },
+          "visible": { "type": "boolean" },
+          "order": { "type": "integer" },
+          "features": { "type": "array" }
+        }
+      }
+    }
+  }
+}

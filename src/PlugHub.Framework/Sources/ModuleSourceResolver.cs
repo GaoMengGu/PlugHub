@@ -148,7 +148,24 @@ namespace PlugHub.Framework.Sources
             }
 
             modules = _serializer.Deserialize<ModulesConfiguration>(text) ?? new ModulesConfiguration();
+            PushRootCompatibilityToModules(modules);
             return true;
+        }
+
+        private static void PushRootCompatibilityToModules(ModulesConfiguration modules)
+        {
+            foreach (var module in modules.Modules ?? new List<ModuleConfiguration>())
+            {
+                if ((module.RevitVersions == null || module.RevitVersions.Count == 0) && modules.RevitVersions != null)
+                {
+                    module.RevitVersions = new List<string>(modules.RevitVersions);
+                }
+
+                if (string.IsNullOrWhiteSpace(module.FrameworkVersionRange))
+                {
+                    module.FrameworkVersionRange = modules.FrameworkVersionRange ?? string.Empty;
+                }
+            }
         }
 
         private static ModulesConfiguration CloneModules(ModulesConfiguration modules)
@@ -156,6 +173,11 @@ namespace PlugHub.Framework.Sources
             return new ModulesConfiguration
             {
                 SchemaVersion = modules.SchemaVersion,
+                Version = modules.Version,
+                RevitVersions = new List<string>(modules.RevitVersions ?? new List<string>()),
+                FrameworkVersionRange = modules.FrameworkVersionRange,
+                Sha256 = modules.Sha256,
+                Signature = modules.Signature,
                 PackageDirectories = new List<string>(modules.PackageDirectories ?? new List<string>()),
                 ModuleSources = (modules.ModuleSources ?? new List<ModuleSourceConfiguration>())
                     .Select(source => new ModuleSourceConfiguration

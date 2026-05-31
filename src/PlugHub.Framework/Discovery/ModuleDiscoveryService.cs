@@ -20,6 +20,12 @@ namespace PlugHub.Framework.Discovery
 
             foreach (var module in (modulesConfiguration.Modules ?? new List<ModuleConfiguration>()).OrderBy(module => module.Order).ThenBy(module => module.Id, StringComparer.OrdinalIgnoreCase))
             {
+                if (!IsCompatibleWithRuntime(module, out var compatibilityReason))
+                {
+                    diagnostics.Add(BuildDiagnostic(module.Id, DiagnosticSeverity.Warning, "RT-MODULE-COMPATIBILITY", compatibilityReason));
+                    continue;
+                }
+
                 var descriptor = ToDescriptor(baseDirectory, module);
                 descriptors.Add(descriptor);
 
@@ -30,6 +36,21 @@ namespace PlugHub.Framework.Discovery
             }
 
             return new ModuleDiscoveryResult(descriptors, diagnostics);
+        }
+
+        private static bool IsCompatibleWithRuntime(ModuleConfiguration module, out string reason)
+        {
+            reason = string.Empty;
+            if (module == null) return true;
+
+            var revitVersions = module.RevitVersions ?? new List<string>();
+            if (revitVersions.Count > 0 && !revitVersions.Contains("2020"))
+            {
+                reason = "Module does not declare compatibility with Revit 2020.";
+                return false;
+            }
+
+            return true;
         }
 
         private static ModuleDescriptor ToDescriptor(string baseDirectory, ModuleConfiguration module)

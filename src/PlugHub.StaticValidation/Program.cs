@@ -40,6 +40,7 @@ namespace PlugHub.StaticValidation
                 ValidateComposerShape();
                 ValidateCoreContracts();
                 ValidateContractsMultiTargetReadiness();
+                ValidatePackageManifestSchemaAndCompatibility();
                 ValidateRevitRibbonAdapter();
                 ValidateRuntimeRoutingSpecification();
                 ValidateRevit2025AlcReadinessSpecification();
@@ -185,6 +186,7 @@ namespace PlugHub.StaticValidation
                 "src/PlugHub.StaticValidation/Validation/ValidationIssue.cs",
                 "src/PlugHub.StaticValidation/Validation/ValidationReport.cs",
                 "src/PlugHub.StaticValidation/Validation/ValidationReportWriter.cs",
+                "src/PlugHub.StaticValidation/Validation/PackageManifestValidation.cs",
                 "src/PlugHub.Contracts/Modules/IPlugHubModule.cs",
                 "src/PlugHub.Contracts/Loading/AlcLoadRules.cs",
                 "src/PlugHub.Framework/Composition/FeatureViewComposer.cs",
@@ -206,6 +208,7 @@ namespace PlugHub.StaticValidation
                 "config/feature-combinations.example.json",
                 "config/schemas/sources.schema.json",
                 "config/schemas/views.schema.json",
+                "config/schemas/package.schema.json",
                 "docs/README.md",
                 "docs/project-overview.md",
                 "docs/architecture.md",
@@ -378,6 +381,19 @@ namespace PlugHub.StaticValidation
             Require(!ReadAllCSharp("src/PlugHub.Contracts").Contains("System.Web"), "PlugHub.Contracts must stay free of net48-only System.Web dependencies.");
             Require(frameworkProject.Contains("<TargetFramework>net48</TargetFramework>") && frameworkProject.Contains("System.Web.Extensions"), "PlugHub.Framework remains net48 until its JSON serializer boundary is replaced.");
             Require(development.Contains("PlugHub.Contracts") && development.Contains("netstandard2.1") && development.Contains("System.Web.Script.Serialization"), "development docs must describe the Contracts multi-target boundary and Framework blocker.");
+        }
+
+        private static void ValidatePackageManifestSchemaAndCompatibility()
+        {
+            var schema = ReadText("config/schemas/package.schema.json");
+            Require(schema.Contains("\"revitVersions\""), "package schema must define revitVersions.");
+            Require(schema.Contains("\"frameworkVersionRange\""), "package schema must define frameworkVersionRange.");
+
+            var models = ReadText("src/PlugHub.Framework/Configuration/ConfigurationModels.cs");
+            Require(models.Contains("RevitVersions") && models.Contains("FrameworkVersionRange"), "configuration models must expose package compatibility fields.");
+
+            var discovery = ReadText("src/PlugHub.Framework/Discovery/ModuleDiscoveryService.cs");
+            Require(discovery.Contains("IsCompatibleWithRuntime"), "module discovery must skip packages incompatible with the active runtime.");
         }
 
         private static void ValidateRevitRibbonAdapter()
