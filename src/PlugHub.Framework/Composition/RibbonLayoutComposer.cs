@@ -24,23 +24,38 @@ namespace PlugHub.Framework.Composition
         {
             var fallbackPanelName = view.Ribbon == null ? "Framework" : view.Ribbon.FallbackPanelName;
             var panels = (features ?? new List<FeatureViewModel>())
-                .GroupBy(feature => new { feature.GroupId, feature.GroupName, feature.GroupOrder })
-                .OrderBy(group => group.Key.GroupOrder)
-                .ThenBy(group => group.Key.GroupName, StringComparer.OrdinalIgnoreCase)
-                .Select(group => new RibbonPanelViewModel(
-                    SafeId(group.Key.GroupId, group.Key.GroupName),
-                    SafeText(group.Key.GroupName, fallbackPanelName),
-                    group.Key.GroupOrder,
-                    group
-                        .OrderBy(feature => feature.DisplayOrder)
-                        .ThenBy(feature => feature.DisplayName, StringComparer.OrdinalIgnoreCase)
-                        .ThenBy(feature => feature.FeatureId, StringComparer.OrdinalIgnoreCase)
-                        .Select(feature => PushItem(feature, feature.ButtonSize, string.Empty, string.Empty))
-                        .ToList()))
+                .GroupBy(feature => LegacyPanelDisplayKey(feature, fallbackPanelName), StringComparer.OrdinalIgnoreCase)
+                .Select(group => BuildLegacyPanel(group.Key, group))
+                .OrderBy(panel => panel.Order)
+                .ThenBy(panel => panel.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
             var clickable = panels.SelectMany(panel => panel.Items).SelectMany(item => item.ClickableFeatures()).ToList();
             return new RibbonLayoutViewModel(panels, clickable);
+        }
+
+        private static RibbonPanelViewModel BuildLegacyPanel(string panelName, IEnumerable<FeatureViewModel> features)
+        {
+            var orderedFeatures = (features ?? new List<FeatureViewModel>())
+                .OrderBy(feature => feature.DisplayOrder)
+                .ThenBy(feature => feature.DisplayName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(feature => feature.FeatureId, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            var firstFeature = orderedFeatures.FirstOrDefault();
+            var order = orderedFeatures.Any() ? orderedFeatures.Min(feature => feature.GroupOrder) : 0;
+
+            return new RibbonPanelViewModel(
+                SafeId(firstFeature == null ? string.Empty : firstFeature.GroupId, panelName),
+                panelName,
+                order,
+                orderedFeatures
+                    .Select(feature => PushItem(feature, feature.ButtonSize, string.Empty, string.Empty))
+                    .ToList());
+        }
+
+        private static string LegacyPanelDisplayKey(FeatureViewModel feature, string? fallbackPanelName)
+        {
+            return SafeText(feature == null ? string.Empty : feature.GroupName, fallbackPanelName);
         }
 
         private static RibbonLayoutViewModel BuildConfiguredLayout(RibbonConfiguration ribbon, IReadOnlyList<FeatureViewModel> features)
@@ -52,20 +67,54 @@ namespace PlugHub.Framework.Composition
                 .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
             var placedFeatureIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            var panels = (ribbon.Panels ?? new List<RibbonPanelLayoutConfiguration>())
-                .OrderBy(panel => panel.Order)
-                .ThenBy(panel => SafeText(panel.Name, panel.Id), StringComparer.OrdinalIgnoreCase)
-                .Select(panel => new RibbonPanelViewModel(
-                    SafeId(panel.Id, panel.Name),
-                    SafeText(panel.Name, panel.Id),
-                    panel.Order,
-                    BuildConfiguredItems(panel.Items, featuresById, placedFeatureIds)))
-                .ToList();
+            var panels = MergeConfiguredPanelsByDisplayName(
+                ribbon.Panels ?? new List<RibbonPanelLayoutConfiguration>(),
+                featuresById,
+                placedFeatureIds);
 
             AppendUnplacedFeatures(ribbon, panels, sourceFeatures, placedFeatureIds);
 
             var clickable = panels.SelectMany(panel => panel.Items).SelectMany(item => item.ClickableFeatures()).ToList();
             return new RibbonLayoutViewModel(panels, clickable);
+        }
+
+        private static List<RibbonPanelViewModel> MergeConfiguredPanelsByDisplayName(
+            IEnumerable<RibbonPanelLayoutConfiguration> panels,
+            IReadOnlyDictionary<string, FeatureViewModel> featuresById,
+            ISet<string> placedFeatureIds)
+        {
+            return (panels ?? new List<RibbonPanelLayoutConfiguration>())
+                .OrderBy(panel => panel.Order)
+                .ThenBy(panel => SafeText(panel.Name, panel.Id), StringComparer.OrdinalIgnoreCase)
+                .GroupBy(panel => SafeText(panel.Name, panel.Id), StringComparer.OrdinalIgnoreCase)
+                .Select(group => BuildConfiguredPanel(group.Key, group, featuresById, placedFeatureIds))
+                .OrderBy(panel => panel.Order)
+                .ThenBy(panel => panel.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        private static RibbonPanelViewModel BuildConfiguredPanel(
+            string panelName,
+            IEnumerable<RibbonPanelLayoutConfiguration> panels,
+            IReadOnlyDictionary<string, FeatureViewModel> featuresById,
+            ISet<string> placedFeatureIds)
+        {
+            var orderedPanels = (panels ?? new List<RibbonPanelLayoutConfiguration>())
+                .OrderBy(panel => panel.Order)
+                .ThenBy(panel => SafeText(panel.Name, panel.Id), StringComparer.OrdinalIgnoreCase)
+                .ThenBy(panel => panel.Id, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            var firstPanel = orderedPanels.FirstOrDefault();
+            var order = orderedPanels.Any() ? orderedPanels.Min(panel => panel.Order) : 0;
+            var items = orderedPanels
+                .SelectMany(panel => panel.Items ?? new List<RibbonItemLayoutConfiguration>())
+                .ToList();
+
+            return new RibbonPanelViewModel(
+                SafeId(firstPanel == null ? string.Empty : firstPanel.Id, panelName),
+                panelName,
+                order,
+                BuildConfiguredItems(items, featuresById, placedFeatureIds));
         }
 
         private static List<RibbonItemViewModel> BuildConfiguredItems(
@@ -139,11 +188,26 @@ namespace PlugHub.Framework.Composition
                 .ToList();
             if (!unplaced.Any()) return;
 
+            var defaultPanel = panels.FirstOrDefault(panel => string.Equals(panel.Name, "默认", StringComparison.OrdinalIgnoreCase));
+            var defaultItems = unplaced
+                .Select(feature => PushItem(feature, "large", string.Empty, string.Empty))
+                .ToList();
+            if (defaultPanel == null)
+            {
+                panels.Add(new RibbonPanelViewModel(
+                    "default",
+                    "默认",
+                    int.MaxValue,
+                    defaultItems));
+                return;
+            }
+
+            panels.Remove(defaultPanel);
             panels.Add(new RibbonPanelViewModel(
-                "fallback",
-                SafeText(ribbon.FallbackPanelName, "Framework"),
-                int.MaxValue,
-                unplaced.Select(feature => PushItem(feature, feature.ButtonSize, string.Empty, string.Empty)).ToList()));
+                defaultPanel.Id,
+                defaultPanel.Name,
+                defaultPanel.Order,
+                defaultPanel.Items.Concat(defaultItems).ToList()));
         }
 
         private static RibbonItemViewModel PushItem(FeatureViewModel feature, string? size, string? textOverride, string? iconPathOverride)

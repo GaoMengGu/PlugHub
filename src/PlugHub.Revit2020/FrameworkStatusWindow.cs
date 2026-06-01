@@ -107,7 +107,7 @@ namespace PlugHub.Revit2020
                 "模块数: " + snapshot.Configuration.EffectiveModules.Modules.Count + "\n" +
                 "工作台功能数: " + snapshot.Composition.Features.Count + "\n" +
                 "日志消息: " + diagnostics.Count + "\n\n" +
-                "Ribbon 布局、图标和按钮大小仍需重启 Revit 重绘。";
+                "Ribbon 布局和图标仍需重启 Revit 重绘。";
 
             RevitWindowOwner.ShowDialog(new FrameworkStatusWindow("PlugHub 刷新配置", summary, diagnostics, diagnostics.Any()));
         }

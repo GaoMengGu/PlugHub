@@ -89,6 +89,8 @@ PlugHub 将功能定义和布局分离。插件包清单中的 feature 仍是可
 
 Framework 层只组合中立布局模型，不引用 Revit API。`PlugHub.Revit2020` 负责把中立布局渲染成 Revit Ribbon 控件，并继续通过稳定 slot 命令路由到业务功能。
 
+Ribbon 容器规则必须贴近 Revit 原生控件能力：Panel 可以直接包含 PushButton、PulldownButton、SplitButton 和 Stack；Stack 只能包含 2-3 个 PushButton、PulldownButton 或 SplitButton，Stack 不能嵌套 Stack；PulldownButton 和 SplitButton 只能包含 PushButton，不能继续嵌套 PulldownButton、SplitButton 或 Stack。设置页的拖拽、控件类型切换和保存前校验都必须执行同一套规则。
+
 ## 设置窗口
 
 设置入口是 `FrameworkSettingsCommand`，打开 `FrameworkSettingsWindow`。当前设置页提供：

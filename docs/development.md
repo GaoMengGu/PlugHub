@@ -96,6 +96,7 @@ dotnet build src\PlugHub.Revit2020\PlugHub.Revit2020.csproj /p:RevitApiReference
 - 布局画布会阻止同一个 featureId 重复添加；如果功能池中显示“已放置”，再次添加会被拦截并提示。
 - 布局页调整 Ribbon 结构、图标和大小后，重启 Revit 能看到新布局。
 - Ribbon 结构包括 panel、PushButton、PulldownButton、SplitButton 和 Stack；设置页保存后不会尝试在当前 Revit 会话中实时替换已有 Ribbon 控件，必须重启 Revit 后验收。
+- Ribbon 容器规则必须固定：Panel 可以放 PushButton、PulldownButton、SplitButton 和 Stack；Stack 只能放 2-3 个 PushButton、PulldownButton 或 SplitButton，Stack 不能嵌套 Stack；PulldownButton 和 SplitButton 只能包含 PushButton。拖拽、属性里的控件类型切换、保存前校验都要遵守这套规则。
 - 外部模块按钮能进入对应 Revit API 命令，例如分离后的 `Tee/Tap 切换` 和 `批量材质参数`。
 
 不要把静态验证或本机构建表述为实机通过。

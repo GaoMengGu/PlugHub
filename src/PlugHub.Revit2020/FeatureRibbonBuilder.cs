@@ -14,6 +14,7 @@ namespace PlugHub.Revit2020
 {
     internal sealed class FeatureRibbonBuilder
     {
+        private static readonly string[] SameNameIconExtensions = { ".png", ".ico", ".jpg", ".jpeg", ".bmp" };
         private readonly string _assemblyPath;
         private readonly string _baseDirectory;
 
@@ -143,20 +144,48 @@ namespace PlugHub.Revit2020
 
             if (IsRibbonItemType(item, RibbonItemViewModel.PulldownButton))
             {
-                return new PulldownButtonData(
-                    SafeContainerName(item),
-                    SafeDisplayName(item.Text, SafeDisplayName(item.Id, "Menu")));
+                return CreateContainerButtonData(
+                    item,
+                    new PulldownButtonData(
+                        SafeContainerName(item),
+                        SafeDisplayName(item.Text, SafeDisplayName(item.Id, "Menu"))));
             }
 
             if (IsRibbonItemType(item, RibbonItemViewModel.SplitButton))
             {
-                return new SplitButtonData(
-                    SafeContainerName(item),
-                    SafeDisplayName(item.Text, SafeDisplayName(item.Id, "Split")));
+                return CreateContainerButtonData(
+                    item,
+                    new SplitButtonData(
+                        SafeContainerName(item),
+                        SafeDisplayName(item.Text, SafeDisplayName(item.Id, "Split"))));
             }
 
             Trace.TraceWarning("PH-RIBBON-ITEM-SKIPPED: Unsupported ribbon item type: " + item.Type);
             return null;
+        }
+
+        private PulldownButtonData CreateContainerButtonData(RibbonItemViewModel item, PulldownButtonData data)
+        {
+            ApplyRibbonItemIcon(data, item.IconPath);
+            return data;
+        }
+
+        private SplitButtonData CreateContainerButtonData(RibbonItemViewModel item, SplitButtonData data)
+        {
+            ApplyRibbonItemIcon(data, item.IconPath);
+            return data;
+        }
+
+        private void ApplyRibbonItemIcon(PulldownButtonData data, string iconPath)
+        {
+            data.Image = LoadConfiguredIcon(iconPath, false) ?? DefaultRibbonIconProvider.CreateSmallIcon();
+            data.LargeImage = LoadConfiguredIcon(iconPath, true) ?? DefaultRibbonIconProvider.CreateLargeIcon();
+        }
+
+        private void ApplyRibbonItemIcon(SplitButtonData data, string iconPath)
+        {
+            data.Image = LoadConfiguredIcon(iconPath, false) ?? DefaultRibbonIconProvider.CreateSmallIcon();
+            data.LargeImage = LoadConfiguredIcon(iconPath, true) ?? DefaultRibbonIconProvider.CreateLargeIcon();
         }
 
         private void PopulateContainer(RibbonItem added, RibbonItemViewModel item, IReadOnlyDictionary<string, int> featureIdToSlot)
@@ -204,6 +233,12 @@ namespace PlugHub.Revit2020
         private void AddStackLayout(RibbonPanel panel, RibbonItemViewModel item, IReadOnlyDictionary<string, int> featureIdToSlot)
         {
             var children = item.Items ?? new List<RibbonItemViewModel>();
+            if (children.Count == 1)
+            {
+                AddSingleStackChildFallback(panel, children[0], featureIdToSlot);
+                return;
+            }
+
             if (children.Count < 2 || children.Count > 3)
             {
                 Trace.TraceWarning("PH-RIBBON-STACK-SKIPPED: Stack item requires 2 or 3 child items: " + SafeDisplayName(item.Id, item.Text));
@@ -233,6 +268,25 @@ namespace PlugHub.Revit2020
             {
                 PopulateContainer(addedItems[index], children[index], featureIdToSlot);
             }
+        }
+
+        private void AddSingleStackChildFallback(RibbonPanel panel, RibbonItemViewModel child, IReadOnlyDictionary<string, int> featureIdToSlot)
+        {
+            if (IsRibbonItemType(child, RibbonItemViewModel.Stack))
+            {
+                AddStackLayout(panel, child, featureIdToSlot);
+                return;
+            }
+
+            var data = CreateRibbonItemData(child, featureIdToSlot);
+            if (data == null || ContainsRibbonItem(panel, data.Name))
+            {
+                Trace.TraceWarning("PH-RIBBON-STACK-FALLBACK-SKIPPED: Single stack child has no valid ribbon data: " + SafeDisplayName(child?.Id, SafeDisplayName(child?.Text, "child")));
+                return;
+            }
+
+            var added = panel.AddItem(data);
+            PopulateContainer(added, child, featureIdToSlot);
         }
 
         private static IList<RibbonItem> AddStackItemData(RibbonPanel panel, IReadOnlyList<RibbonItemData> data)
@@ -292,8 +346,8 @@ namespace PlugHub.Revit2020
 
             data.ToolTip = BuildToolTip(feature);
             data.LongDescription = feature.Description;
-            data.Image = LoadFeatureIcon(iconPath, false) ?? DefaultRibbonIconProvider.CreateSmallIcon();
-            data.LargeImage = LoadFeatureIcon(iconPath, true) ?? DefaultRibbonIconProvider.CreateLargeIcon();
+            data.Image = LoadFeatureIcon(iconPath, feature.CommandAssembly, false) ?? DefaultRibbonIconProvider.CreateSmallIcon();
+            data.LargeImage = LoadFeatureIcon(iconPath, feature.CommandAssembly, true) ?? DefaultRibbonIconProvider.CreateLargeIcon();
 
             return data;
         }
@@ -426,9 +480,28 @@ namespace PlugHub.Revit2020
             return new SlotAssignmentResult(slotToFeatureId, featureIdToSlot, skippedFeatureIds);
         }
 
-        private ImageSource? LoadFeatureIcon(string iconPath, bool large)
+        private ImageSource? LoadFeatureIcon(string iconPath, string commandAssembly, bool large)
         {
-            return LoadConfiguredIcon(iconPath, large);
+            return LoadConfiguredIcon(iconPath, large) ?? LoadDllSiblingIcon(commandAssembly, large);
+        }
+
+        private ImageSource? LoadDllSiblingIcon(string commandAssembly, bool large)
+        {
+            if (string.IsNullOrWhiteSpace(commandAssembly)) return null;
+            var resolvedAssembly = Path.IsPathRooted(commandAssembly)
+                ? commandAssembly
+                : Path.GetFullPath(Path.Combine(_baseDirectory, commandAssembly));
+            var directory = Path.GetDirectoryName(resolvedAssembly);
+            var stem = Path.GetFileNameWithoutExtension(resolvedAssembly);
+            if (string.IsNullOrWhiteSpace(directory) || string.IsNullOrWhiteSpace(stem)) return null;
+
+            foreach (var extension in SameNameIconExtensions)
+            {
+                var icon = LoadConfiguredIcon(Path.Combine(directory, stem + extension), large);
+                if (icon != null) return icon;
+            }
+
+            return null;
         }
 
         private ImageSource? LoadConfiguredIcon(string iconPath, bool large)
