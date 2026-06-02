@@ -4,18 +4,20 @@ on:
   push:
     branches:
       - main
+    tags:
+      - "V*"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: sync-main-to-gitee
+  group: sync-to-gitee-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   sync:
-    name: Push main to Gitee
+    name: Push Git ref to Gitee
     runs-on: ubuntu-latest
 
     steps:
@@ -52,7 +54,7 @@ jobs:
             StrictHostKeyChecking yes
           EOF
 
-      - name: Push main to Gitee
+      - name: Push Git ref to Gitee
         shell: bash
         env:
           GITEE_USER: ${{ secrets.GITEE_USER }}
@@ -61,4 +63,15 @@ jobs:
           git config user.email "$GITEE_USER@users.noreply.gitee.com"
           git remote remove gitee 2>/dev/null || true
           git remote add gitee git@gitee.com:GaoMengGu/PlugHub.git
-          git push gitee HEAD:main
+          case "$GITHUB_REF" in
+            refs/heads/main)
+              git push gitee HEAD:main
+              ;;
+            refs/tags/V*)
+              tag="${GITHUB_REF#refs/tags/}"
+              git push gitee "refs/tags/$tag:refs/tags/$tag"
+              ;;
+            *)
+              echo "Skipping unsupported ref: $GITHUB_REF"
+              ;;
+          esac

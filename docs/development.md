@@ -146,9 +146,9 @@ Revit 2025+ ALC 需要单独的 net8 适配层、.NET SDK 8、Revit 2025 API 引
 
 发布 `V*` tag 时，GitHub Actions 会运行 release workflow，使用 NuGet 编译引用构建 Revit 2020 包，并用 cosign 为 DLL 和 zip 产物生成 Sigstore 签名 bundle。
 
-`main` 分支更新时，GitHub Actions 会运行 Gitee 同步 workflow，将当前 `main` 推送到 `https://gitee.com/GaoMengGu/PlugHub`。该 workflow 依赖仓库 secrets：`GITEE_PRIVATE_KEY`、`GITEE_TOKEN`、`GITEE_USER`。
+`main` 分支或 `V*` tag 更新时，GitHub Actions 会运行 Gitee 同步 workflow，将当前 `main` 或同名版本 tag 推送到 `https://gitee.com/GaoMengGu/PlugHub`。该 workflow 依赖仓库 secrets：`GITEE_PRIVATE_KEY`、`GITEE_TOKEN`、`GITEE_USER`。正常发布时只需要本地推送 GitHub 的 `main` 和版本 tag，不需要再从本机直接推送 Gitee tag。
 
-Gitee Go release 配置位于 `.gitee\workflows\release.yml`。推送 `V*` tag 到 Gitee 后，该 workflow 会运行静态验证、构建 Revit 2020 zip、构建并嵌入 `PlugHub-Uninstall.exe`、生成 `PlugHub-Setup-<tag>.exe`，并使用 `GITEE_TOKEN` 调用 Gitee API 发布 release 附件。
+Gitee Go release 配置位于 `.gitee\workflows\release.yml`。GitHub 同步 workflow 将 `V*` tag 推送到 Gitee 后，该 workflow 会运行静态验证、构建 Revit 2020 zip、构建并嵌入 `PlugHub-Uninstall.exe`、生成 `PlugHub-Setup-<tag>.exe`，并使用 `GITEE_TOKEN` 调用 Gitee API 发布 release 附件。
 
 版本预留在 `build\Directory.Build.props` 中维护：`RevitVersion` 控制输出路径和 addin 目录，`RevitApiReferenceMode` 控制 `Installed` / `NuGet` 引用模式，`RevitApiNuGetVersion` 控制 CI 编译引用包版本。后续增加 2018、2022、2024 适配时，应复用这些属性。
 

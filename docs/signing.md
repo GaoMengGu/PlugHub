@@ -68,7 +68,7 @@ cosign 签名是发布校验签名，不是 Windows Authenticode 内嵌签名。
 
 ## Gitee Go Release
 
-仓库包含 `.gitee/workflows/release.yml`，用于 Gitee Go 在推送 `V*` tag 时打包并发布 Gitee Release。该 workflow 会构建 Revit 2020 zip、构建 `PlugHub.Uninstaller`、构建嵌入 zip payload 和 `PlugHub-Uninstall.exe` 的安装器，并上传：
+仓库包含 `.gitee/workflows/release.yml`，用于 Gitee Go 在收到 `V*` tag 时打包并发布 Gitee Release。正常发布链路是本地只推送 GitHub 的 `main` 和版本 tag，再由 GitHub Actions 的 `.github/workflows/sync-gitee.yml` 将 `main` 和同名 tag 推送到 Gitee。Gitee Go workflow 会构建 Revit 2020 zip、构建 `PlugHub.Uninstaller`、构建嵌入 zip payload 和 `PlugHub-Uninstall.exe` 的安装器，并上传：
 
 - `PlugHub-Revit2020-<tag>.zip`
 - `PlugHub-Setup-<tag>.exe`

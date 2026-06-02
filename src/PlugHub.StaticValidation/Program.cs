@@ -1498,9 +1498,11 @@ namespace PlugHub.StaticValidation
 
             Require(workflow.Contains("-UseRelativeAddinAssembly"), "release workflow must build a package with relative addin assembly path.");
             Require(giteeWorkflow.Contains("branches:") && giteeWorkflow.Contains("- main"), "Gitee sync workflow must run for main pushes.");
+            Require(giteeWorkflow.Contains("tags:") && giteeWorkflow.Contains("- \"V*\""), "Gitee sync workflow must run for V* tag pushes.");
             Require(giteeWorkflow.Contains("workflow_dispatch"), "Gitee sync workflow must support manual dispatch.");
             Require(giteeWorkflow.Contains("GITEE_PRIVATE_KEY") && giteeWorkflow.Contains("GITEE_TOKEN") && giteeWorkflow.Contains("GITEE_USER"), "Gitee sync workflow must validate configured Gitee secrets.");
             Require(giteeWorkflow.Contains("git@gitee.com:GaoMengGu/PlugHub.git") && giteeWorkflow.Contains("git push gitee HEAD:main"), "Gitee sync workflow must push main to GaoMengGu/PlugHub on Gitee.");
+            Require(giteeWorkflow.Contains("refs/tags/") && giteeWorkflow.Contains("git push gitee \"refs/tags/$tag:refs/tags/$tag\""), "Gitee sync workflow must push GitHub release tags to Gitee so Gitee Go can publish releases.");
             Require(buildScript.Contains("[switch]$UseRelativeAddinAssembly") && buildScript.Contains("PlugHub.Revit2020.dll"), "build script must support relative release addin assembly paths.");
             Require(workflow.Contains("*.pdb") && workflow.Contains("*.sigstore.json") && !workflow.Contains("Compress-Archive -Path \"dist\\Revit2020\\*\""), "release zip must exclude pdb and sigstore files.");
 

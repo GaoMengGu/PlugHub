@@ -64,7 +64,7 @@ dist\Revit2020
 C:\ProgramData\Autodesk\Revit\Addins\2020\PlugHub.addin
 ```
 
-发布 workflow 使用 NuGet 编译引用，不需要把 `RevitAPI.dll` 或 `RevitAPIUI.dll` 放入仓库。GitHub 使用 `.github\workflows\release.yml` 发布；Gitee Go 使用 `.gitee\workflows\release.yml` 打包并通过 Gitee API 发布 release。
+发布 workflow 使用 NuGet 编译引用，不需要把 `RevitAPI.dll` 或 `RevitAPIUI.dll` 放入仓库。GitHub 使用 `.github\workflows\release.yml` 发布；`.github\workflows\sync-gitee.yml` 会把 `main` 和 `V*` tag 同步到 Gitee；Gitee Go 使用 `.gitee\workflows\release.yml` 打包并通过 Gitee API 发布 release。正常发布只需要本地推送 GitHub，不需要从本机直推 Gitee tag。
 
 ## 文档
 
