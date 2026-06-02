@@ -75,6 +75,7 @@ namespace PlugHub.StaticValidation
                 ValidateMachineWideAddinRegistration();
                 ValidateUninstallerPackaging();
                 ValidateFrameworkAutoUpdateSpecification();
+                ValidateAutoVersionWorkflow();
                 ValidateSigningGuidance();
                 ValidateRevitDeploymentConfiguration();
 
@@ -186,6 +187,7 @@ namespace PlugHub.StaticValidation
             {
                 "README.md",
                 "AGENTS.md",
+                ".github/workflows/auto-version.yml",
                 ".github/workflows/release.yml",
                 ".github/workflows/sync-gitee.yml",
                 ".gitee/workflows/release.yml",
@@ -2453,6 +2455,25 @@ namespace PlugHub.StaticValidation
             }
         }
 
+        private static void ValidateAutoVersionWorkflow()
+        {
+            var autoVersionWorkflow = ReadText(".github/workflows/auto-version.yml");
+            var releaseWorkflow = ReadText(".github/workflows/release.yml");
+            var syncWorkflow = ReadText(".github/workflows/sync-gitee.yml");
+            var readme = ReadText("README.md");
+
+            Require(autoVersionWorkflow.Contains("push:") && autoVersionWorkflow.Contains("branches:") && autoVersionWorkflow.Contains("main"), "auto-version workflow must run for main pushes.");
+            Require(autoVersionWorkflow.Contains("workflow_dispatch") && autoVersionWorkflow.Contains("version:"), "auto-version workflow must support manual explicit version input.");
+            Require(autoVersionWorkflow.Contains("--sort=-v:refname") && autoVersionWorkflow.Contains("+ 1"), "auto-version workflow must increment the latest patch version by default.");
+            Require(autoVersionWorkflow.Contains("^V\\d+\\.\\d+\\.\\d+$") && autoVersionWorkflow.Contains("git ls-remote"), "auto-version workflow must validate Vx.y.z tags and reject existing remote tags.");
+            Require(autoVersionWorkflow.Contains("git tag") && autoVersionWorkflow.Contains("git push origin \"refs/tags/$env:PLUGHUB_RELEASE_TAG\""), "auto-version workflow must create and push the resolved release tag.");
+            Require(autoVersionWorkflow.Contains("actions: write") && autoVersionWorkflow.Contains("contents: write"), "auto-version workflow must have permissions to create tags and dispatch workflows.");
+            Require(autoVersionWorkflow.Contains("release.yml/dispatches") && autoVersionWorkflow.Contains("sync-gitee.yml/dispatches"), "auto-version workflow must dispatch GitHub release and Gitee sync workflows after creating a tag.");
+            Require(releaseWorkflow.Contains("workflow_dispatch"), "GitHub release workflow must support explicit dispatch from auto-version.");
+            Require(syncWorkflow.Contains("workflow_dispatch"), "Gitee sync workflow must support explicit dispatch from auto-version.");
+            Require(readme.Contains("auto-version.yml") && readme.Contains("每次 `main` 推送") && readme.Contains("version"), "README must document automatic patch versioning and manual explicit version override.");
+        }
+
         private static void ValidateSigningGuidance()
         {
             var signingDoc = ReadText("README.md");
@@ -2465,7 +2486,7 @@ namespace PlugHub.StaticValidation
             }
 
             Require(signingScript.Contains("signtool") && signingScript.Contains("/fd SHA256") && signingScript.Contains("/tr"), "signing script must use Authenticode SHA256 signing with timestamp support.");
-            Require(workflow.Contains("push:") && workflow.Contains("tags:") && workflow.Contains("\"V*\""), "release workflow must run only for version tag pushes.");
+            Require(workflow.Contains("push:") && workflow.Contains("tags:") && workflow.Contains("\"V*\"") && workflow.Contains("workflow_dispatch"), "release workflow must run for version tag pushes and explicit dispatch.");
             Require(workflow.Contains("sigstore/cosign-installer") && workflow.Contains("cosign sign-blob") && workflow.Contains("id-token: write"), "release workflow must use keyless cosign blob signing.");
             Require(signingDoc.Contains("Revit API 引用通过 NuGet 仅用于 CI 编译"), "README must document the NuGet-only CI Revit API reference strategy.");
         }
