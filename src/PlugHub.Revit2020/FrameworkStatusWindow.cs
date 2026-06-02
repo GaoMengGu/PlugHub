@@ -139,7 +139,7 @@ namespace PlugHub.Revit2020
                 "Modules: " + snapshot.Configuration.EffectiveModules.Modules.Count + "\n" +
                 "Features in workspace: " + snapshot.Composition.Features.Count + "\n" +
                 "Logs: " + snapshot.Diagnostics.Count + "\n\n" +
-                "需要查看明细时，请打开设置窗口的「日志」页。";
+                "需要排障时，请在设置窗口中打开日志目录或导出日志。";
         }
 
         private static DataGridTextColumn TextColumn(string propertyName, string header, double width, bool star = false)

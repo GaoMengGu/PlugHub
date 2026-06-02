@@ -20,6 +20,7 @@ namespace PlugHub.Revit2020.Settings.Rows
         public string EncryptedApiKey { get; set; } = string.Empty;
         public string ApiKeyProtection { get; set; } = string.Empty;
         public string Status { get; set; } = string.Empty;
+        public string DisplayName { get; set; } = string.Empty;
 
         public PackageRepositoryConfiguration ToConfiguration()
         {

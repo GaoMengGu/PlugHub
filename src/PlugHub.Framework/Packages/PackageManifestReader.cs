@@ -41,6 +41,7 @@ namespace PlugHub.Framework.Packages
                     var installedDirectory = InstalledPackageDirectory(baseDirectory, packageId);
                     var installedVersion = installedPackageVersion(baseDirectory, installedDirectory, module.Id);
                     var displayName = RepositoryPackageDisplayName(module, packageId);
+                    var features = module.Features ?? new List<FeatureConfiguration>();
 
                     return new RepositoryPackageDescriptor
                     {
@@ -54,7 +55,10 @@ namespace PlugHub.Framework.Packages
                         InstallDirectory = installedDirectory,
                         IsInstalled = isModuleInstalled(baseDirectory, installedDirectory, module.Id),
                         InstalledVersion = installedVersion,
-                        PendingOperation = pendingOperationFor(baseDirectory, packageId, module.Id)
+                        PendingOperation = pendingOperationFor(baseDirectory, packageId, module.Id),
+                        Description = FirstNonEmpty(module.Description, features.Select(feature => feature.Description).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty),
+                        Tags = DistinctText((module.Tags ?? new List<string>()).Concat(features.SelectMany(feature => feature.Tags ?? new List<string>()))),
+                        Categories = DistinctText(features.Select(feature => feature.Category))
                     };
                 })
                 .ToList();
@@ -214,6 +218,16 @@ namespace PlugHub.Framework.Packages
         private static string FirstNonEmpty(params string?[] values)
         {
             return values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
+        }
+
+        private static List<string> DistinctText(IEnumerable<string> values)
+        {
+            return (values ?? Enumerable.Empty<string>())
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => value.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
 
         private static string SafePathSegment(string value)

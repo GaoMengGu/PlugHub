@@ -348,6 +348,10 @@ namespace PlugHub.StaticValidation
                 && StringValue(repository, "visibility") == "public"
                 && StringValue(repository, "repository") == "https://gitee.com/GaoMengGu/PlugHub_Packages"
                 && StringValue(repository, "enabled") == "True"), "default public repository must be the enabled Gitee PlugHub_Packages URL.");
+            var repositoryOrder = Repositories(modules)
+                .Select(repository => StringValue(repository, "provider") + ":" + StringValue(repository, "visibility"))
+                .ToList();
+            Require(repositoryOrder.Take(4).SequenceEqual(new[] { "gitee:public", "gitee:private", "github:public", "github:private" }), "default repositories must be ordered gitee public, gitee private, github public, github private.");
             Require(StringValue(ObjectValue(modules, "conflictPolicy"), "duplicateFeatureId") == "fail-feature", "duplicate feature policy must be fail-feature.");
 
             var seenFeatureIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -803,6 +807,7 @@ namespace PlugHub.StaticValidation
             Require(logger.Contains("SensitiveTextRedactor.Redact(entry.Message)") && logger.Contains("SensitiveTextRedactor.Redact(entry.Exception)"), "PlugHub logger must redact message and exception fields.");
             Require(logger.Contains(".Replace(\"\\t\"") && logger.Contains(".Replace(\"\\n\""), "PlugHub logger must normalize tab and newline characters.");
             Require(logger.Contains("catch"), "PlugHub logger writes must catch failures.");
+            Require(logger.Contains("public static string LogsDirectory") && logger.Contains("Environment.SpecialFolder.LocalApplicationData"), "PlugHub logger must expose the effective logs folder and fall back to local app data if the install directory is not writable.");
             Require(exporter.Contains("IsPathInside") && exporter.Contains("StartsWith") && (exporter.Contains("string.Equals(fullTargetPath, fullLogsPath") || exporter.Contains("fullTargetPath == fullLogsDirectory")), "PlugHub log exporter must reject targets inside or equal to the logs directory.");
             Require(!featureSlotRegistry.Contains("new Dictionary<int, string>(slotToFeatureId ??"), "FeatureSlotRegistry must not construct Dictionary directly from an IReadOnlyDictionary fallback under net48.");
             Require(featureSlotRegistry.Contains(".ToDictionary(pair => pair.Key, pair => pair.Value)"), "FeatureSlotRegistry.Replace must clone slot mappings through an enumerable-compatible Dictionary shape.");
@@ -1033,7 +1038,7 @@ namespace PlugHub.StaticValidation
             Require(ribbonBuilder.Contains("LoadFeatureIcon") && ribbonBuilder.Contains("LargeImage"), "configured feature icons must be applied to Revit ribbon buttons.");
             Require(ribbonBuilder.Contains("FrameworkSettingsCommand"), "framework Ribbon panel must expose settings command.");
 
-            foreach (var token in new[] { "class FrameworkSettingsWindow", ": Window", "TabControl", "DataGrid", "BuildRibbonLayoutTab", "BuildRepositoriesTab", "BuildLogsTab", "RepositoryRow", "RepositoryPackageRow", "GroupRow", "ReloadFromDisk", "ContextMenu", "DragDrop", "Microsoft.Win32.OpenFileDialog" })
+            foreach (var token in new[] { "class FrameworkSettingsWindow", ": Window", "TabControl", "DataGrid", "BuildRibbonLayoutTab", "BuildRepositoriesTab", "RepositoryRow", "RepositoryPackageRow", "GroupRow", "ReloadFromDisk", "ContextMenu", "DragDrop", "Microsoft.Win32.OpenFileDialog" })
             {
                 Require(settingsWindow.Contains(token), "WPF settings UI token missing: " + token);
             }
@@ -1148,6 +1153,8 @@ namespace PlugHub.StaticValidation
 
             Require(settingsWindow.Contains("SettingsConfigurationStore"), "FrameworkSettingsWindow must use SettingsConfigurationStore.");
             Require(settingsWindow.Contains("ExportLogs"), "FrameworkSettingsWindow must expose log export.");
+            Require(settingsWindow.Contains("OpenLogsDirectory"), "FrameworkSettingsWindow must expose a focused open-log-folder diagnostic action.");
+            Require(!settingsWindow.Contains("BuildLogsTab") && !settingsWindow.Contains("BuildDiagnosticsTab") && !settingsWindow.Contains("BuildTab(\"日志\""), "settings must not expose logs as a primary tab for normal users.");
             Require(!settingsWindow.Contains("Path.Combine(BaseDirectory(), \"logs\", \"plughub-logs.zip\")"), "settings log export target must not be inside the logs directory.");
             Require(settingsWindow.Contains("_configurationStore.Save(_configuration, _moduleDocuments)"), "FrameworkSettingsWindow must save the current in-memory module documents explicitly.");
             Require(settingsWindow.Contains("Path.Combine(BaseDirectory(), \"exports\", \"plughub-logs.zip\")"), "settings log export target must be under the exports directory.");
@@ -1250,20 +1257,18 @@ namespace PlugHub.StaticValidation
                 Require(!settingsWindow.Contains("private sealed class " + rowClass), rowClass + " must be extracted from FrameworkSettingsWindow.");
             }
 
-            Require(settingsWindow.Contains("PendingPackageOperationRow"), "settings window must display pending package operations.");
-            Require(settingsWindow.Contains("CancelSelectedPendingPackageOperation"), "settings window must allow cancelling selected pending package operations.");
-            Require(settingsWindow.Contains("ListPendingOperations(BaseDirectory())"), "settings window must load pending package operations from the repository service.");
-            Require(settingsWindow.Contains("CancelPendingOperation(BaseDirectory(), row.PackageId, row.ModuleId)"), "settings window must cancel the selected pending package operation by package and module.");
+            Require(settingsWindow.Contains("PendingPackageOperationsStatusText"), "settings window must report pending package operations through the footer status text.");
+            Require(!settingsWindow.Contains("BuildPendingPackageOperationsSummary"), "settings window must not show a dedicated pending restart operation list.");
+            Require(!settingsWindow.Contains("CancelSelectedPendingPackageOperation"), "settings window must not expose pending operation cancellation in the settings UI.");
+            Require(settingsWindow.Contains("ListPendingOperations(BaseDirectory())"), "settings window must still read pending package operations for status reminders.");
             var packageOperationStart = settingsWindow.IndexOf("private void RunRepositoryPackageOperation(", StringComparison.Ordinal);
             var packageOperationResult = packageOperationStart < 0 ? -1 : settingsWindow.IndexOf("var result = operation(row.ToDescriptor());", packageOperationStart, StringComparison.Ordinal);
-            var packageOperationReload = packageOperationResult < 0 ? -1 : settingsWindow.IndexOf("LoadPendingPackageOperationRows();", packageOperationResult, StringComparison.Ordinal);
-            Require(packageOperationStart >= 0 && packageOperationResult >= 0 && packageOperationReload > packageOperationResult, "repository package operations must refresh pending package operations.");
-            var cancelOperationStart = settingsWindow.IndexOf("private void CancelSelectedPendingPackageOperation()", StringComparison.Ordinal);
-            var cancelOperationResult = cancelOperationStart < 0 ? -1 : settingsWindow.IndexOf("CancelPendingOperation(BaseDirectory(), row.PackageId, row.ModuleId)", cancelOperationStart, StringComparison.Ordinal);
-            var cancelOperationRefreshState = cancelOperationResult < 0 ? -1 : settingsWindow.IndexOf("RefreshRepositoryPackageInstallState(row.PackageId, row.InstallDirectory);", cancelOperationResult, StringComparison.Ordinal);
-            var cancelOperationReload = cancelOperationResult < 0 ? -1 : settingsWindow.IndexOf("LoadPendingPackageOperationRows();", cancelOperationResult, StringComparison.Ordinal);
-            Require(cancelOperationStart >= 0 && cancelOperationResult >= 0 && cancelOperationReload > cancelOperationResult, "pending package operation cancellation must reload pending operations.");
-            Require(cancelOperationStart >= 0 && cancelOperationResult >= 0 && cancelOperationRefreshState > cancelOperationResult && cancelOperationRefreshState < cancelOperationReload, "pending package operation cancellation must refresh repository package install state.");
+            var packageOperationStatus = packageOperationResult < 0 ? -1 : settingsWindow.IndexOf("RefreshStatusWithPendingPackageOperations(result.Message)", packageOperationResult, StringComparison.Ordinal);
+            Require(packageOperationStart >= 0 && packageOperationResult >= 0 && packageOperationStatus > packageOperationResult, "repository package operations must refresh footer pending-operation status.");
+
+            var ribbonDesignerMapper = ReadText("src/PlugHub.Revit2020/Settings/RibbonDesigner/RibbonDesignerMapper.cs");
+            Require(!settingsWindow.Contains("body.Children.Add(BuildRibbonDesignerPreviewButton(tab"), "layout canvas must not render a synthetic PlugHub tab button above panels.");
+            Require(ribbonDesignerMapper.Contains("GroupBy(DefaultPanelKey") && ribbonDesignerMapper.Contains("GroupDisplayText") && ribbonDesignerMapper.Contains("ModuleName"), "layout designer default panels must match runtime grouped ribbon layout.");
         }
 
         private static void ValidateDefaultIconSpecification()
@@ -1315,6 +1320,7 @@ namespace PlugHub.StaticValidation
         {
             var modulesText = ReadText("config/sources.example.json");
             var settingsWindow = ReadText("src/PlugHub.Revit2020/FrameworkSettingsWindow.cs");
+            var repositorySettingsController = ReadText("src/PlugHub.Revit2020/Settings/RepositorySettingsController.cs");
             var repositoryRow = ReadText("src/PlugHub.Revit2020/Settings/Rows/RepositoryRow.cs");
             var repositoryPackageRow = ReadText("src/PlugHub.Revit2020/Settings/Rows/RepositoryPackageRow.cs");
             var sourceResolver = ReadText("src/PlugHub.Framework/Sources/ModuleSourceResolver.cs");
@@ -1341,15 +1347,77 @@ namespace PlugHub.StaticValidation
             Require(settingsWindow.Contains("BuildRepositoriesTab") && settingsWindow.Contains("LoadRepositoryRows"), "settings must present sources as repositories.");
             Require(settingsWindow.Contains("BrowseSelectedRepository") && settingsWindow.Contains("InstallSelectedRepositoryPackage"), "settings must browse repositories and install selected packages.");
             Require(settingsWindow.Contains("UpdateSelectedRepositoryPackage") && settingsWindow.Contains("UninstallSelectedRepositoryPackage"), "settings must support repository package update and uninstall.");
-            Require(settingsWindow.Contains("LoadCachedRepositoryPackages") && settingsWindow.Contains("StartRepositoryUpdateCheck") && settingsWindow.Contains("Task.Run"), "settings must show cached repository packages and check for updates in the background.");
-            Require(settingsWindow.Contains("ComboColumn(nameof(RepositoryRow.Provider), \"类型\"") && settingsWindow.Contains("new[] { \"github\", \"gitee\" }"), "repository settings must expose a provider type column for GitHub and Gitee.");
-            Require(settingsWindow.Contains("MenuItem(\"新增仓库\"") && settingsWindow.Contains("AddRepository()"), "repository context menu must expose one generic add repository action.");
+            Require(settingsWindow.Contains("LoadCachedRepositoryPackages") && settingsWindow.Contains("CheckRepositoryUpdates") && settingsWindow.Contains("Task.Run"), "settings must show cached repository packages and allow explicit remote update checks.");
+            Require(!settingsWindow.Contains("StartRepositoryUpdateCheck"), "settings must not start remote repository checks automatically when the settings window opens.");
+            foreach (var token in new[] { "ApplyPackageFilters", "SortRepositoryPackages", "PrimaryActionFor", "BuildSearchText", "RepositoryDisplayName" })
+            {
+                Require(repositorySettingsController.Contains(token), "repository settings controller must own package browsing behavior: " + token);
+            }
+
+            foreach (var token in new[] { "BuildRepositorySourceCards", "BuildRepositoryPackageList", "BuildRepositoryDiagnosticsMenu" })
+            {
+                Require(settingsWindow.Contains(token), "repository settings UI must use package-manager layout: " + token);
+            }
+
+            Require(settingsWindow.Contains("RepositorySettingsDefaultWidth = 1140.0") && settingsWindow.Contains("Width = RepositorySettingsDefaultWidth"), "settings window must default to the requested 1140 width.");
+            Require(settingsWindow.Contains("RepositorySettingsDefaultHeight = 600.0") && settingsWindow.Contains("Height = RepositorySettingsDefaultHeight"), "settings window must default to the requested 600 height.");
+            Require(settingsWindow.Contains("RepositorySourceCardWidth = 244.0") && settingsWindow.Contains("RepositorySourceCardSlotWidth = 256.0"), "repository source cards must be sized to the current longest default repository name without forcing startup scrolling.");
+            Require(settingsWindow.Contains("RepositoryPackageGridChromeReserve = 60.0") && settingsWindow.Contains("RepositoryPackageCardSlotWidth = (RepositorySettingsDefaultWidth - RepositoryPackageGridChromeReserve) / RepositoryPackageColumns"), "repository package card width must be derived from the current settings window width.");
+            Require(settingsWindow.Contains("BuildRepositorySourceScrollViewer") && settingsWindow.Contains("ScrollViewer.CanContentScrollProperty, false"), "repository source cards must be hosted in an explicit horizontal ScrollViewer so overflow can be scrolled.");
+            Require(settingsWindow.Contains("BuildRepositorySourceMoreGlyph") && settingsWindow.Contains("ToolTip") && settingsWindow.Contains("CheckBox"), "repository source cards must use compact glyph actions and a checkbox enabled state.");
+            Require(settingsWindow.Contains("AddRepositoryEditorRow(form, 6, \"Token\", apiKey)") && !settingsWindow.Contains("AddRepositoryEditorRow(form, 6, \"ApiKey\", apiKey)"), "repository source editor must label the credential field as Token for users.");
+            Require(settingsWindow.Contains("LineStackingStrategy.BlockLineHeight") && settingsWindow.Contains("VerticalAlignmentProperty, VerticalAlignment.Top"), "repository source ellipsis glyph must align tightly to the top-right of the card.");
+            Require(!settingsWindow.Contains("new Binding(nameof(RepositoryRow.Status))"), "repository source cards must not duplicate footer status text.");
+            Require(!settingsWindow.Contains("RepositoryEnabledLabelConverter"), "repository source cards must not spend card width on enable/disable text buttons.");
+            Require(settingsWindow.Contains("RepositorySourceSelectionChanged"), "repository package list must follow the selected repository source card.");
+            Require(settingsWindow.Contains("ToolTipProperty, new Binding(nameof(RepositoryRow.DisplayName))"), "repository source card title must show the full repository name as a tooltip.");
+            Require(settingsWindow.Contains("provider + \" · \" + visibility") && !settingsWindow.Contains("provider + \" / \" + visibility + \" / \" + state"), "repository source metadata must avoid duplicated enabled state and slash-separated labels.");
+            Require(settingsWindow.Contains("BuildRepositorySourceMoreGlyph") && settingsWindow.Contains("OpenRepositorySourceMenuFromCard"), "repository source cards must use a shared ellipsis menu for secondary actions.");
+            Require(settingsWindow.Contains("BrowseRepositorySourceCacheFromCard") && settingsWindow.Contains("_packageRepositoryService.BrowseCached(BaseDirectory(), row.ToConfiguration()"), "clicking a repository source card must browse its local cached packages without remote sync.");
+            Require(settingsWindow.Contains("同步仓库插件包") && settingsWindow.Contains("编辑仓库源") && settingsWindow.Contains("删除仓库"), "repository source menu must expose edit, sync, and delete actions.");
+            Require(settingsWindow.Contains("Brushes.DarkRed"), "repository source delete menu item must be visually highlighted as destructive.");
+            Require(settingsWindow.Contains("一键同步") && !settingsWindow.Contains("浏览所选") && !settingsWindow.Contains("检查更新"), "repository toolbar must expose manual sync-all and remove redundant repository actions.");
+            Require(!settingsWindow.Contains("LoadCachedRepositoryPackages();"), "settings must not auto-populate repository packages before the user manually syncs repositories.");
+            Require(settingsWindow.Contains("BuildRepositoryPackageItemsPanel") && settingsWindow.Contains("WrapPanel.ItemWidthProperty"), "repository package list must render as a responsive multi-column card grid.");
+            Require(settingsWindow.Contains("_warehousePackageList.HorizontalContentAlignment = HorizontalAlignment.Center") && settingsWindow.Contains("FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center"), "repository package card grid must keep three columns centered with equal left/right spacing.");
+            Require(settingsWindow.Contains("RepositoryPackageActionWidth = 72.0") && settingsWindow.Contains("RepositoryPackageActionHeight = 26.0"), "repository package card action buttons must stay compact enough for four tag chips on one line.");
+            Require(!settingsWindow.Contains("Color.FromRgb(51, 122, 183)") && !settingsWindow.Contains("icon.SetValue(DockPanel.DockProperty, Dock.Left)"), "repository package cards must not spend width on a leading decorative icon.");
+            Require(settingsWindow.Contains("BuildRepositoryPackageTagsControl") && settingsWindow.Contains("BuildRepositoryTagChipTemplate") && settingsWindow.Contains("WrapPanel"), "repository package tags must render as compact chips instead of slash-separated text.");
+            Require(!settingsWindow.Contains("RepositoryPackageTagLabelConverter"), "repository package tags must not be rendered as one long slash-separated text line.");
+            Require(settingsWindow.Contains("BuildRepositoryPackagePrimaryActionButton") && settingsWindow.Contains("BuildRepositoryPackageUninstallButton"), "repository package cards must split install/update status and uninstall into two stacked buttons.");
+            Require(!settingsWindow.Contains("state.SetBinding(TextBlock.TextProperty, new Binding(nameof(RepositoryPackageRow.InstallState)))"), "repository package cards must not render install state as a separate label beside action buttons.");
+            Require(settingsWindow.Contains("RepositoryPackageUninstallHoverEnter") && settingsWindow.Contains("RepositoryPackageUninstallHoverLeave"), "repository package uninstall action must be visually de-emphasized until hover.");
+            Require(settingsWindow.Contains("RepositoryPackageActionBrushConverter") && settingsWindow.Contains("RepositoryPackageActionForegroundConverter"), "repository package primary actions must have state-specific visual weight.");
+            Require(settingsWindow.Contains("Color.FromRgb(22, 163, 74)") && settingsWindow.Contains("Color.FromRgb(37, 99, 235)") && settingsWindow.Contains("RepositoryPackageUninstallBackground"), "repository package action buttons must use green install/installed, blue update, and gray/red uninstall styling.");
+            Require(repositoryPackageRow.Contains("Take(3)") && repositoryPackageRow.Contains("TagBadges"), "repository package row must expose at most three key chip-ready tag badges when four cannot fit.");
+            Require(repositorySettingsController.Contains("return \"已安装\";"), "installed repository packages must default to a passive installed label instead of a visible uninstall label.");
+            Require(repositorySettingsController.Contains("return \"有更新\";"), "updatable repository packages must show a distinct update label.");
+
+            foreach (var forbiddenGrid in new[] { "_repositoriesGrid", "_repositoryPackagesGrid", "_pendingPackageOperationsGrid" })
+            {
+                Require(!settingsWindow.Contains(forbiddenGrid), "repository settings must not use DataGrid as the main warehouse surface: " + forbiddenGrid);
+            }
+
+            foreach (var forbiddenRibbonMutation in new[] { "FindRevitRibbonItem", "LiveAgent", "ItemText =" })
+            {
+                Require(!settingsWindow.Contains(forbiddenRibbonMutation), "repository settings must not promise live Revit Ribbon mutation: " + forbiddenRibbonMutation);
+            }
+
+            Require(settingsWindow.Contains("BuildRepositoryPackageItemsPanel") && settingsWindow.Contains("ScrollViewer.HorizontalScrollBarVisibilityProperty, ScrollBarVisibility.Disabled"), "repository package browsing must use a vertical scrolling responsive grid instead of a single virtualized column.");
+            Require(settingsWindow.Contains("ApplyRepositoryPackageFilter") && settingsWindow.Contains("RepositoryPackageFilterChanged") && settingsWindow.Contains("ApplyPackageFilters"), "repository package browsing must support controller-backed search and state filters for large plugin catalogs.");
+            Require(settingsWindow.Contains("ApplyRepositoryPackageFilter") && settingsWindow.Contains("RepositoryPackageFilterChanged"), "repository package browsing must support search and state filters for large plugin catalogs.");
+            foreach (var rowToken in new[] { "RepositoryDisplayName", "StatusPriority", "PrimaryAction", "PrimaryActionLabel", "SearchText", "TagsText", "CategoryText" })
+            {
+                Require(repositoryPackageRow.Contains(rowToken), "repository package row must expose user-facing browsing metadata: " + rowToken);
+            }
+
+            Require(settingsWindow.Contains("CreateButton(\"新增仓库\"") && settingsWindow.Contains("AddRepository()"), "repository toolbar must expose one generic add repository action.");
             foreach (var forbiddenAddMenu in new[] { "新增 GitHub 公开仓库", "新增 GitHub 私有仓库", "新增 Gitee 公开仓库", "新增 Gitee 私有仓库" })
             {
                 Require(!settingsWindow.Contains(forbiddenAddMenu), "repository context menu must not expose split add repository entries: " + forbiddenAddMenu);
             }
 
-            Require(settingsWindow.Contains("BuildLogsTab") && settingsWindow.Contains("\"日志\"") && !settingsWindow.Contains("BuildDiagnosticsTab"), "settings must present diagnostics as logs.");
+            Require(!settingsWindow.Contains("tabs.Items.Add(BuildLogsTab())"), "settings must keep logs out of the main tab set.");
             Require(settingsWindow.Contains("ApiKey") && settingsWindow.Contains("Visibility") && settingsWindow.Contains("private"), "settings must support public and private repositories with apiKey.");
             Require(!settingsWindow.Contains("确定卸载插件包") && !settingsWindow.Contains("result.Success ? MessageBoxImage.Information"), "repository package install and uninstall must report status inline without pop-up result prompts.");
             Require(repositoryBrowser.Contains("sparse-checkout") && repositoryBrowser.Contains("SparseCheckoutPatterns") && repositoryBrowser.Contains("ConfigureSparseCheckout"), "repository browsing must use sparse checkout instead of pulling the whole repository.");
@@ -1474,6 +1542,48 @@ namespace PlugHub.StaticValidation
                 false
             })) ?? string.Empty;
             Require(!publicUrl.Contains("secret") && !publicUrl.Contains("user:") && publicUrl.Contains("example.com/owner/repo.git"), "public repository URL must strip userinfo before being written to git remote config.");
+            var fullGiteeUrl = Convert.ToString(repositoryUrl.Invoke(browser, new object[]
+            {
+                new PlugHub.Framework.Configuration.PackageRepositoryConfiguration
+                {
+                    Provider = "gitee",
+                    Visibility = "public",
+                    Repository = "https://gitee.com/GaoMengGu/PlugHub_Packages"
+                },
+                false
+            })) ?? string.Empty;
+            var shorthandGiteeUrl = Convert.ToString(repositoryUrl.Invoke(browser, new object[]
+            {
+                new PlugHub.Framework.Configuration.PackageRepositoryConfiguration
+                {
+                    Provider = "gitee",
+                    Visibility = "public",
+                    Repository = "GaoMengGu/PlugHub_Packages"
+                },
+                false
+            })) ?? string.Empty;
+            var fullGitHubUrl = Convert.ToString(repositoryUrl.Invoke(browser, new object[]
+            {
+                new PlugHub.Framework.Configuration.PackageRepositoryConfiguration
+                {
+                    Provider = "github",
+                    Visibility = "public",
+                    Repository = "https://github.com/GaoMengGu/PlugHub_Packages"
+                },
+                false
+            })) ?? string.Empty;
+            var shorthandGitHubUrl = Convert.ToString(repositoryUrl.Invoke(browser, new object[]
+            {
+                new PlugHub.Framework.Configuration.PackageRepositoryConfiguration
+                {
+                    Provider = "github",
+                    Visibility = "public",
+                    Repository = "GaoMengGu/PlugHub_Packages"
+                },
+                false
+            })) ?? string.Empty;
+            Require(fullGiteeUrl == "https://gitee.com/GaoMengGu/PlugHub_Packages" && shorthandGiteeUrl == "https://gitee.com/GaoMengGu/PlugHub_Packages.git", "Gitee repository URLs must support both full URL and owner/repository shorthand forms.");
+            Require(fullGitHubUrl == "https://github.com/GaoMengGu/PlugHub_Packages" && shorthandGitHubUrl == "https://github.com/GaoMengGu/PlugHub_Packages.git", "GitHub repository URLs must support both full URL and owner/repository shorthand forms.");
             var service = new PlugHub.Framework.Packages.PackageRepositoryService();
             service.Browse(Path.GetTempPath(), damagedRepository, out var diagnostics);
             Require(diagnostics.Any(message => message.Code == "PH-REPOSITORY-APIKEY"), "private repository with damaged encrypted credentials must ask for a replacement apiKey.");

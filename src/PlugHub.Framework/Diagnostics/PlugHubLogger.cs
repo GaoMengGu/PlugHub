@@ -73,7 +73,7 @@ namespace PlugHub.Framework.Diagnostics
                 });
         }
 
-        internal static string LogsDirectory(string baseDirectory)
+        public static string LogsDirectory(string baseDirectory)
         {
             var root = string.IsNullOrWhiteSpace(baseDirectory)
                 ? AppDomain.CurrentDomain.BaseDirectory
@@ -84,7 +84,31 @@ namespace PlugHub.Framework.Diagnostics
                 root = Environment.CurrentDirectory;
             }
 
-            return Path.Combine(Path.GetFullPath(root), "logs");
+            var preferred = Path.Combine(Path.GetFullPath(root), "logs");
+            if (TryEnsureDirectory(preferred))
+            {
+                return preferred;
+            }
+
+            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var fallbackRoot = string.IsNullOrWhiteSpace(localAppData)
+                ? Environment.CurrentDirectory
+                : localAppData;
+            var fallback = Path.Combine(fallbackRoot, "PlugHub", "logs");
+            return TryEnsureDirectory(fallback) ? fallback : preferred;
+        }
+
+        private static bool TryEnsureDirectory(string directory)
+        {
+            try
+            {
+                Directory.CreateDirectory(directory);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private static string Normalize(string value)

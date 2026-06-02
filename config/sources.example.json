@@ -16,11 +16,11 @@
       "enabled": true
     },
     {
-      "id": "company-private-packages",
-      "provider": "github",
+      "id": "gitee-private-packages",
+      "provider": "gitee",
       "visibility": "private",
-      "repository": "your-org/private-plughub-packages",
-      "ref": "main",
+      "repository": "https://gitee.com/your-gitee-org/private-plughub-packages",
+      "ref": "master",
       "manifestPath": "package.json",
       "apiKey": "",
       "enabled": false
@@ -36,11 +36,11 @@
       "enabled": false
     },
     {
-      "id": "gitee-private-packages",
-      "provider": "gitee",
+      "id": "company-private-packages",
+      "provider": "github",
       "visibility": "private",
-      "repository": "https://gitee.com/your-gitee-org/private-plughub-packages",
-      "ref": "master",
+      "repository": "your-org/private-plughub-packages",
+      "ref": "main",
       "manifestPath": "package.json",
       "apiKey": "",
       "enabled": false

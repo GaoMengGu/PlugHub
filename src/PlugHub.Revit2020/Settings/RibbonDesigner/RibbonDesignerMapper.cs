@@ -97,41 +97,70 @@ namespace PlugHub.Revit2020.Settings.RibbonDesigner
 
         private static List<RibbonDesignerNodeRow> CreateDefaultPanels(IEnumerable<FeatureRow> features)
         {
-            var defaultPanel = new RibbonDesignerNodeRow
-            {
-                NodeType = RibbonDesignerNodeRow.Panel,
-                Id = "default",
-                Text = "默认",
-                Order = 100,
-                RequiresRestart = true,
-                StatusText = "需重启"
-            };
-
-            var index = 0;
-            foreach (var feature in (features ?? new List<FeatureRow>())
+            var panels = new List<RibbonDesignerNodeRow>();
+            foreach (var featureGroup in (features ?? new List<FeatureRow>())
                 .Where(feature => feature.Visible && !string.IsNullOrWhiteSpace(feature.FeatureId))
-                .OrderBy(feature => SafeText(feature.ModuleName, feature.ModuleId), StringComparer.OrdinalIgnoreCase)
+                .OrderBy(feature => DefaultPanelName(feature), StringComparer.OrdinalIgnoreCase)
                 .ThenBy(feature => feature.Order)
-                .ThenBy(feature => SafeText(feature.DisplayName, feature.Name), StringComparer.OrdinalIgnoreCase))
+                .ThenBy(feature => SafeText(feature.DisplayName, feature.Name), StringComparer.OrdinalIgnoreCase)
+                .ThenBy(feature => feature.FeatureId, StringComparer.OrdinalIgnoreCase)
+                .GroupBy(DefaultPanelKey, StringComparer.OrdinalIgnoreCase))
             {
-                index++;
-                defaultPanel.Children.Add(new RibbonDesignerNodeRow
+                var firstFeature = featureGroup.First();
+                var panel = new RibbonDesignerNodeRow
                 {
-                    NodeType = RibbonDesignerNodeRow.PushButton,
-                    Id = SafeId(feature.FeatureId, feature.Name),
-                    Text = SafeText(feature.DisplayName, feature.Name),
-                    FeatureId = feature.FeatureId,
-                    Size = "large",
-                    IconPath = feature.IconPath,
-                    Order = index * 100,
+                    NodeType = RibbonDesignerNodeRow.Panel,
+                    Id = SafeId(firstFeature.Group, DefaultPanelName(firstFeature)),
+                    Text = DefaultPanelName(firstFeature),
+                    Order = (panels.Count + 1) * 100,
                     RequiresRestart = true,
                     StatusText = "需重启"
-                });
+                };
+
+                var index = 0;
+                foreach (var feature in featureGroup
+                    .OrderBy(feature => feature.Order)
+                    .ThenBy(feature => SafeText(feature.DisplayName, feature.Name), StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(feature => feature.FeatureId, StringComparer.OrdinalIgnoreCase))
+                {
+                    index++;
+                    panel.Children.Add(new RibbonDesignerNodeRow
+                    {
+                        NodeType = RibbonDesignerNodeRow.PushButton,
+                        Id = SafeId(feature.FeatureId, feature.Name),
+                        Text = SafeText(feature.DisplayName, feature.Name),
+                        FeatureId = feature.FeatureId,
+                        Size = NormalizeButtonSize(feature.ButtonSize),
+                        IconPath = feature.IconPath,
+                        Order = index * 100,
+                        RequiresRestart = true,
+                        StatusText = "需重启"
+                    });
+                }
+
+                if (panel.Children.Count > 0)
+                {
+                    panels.Add(panel);
+                }
             }
 
-            return defaultPanel.Children.Count == 0
-                ? new List<RibbonDesignerNodeRow>()
-                : new List<RibbonDesignerNodeRow> { defaultPanel };
+            return panels;
+        }
+
+        private static string DefaultPanelKey(FeatureRow feature)
+        {
+            return DefaultPanelName(feature).Trim();
+        }
+
+        private static string DefaultPanelName(FeatureRow feature)
+        {
+            return SafeText(
+                feature == null ? string.Empty : feature.GroupDisplayText,
+                SafeText(
+                    feature == null ? string.Empty : feature.ModuleName,
+                    SafeText(
+                        feature == null ? string.Empty : feature.Group,
+                        SafeText(feature == null ? string.Empty : feature.ModuleId, "默认工具"))));
         }
 
         private static RibbonDesignerNodeRow FromPanel(RibbonPanelLayoutConfiguration panel)

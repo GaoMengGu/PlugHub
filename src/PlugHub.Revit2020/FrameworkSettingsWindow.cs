@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -32,6 +34,17 @@ namespace PlugHub.Revit2020
         private const string DefaultRibbonDesignerPanelName = "默认";
         private const string RibbonDesignerBrowseIconAction = "__browse_icon__";
         private const string RibbonDesignerClearIconAction = "__clear_icon__";
+        private const double RepositorySettingsDefaultWidth = 1140.0;
+        private const double RepositorySettingsDefaultHeight = 600.0;
+        private const double RepositorySourceCardWidth = 244.0;
+        private const double RepositorySourceCardSlotWidth = 256.0;
+        private const double RepositoryVisibleSourceCards = 4.0;
+        private const double RepositoryPackageColumns = 3.0;
+        private const double RepositoryPackageGridChromeReserve = 60.0;
+        private const double RepositoryPackageCardSlotWidth = (RepositorySettingsDefaultWidth - RepositoryPackageGridChromeReserve) / RepositoryPackageColumns;
+        private const double RepositoryPackageCardWidth = RepositoryPackageCardSlotWidth - 16.0;
+        private const double RepositoryPackageActionWidth = 72.0;
+        private const double RepositoryPackageActionHeight = 26.0;
         private static readonly string[] SameNameIconExtensions = { ".png", ".ico", ".jpg", ".jpeg", ".bmp" };
 
         private readonly SettingsConfigurationStore _configurationStore;
@@ -39,18 +52,23 @@ namespace PlugHub.Revit2020
         private FrameworkConfiguration _configuration;
         private readonly PackageRepositoryService _packageRepositoryService = new PackageRepositoryService();
         private readonly RepositoryCredentialService _credentialService = new RepositoryCredentialService();
+        private readonly RepositorySettingsController _repositorySettingsController = new RepositorySettingsController();
         private readonly RibbonDesignerMapper _ribbonDesignerMapper = new RibbonDesignerMapper();
         private readonly RibbonDesignerDropService _ribbonDesignerDropService = new RibbonDesignerDropService();
         private readonly RibbonLayoutDiffService _ribbonLayoutDiffService = new RibbonLayoutDiffService();
         private readonly DataGrid _pluginPackagesGrid = CreateGrid();
         private readonly DataGrid _featuresGrid = CreateGrid();
         private readonly DataGrid _groupsGrid = CreateGrid();
-        private readonly DataGrid _repositoriesGrid = CreateGrid();
-        private readonly DataGrid _repositoryPackagesGrid = CreateGrid();
-        private readonly DataGrid _pendingPackageOperationsGrid = CreateGrid();
         private readonly DataGrid _diagnosticsGrid = CreateGrid();
+        private readonly ListBox _repositorySourcesList = new ListBox();
+        private readonly ListBox _warehousePackageList = new ListBox();
+        private readonly TextBox _repositoryPackageSearchText = new TextBox();
+        private readonly ComboBox _repositoryPackageStateFilter = new ComboBox();
+        private readonly ComboBox _repositoryPackageRepositoryFilter = new ComboBox();
+        private readonly ComboBox _repositoryPackageTagFilter = new ComboBox();
         private readonly TextBlock _statusText = new TextBlock();
         private List<SettingsConfigurationStore.ModuleManifestDocument> _moduleDocuments = new List<SettingsConfigurationStore.ModuleManifestDocument>();
+        private readonly List<RepositoryPackageRow> _repositoryPackageRows = new List<RepositoryPackageRow>();
         private List<RibbonDesignerNodeRow> _originalRibbonDesignerTabs = new List<RibbonDesignerNodeRow>();
         private readonly ObservableCollection<GroupOption> _groupOptions = new ObservableCollection<GroupOption>();
         private readonly IReadOnlyList<string> _buttonSizeOptions = new[] { "large", "small" };
@@ -77,9 +95,9 @@ namespace PlugHub.Revit2020
             _moduleDocuments = _configurationStore.LoadModuleDocuments(_configuration);
 
             Title = "PlugHub 设置";
-            Width = 1060;
-            Height = 680;
-            MinWidth = 860;
+            Width = RepositorySettingsDefaultWidth;
+            Height = RepositorySettingsDefaultHeight;
+            MinWidth = 1000;
             MinHeight = 560;
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
             Background = new SolidColorBrush(Color.FromRgb(247, 249, 252));
@@ -113,7 +131,6 @@ namespace PlugHub.Revit2020
             };
             tabs.Items.Add(BuildRibbonLayoutTab());
             tabs.Items.Add(BuildRepositoriesTab());
-            tabs.Items.Add(BuildLogsTab());
             Grid.SetRow(tabs, 1);
             root.Children.Add(tabs);
 
@@ -141,6 +158,7 @@ namespace PlugHub.Revit2020
                 Orientation = Orientation.Horizontal,
                 HorizontalAlignment = HorizontalAlignment.Right
             };
+            buttons.Children.Add(BuildRepositoryDiagnosticsMenu());
             buttons.Children.Add(CreateButton("重新加载", (sender, args) => ReloadFromDisk()));
             buttons.Children.Add(CreateButton("保存配置", (sender, args) => TrySave()));
             buttons.Children.Add(CreateButton("关闭", (sender, args) => Close()));
@@ -148,6 +166,33 @@ namespace PlugHub.Revit2020
             footer.Children.Add(buttons);
 
             return footer;
+        }
+
+        private Button BuildRepositoryDiagnosticsMenu()
+        {
+            var button = CreateButton("诊断", OpenRepositoryDiagnosticsMenu);
+            var menu = new ContextMenu();
+            menu.Items.Add(MenuItem("打开日志目录", (sender, args) => OpenLogsDirectory()));
+            menu.Items.Add(MenuItem("导出日志", (sender, args) => ExportLogs()));
+            menu.Items.Add(MenuItem("查看诊断", (sender, args) => ShowRepositoryDiagnostics()));
+            button.ContextMenu = menu;
+            return button;
+        }
+
+        private void OpenRepositoryDiagnosticsMenu(object sender, RoutedEventArgs args)
+        {
+            if (!(sender is Button button) || button.ContextMenu == null) return;
+            button.ContextMenu.PlacementTarget = button;
+            button.ContextMenu.Placement = PlacementMode.Top;
+            button.ContextMenu.IsOpen = true;
+        }
+
+        private void ShowRepositoryDiagnostics()
+        {
+            FrameworkStatusWindow.ShowLogs(
+                "PlugHub 诊断",
+                "当前运行诊断。日志默认写入本地 logs 目录。",
+                FrameworkRuntimeState.Current?.Diagnostics ?? Array.Empty<DiagnosticMessage>());
         }
 
         private static TextBlock EditorLabel(string text)
@@ -288,59 +333,341 @@ namespace PlugHub.Revit2020
 
         private TabItem BuildRepositoriesTab()
         {
-            _repositoriesGrid.ContextMenu = BuildRepositoryMenu();
-            _repositoryPackagesGrid.ContextMenu = BuildRepositoryPackageMenu();
-            _pendingPackageOperationsGrid.ContextMenu = BuildPendingPackageOperationMenu();
-
             var layout = new Grid();
             layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0.42, GridUnitType.Star) });
             layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0.38, GridUnitType.Star) });
             layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0.20, GridUnitType.Star) });
+            layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
-            var repositoriesHeader = SectionHeader("仓库");
-            Grid.SetRow(repositoriesHeader, 0);
-            layout.Children.Add(repositoriesHeader);
-            Grid.SetRow(_repositoriesGrid, 1);
-            layout.Children.Add(_repositoriesGrid);
+            var repositoriesToolbar = BuildRepositoryToolbar();
+            Grid.SetRow(repositoriesToolbar, 0);
+            layout.Children.Add(repositoriesToolbar);
+            var sources = BuildRepositorySourceCards();
+            Grid.SetRow(sources, 1);
+            layout.Children.Add(sources);
 
-            var packagesHeader = SectionHeader("仓库插件包");
-            Grid.SetRow(packagesHeader, 2);
-            layout.Children.Add(packagesHeader);
-            Grid.SetRow(_repositoryPackagesGrid, 3);
-            layout.Children.Add(_repositoryPackagesGrid);
-
-            var pendingHeader = SectionHeader("待处理操作");
-            Grid.SetRow(pendingHeader, 4);
-            layout.Children.Add(pendingHeader);
-            Grid.SetRow(_pendingPackageOperationsGrid, 5);
-            layout.Children.Add(_pendingPackageOperationsGrid);
+            var packagesToolbar = BuildRepositoryPackageToolbar();
+            Grid.SetRow(packagesToolbar, 2);
+            layout.Children.Add(packagesToolbar);
+            var packages = BuildRepositoryPackageList();
+            Grid.SetRow(packages, 3);
+            layout.Children.Add(packages);
 
             return BuildTab("仓库", layout);
         }
 
-        private TabItem BuildLogsTab()
+        private UIElement BuildRepositorySourceCards()
         {
-            _diagnosticsGrid.IsReadOnly = true;
-            var layout = new Grid();
-            layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            _repositorySourcesList.BorderThickness = new Thickness(0);
+            _repositorySourcesList.Background = Brushes.Transparent;
+            _repositorySourcesList.ContextMenu = BuildRepositoryMenu();
+            _repositorySourcesList.Height = 74;
+            _repositorySourcesList.SelectionMode = SelectionMode.Single;
+            _repositorySourcesList.ItemTemplate = BuildRepositorySourceCardTemplate();
+            _repositorySourcesList.PreviewMouseRightButtonDown += ListBoxPreviewMouseRightButtonDown;
+            _repositorySourcesList.SelectionChanged += RepositorySourceSelectionChanged;
+            _repositorySourcesList.SetValue(ScrollViewer.HorizontalScrollBarVisibilityProperty, ScrollBarVisibility.Disabled);
+            _repositorySourcesList.SetValue(ScrollViewer.VerticalScrollBarVisibilityProperty, ScrollBarVisibility.Disabled);
+            _repositorySourcesList.SetValue(ScrollViewer.CanContentScrollProperty, false);
 
-            var buttons = new StackPanel
+            var panelFactory = new FrameworkElementFactory(typeof(StackPanel));
+            panelFactory.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
+            _repositorySourcesList.ItemsPanel = new ItemsPanelTemplate(panelFactory);
+
+            return BuildRepositorySourceScrollViewer(_repositorySourcesList);
+        }
+
+        private static ScrollViewer BuildRepositorySourceScrollViewer(UIElement content)
+        {
+            var scroll = new ScrollViewer
+            {
+                Height = 94,
+                Content = content,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Disabled
+            };
+            scroll.SetValue(ScrollViewer.CanContentScrollProperty, false);
+            return scroll;
+        }
+
+        private DataTemplate BuildRepositorySourceCardTemplate()
+        {
+            var border = new FrameworkElementFactory(typeof(Border));
+            border.SetValue(Border.WidthProperty, RepositorySourceCardWidth);
+            border.SetValue(Border.MarginProperty, new Thickness(8, 4, 4, 8));
+            border.SetValue(Border.PaddingProperty, new Thickness(10, 8, 10, 8));
+            border.SetValue(Border.BackgroundProperty, Brushes.White);
+            border.SetValue(Border.BorderBrushProperty, new SolidColorBrush(Color.FromRgb(214, 222, 233)));
+            border.SetValue(Border.BorderThicknessProperty, new Thickness(1));
+            border.SetValue(FrameworkElement.CursorProperty, Cursors.Hand);
+            border.AddHandler(UIElement.MouseLeftButtonUpEvent, new MouseButtonEventHandler(BrowseRepositorySourceCacheFromCard));
+
+            var root = new FrameworkElementFactory(typeof(DockPanel));
+            border.AppendChild(root);
+
+            var toggle = new FrameworkElementFactory(typeof(CheckBox));
+            toggle.SetValue(DockPanel.DockProperty, Dock.Left);
+            toggle.SetValue(CheckBox.WidthProperty, 22.0);
+            toggle.SetValue(CheckBox.HeightProperty, 26.0);
+            toggle.SetValue(CheckBox.MarginProperty, new Thickness(0, 0, 8, 0));
+            toggle.SetValue(CheckBox.VerticalAlignmentProperty, VerticalAlignment.Top);
+            toggle.SetValue(FrameworkElement.ToolTipProperty, "启用仓库源");
+            toggle.SetBinding(ToggleButton.IsCheckedProperty, new Binding(nameof(RepositoryRow.Enabled)));
+            toggle.AddHandler(ButtonBase.ClickEvent, new RoutedEventHandler(ToggleRepositorySourceFromCard));
+            root.AppendChild(toggle);
+
+            var actions = new FrameworkElementFactory(typeof(StackPanel));
+            actions.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
+            actions.SetValue(StackPanel.VerticalAlignmentProperty, VerticalAlignment.Top);
+            actions.SetValue(DockPanel.DockProperty, Dock.Right);
+            root.AppendChild(actions);
+
+            actions.AppendChild(BuildRepositorySourceMoreGlyph());
+
+            var text = new FrameworkElementFactory(typeof(StackPanel));
+            text.SetValue(StackPanel.OrientationProperty, Orientation.Vertical);
+            root.AppendChild(text);
+
+            var title = new FrameworkElementFactory(typeof(TextBlock));
+            title.SetBinding(TextBlock.TextProperty, new Binding(nameof(RepositoryRow.DisplayName)));
+            title.SetValue(TextBlock.FontWeightProperty, FontWeights.SemiBold);
+            title.SetValue(TextBlock.ForegroundProperty, new SolidColorBrush(Color.FromRgb(24, 34, 48)));
+            title.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
+            title.SetBinding(FrameworkElement.ToolTipProperty, new Binding(nameof(RepositoryRow.DisplayName)));
+            text.AppendChild(title);
+
+            var meta = new FrameworkElementFactory(typeof(TextBlock));
+            meta.SetBinding(TextBlock.TextProperty, new Binding(".") { Converter = new RepositoryMetaLabelConverter() });
+            meta.SetValue(TextBlock.MarginProperty, new Thickness(0, 4, 0, 0));
+            meta.SetValue(TextBlock.ForegroundProperty, new SolidColorBrush(Color.FromRgb(72, 84, 101)));
+            text.AppendChild(meta);
+
+            return new DataTemplate { VisualTree = border };
+        }
+
+        private FrameworkElementFactory BuildRepositorySourceMoreGlyph()
+        {
+            var button = new FrameworkElementFactory(typeof(TextBlock));
+            button.SetValue(TextBlock.TextProperty, "...");
+            button.SetValue(TextBlock.FontSizeProperty, 18.0);
+            button.SetValue(TextBlock.FontWeightProperty, FontWeights.SemiBold);
+            button.SetValue(TextBlock.TextAlignmentProperty, TextAlignment.Center);
+            button.SetValue(TextBlock.LineStackingStrategyProperty, LineStackingStrategy.BlockLineHeight);
+            button.SetValue(TextBlock.LineHeightProperty, 14.0);
+            button.SetValue(TextBlock.ForegroundProperty, new SolidColorBrush(Color.FromRgb(72, 84, 101)));
+            button.SetValue(FrameworkElement.WidthProperty, 22.0);
+            button.SetValue(FrameworkElement.HeightProperty, 16.0);
+            button.SetValue(FrameworkElement.MarginProperty, new Thickness(2, -5, 0, 0));
+            button.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Top);
+            button.SetValue(FrameworkElement.CursorProperty, Cursors.Hand);
+            button.SetValue(FrameworkElement.ToolTipProperty, "更多操作");
+            button.AddHandler(UIElement.MouseLeftButtonUpEvent, new MouseButtonEventHandler(OpenRepositorySourceMenuFromCard));
+            return button;
+        }
+
+        private UIElement BuildRepositoryToolbar()
+        {
+            var actions = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
                 HorizontalAlignment = HorizontalAlignment.Right,
                 Margin = new Thickness(8, 8, 8, 6)
             };
-            buttons.Children.Add(CreateButton("导出日志", (sender, args) => ExportLogs()));
-            Grid.SetRow(buttons, 0);
-            layout.Children.Add(buttons);
+            actions.Children.Add(CreateButton("一键同步", (sender, args) => CheckRepositoryUpdates()));
+            actions.Children.Add(CreateButton("新增仓库", (sender, args) => AddRepository()));
+            return BuildToolbarHeader("仓库源", actions);
+        }
 
-            Grid.SetRow(_diagnosticsGrid, 1);
-            layout.Children.Add(_diagnosticsGrid);
-            return BuildTab("日志", layout);
+        private UIElement BuildRepositoryPackageToolbar()
+        {
+            _repositoryPackageSearchText.Width = 220;
+            _repositoryPackageSearchText.Height = 26;
+            _repositoryPackageSearchText.Margin = new Thickness(8, 0, 0, 0);
+            _repositoryPackageSearchText.VerticalContentAlignment = VerticalAlignment.Center;
+            _repositoryPackageSearchText.TextChanged += RepositoryPackageFilterChanged;
+
+            _repositoryPackageStateFilter.Width = 110;
+            _repositoryPackageStateFilter.Height = 26;
+            _repositoryPackageStateFilter.Margin = new Thickness(8, 0, 0, 0);
+            _repositoryPackageStateFilter.ItemsSource = new[] { "全部", "未安装", "可更新", "已安装", "待重启" };
+            _repositoryPackageStateFilter.SelectedIndex = 0;
+            _repositoryPackageStateFilter.SelectionChanged += RepositoryPackageFilterChanged;
+
+            _repositoryPackageTagFilter.Width = 140;
+            _repositoryPackageTagFilter.Height = 26;
+            _repositoryPackageTagFilter.Margin = new Thickness(8, 0, 0, 0);
+            _repositoryPackageTagFilter.SelectionChanged += RepositoryPackageFilterChanged;
+
+            var actions = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(8, 8, 8, 6)
+            };
+            actions.Children.Add(EditorLabel("搜索"));
+            actions.Children.Add(_repositoryPackageSearchText);
+            actions.Children.Add(EditorLabel("状态"));
+            actions.Children.Add(_repositoryPackageStateFilter);
+            actions.Children.Add(EditorLabel("分类"));
+            actions.Children.Add(_repositoryPackageTagFilter);
+            return BuildToolbarHeader("仓库插件包", actions);
+        }
+
+        private UIElement BuildRepositoryPackageList()
+        {
+            _warehousePackageList.BorderThickness = new Thickness(0);
+            _warehousePackageList.Background = Brushes.White;
+            _warehousePackageList.ContextMenu = BuildRepositoryPackageMenu();
+            _warehousePackageList.ItemTemplate = BuildRepositoryPackageTemplate();
+            _warehousePackageList.ItemsPanel = BuildRepositoryPackageItemsPanel();
+            _warehousePackageList.SelectionMode = SelectionMode.Single;
+            _warehousePackageList.HorizontalContentAlignment = HorizontalAlignment.Center;
+            _warehousePackageList.PreviewMouseRightButtonDown += ListBoxPreviewMouseRightButtonDown;
+            _warehousePackageList.SetValue(ScrollViewer.CanContentScrollProperty, false);
+            _warehousePackageList.SetValue(ScrollViewer.HorizontalScrollBarVisibilityProperty, ScrollBarVisibility.Disabled);
+            _warehousePackageList.SetValue(ScrollViewer.VerticalScrollBarVisibilityProperty, ScrollBarVisibility.Auto);
+            return _warehousePackageList;
+        }
+
+        private static ItemsPanelTemplate BuildRepositoryPackageItemsPanel()
+        {
+            var panelFactory = new FrameworkElementFactory(typeof(WrapPanel));
+            panelFactory.SetValue(WrapPanel.OrientationProperty, Orientation.Horizontal);
+            panelFactory.SetValue(WrapPanel.ItemWidthProperty, RepositoryPackageCardSlotWidth);
+            panelFactory.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+            return new ItemsPanelTemplate(panelFactory);
+        }
+
+        private DataTemplate BuildRepositoryPackageTemplate()
+        {
+            var border = new FrameworkElementFactory(typeof(Border));
+            border.SetValue(Border.WidthProperty, RepositoryPackageCardWidth);
+            border.SetValue(Border.MarginProperty, new Thickness(8, 4, 8, 4));
+            border.SetValue(Border.PaddingProperty, new Thickness(10, 8, 10, 8));
+            border.SetValue(Border.BackgroundProperty, Brushes.White);
+            border.SetValue(Border.BorderBrushProperty, new SolidColorBrush(Color.FromRgb(226, 232, 240)));
+            border.SetValue(Border.BorderThicknessProperty, new Thickness(1));
+            border.SetValue(Border.MinHeightProperty, 78.0);
+
+            var row = new FrameworkElementFactory(typeof(DockPanel));
+            row.SetValue(FrameworkElement.MinHeightProperty, 58.0);
+            border.AppendChild(row);
+
+            var actions = new FrameworkElementFactory(typeof(StackPanel));
+            actions.SetValue(DockPanel.DockProperty, Dock.Right);
+            actions.SetValue(StackPanel.OrientationProperty, Orientation.Vertical);
+            actions.SetValue(StackPanel.HorizontalAlignmentProperty, HorizontalAlignment.Right);
+            actions.SetValue(StackPanel.VerticalAlignmentProperty, VerticalAlignment.Center);
+            row.AppendChild(actions);
+
+            var body = new FrameworkElementFactory(typeof(StackPanel));
+            body.SetValue(StackPanel.OrientationProperty, Orientation.Vertical);
+            body.SetValue(StackPanel.MarginProperty, new Thickness(0, 0, 6, 0));
+            row.AppendChild(body);
+
+            var title = new FrameworkElementFactory(typeof(TextBlock));
+            title.SetBinding(TextBlock.TextProperty, new Binding(nameof(RepositoryPackageRow.DisplayName)));
+            title.SetValue(TextBlock.FontWeightProperty, FontWeights.SemiBold);
+            title.SetValue(TextBlock.ForegroundProperty, new SolidColorBrush(Color.FromRgb(24, 34, 48)));
+            title.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
+            body.AppendChild(title);
+
+            var packageId = new FrameworkElementFactory(typeof(TextBlock));
+            packageId.SetBinding(TextBlock.TextProperty, new Binding(nameof(RepositoryPackageRow.PackageId)));
+            packageId.SetValue(TextBlock.MarginProperty, new Thickness(0, 3, 0, 0));
+            packageId.SetValue(TextBlock.FontSizeProperty, 11.0);
+            packageId.SetValue(TextBlock.ForegroundProperty, new SolidColorBrush(Color.FromRgb(107, 114, 128)));
+            packageId.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
+            body.AppendChild(packageId);
+
+            var meta = new FrameworkElementFactory(typeof(TextBlock));
+            meta.SetBinding(TextBlock.TextProperty, new Binding(".") { Converter = new RepositoryPackageMetaLabelConverter() });
+            meta.SetValue(TextBlock.MarginProperty, new Thickness(0, 2, 0, 0));
+            meta.SetValue(TextBlock.FontSizeProperty, 11.0);
+            meta.SetValue(TextBlock.ForegroundProperty, new SolidColorBrush(Color.FromRgb(96, 110, 128)));
+            meta.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
+            body.AppendChild(meta);
+
+            body.AppendChild(BuildRepositoryPackageTagsControl());
+
+            actions.AppendChild(BuildRepositoryPackagePrimaryActionButton());
+            actions.AppendChild(BuildRepositoryPackageUninstallButton());
+
+            return new DataTemplate { VisualTree = border };
+        }
+
+        private FrameworkElementFactory BuildRepositoryPackagePrimaryActionButton()
+        {
+            var action = new FrameworkElementFactory(typeof(Button));
+            action.SetBinding(ContentControl.ContentProperty, new Binding(nameof(RepositoryPackageRow.PrimaryActionLabel)));
+            action.SetValue(Button.MinWidthProperty, RepositoryPackageActionWidth);
+            action.SetValue(Button.HeightProperty, RepositoryPackageActionHeight);
+            action.SetValue(FrameworkElement.MarginProperty, new Thickness(0, 0, 0, 6));
+            action.SetValue(Button.BorderThicknessProperty, new Thickness(1));
+            action.SetBinding(Button.BackgroundProperty, new Binding(nameof(RepositoryPackageRow.PrimaryAction)) { Converter = new RepositoryPackageActionBrushConverter() });
+            action.SetBinding(Button.ForegroundProperty, new Binding(nameof(RepositoryPackageRow.PrimaryAction)) { Converter = new RepositoryPackageActionForegroundConverter() });
+            action.SetBinding(Button.BorderBrushProperty, new Binding(nameof(RepositoryPackageRow.PrimaryAction)) { Converter = new RepositoryPackageActionBorderConverter() });
+            action.AddHandler(Button.ClickEvent, new RoutedEventHandler(RunRepositoryPackagePrimaryAction));
+            return action;
+        }
+
+        private FrameworkElementFactory BuildRepositoryPackageUninstallButton()
+        {
+            var action = new FrameworkElementFactory(typeof(Button));
+            action.SetValue(ContentControl.ContentProperty, "卸载");
+            action.SetValue(Button.MinWidthProperty, RepositoryPackageActionWidth);
+            action.SetValue(Button.HeightProperty, RepositoryPackageActionHeight);
+            action.SetValue(Button.BorderThicknessProperty, new Thickness(1));
+            action.SetValue(Button.BackgroundProperty, RepositoryPackageUninstallBackground());
+            action.SetValue(Button.ForegroundProperty, RepositoryPackageUninstallForeground());
+            action.SetValue(Button.BorderBrushProperty, RepositoryPackageUninstallBorder());
+            action.AddHandler(Button.MouseEnterEvent, new MouseEventHandler(RepositoryPackageUninstallHoverEnter));
+            action.AddHandler(Button.MouseLeaveEvent, new MouseEventHandler(RepositoryPackageUninstallHoverLeave));
+            action.AddHandler(Button.ClickEvent, new RoutedEventHandler(RunRepositoryPackageUninstallAction));
+            return action;
+        }
+
+        private static FrameworkElementFactory BuildRepositoryPackageTagsControl()
+        {
+            var tags = new FrameworkElementFactory(typeof(ItemsControl));
+            tags.SetValue(FrameworkElement.MarginProperty, new Thickness(0, 6, 0, 0));
+            tags.SetBinding(ItemsControl.ItemsSourceProperty, new Binding(nameof(RepositoryPackageRow.TagBadges)));
+
+            var panelFactory = new FrameworkElementFactory(typeof(WrapPanel));
+            panelFactory.SetValue(WrapPanel.OrientationProperty, Orientation.Horizontal);
+            tags.SetValue(ItemsControl.ItemsPanelProperty, new ItemsPanelTemplate(panelFactory));
+            tags.SetValue(ItemsControl.ItemTemplateProperty, BuildRepositoryTagChipTemplate());
+            return tags;
+        }
+
+        private static DataTemplate BuildRepositoryTagChipTemplate()
+        {
+            var chip = new FrameworkElementFactory(typeof(Border));
+            chip.SetValue(Border.BackgroundProperty, new SolidColorBrush(Color.FromRgb(243, 244, 246)));
+            chip.SetValue(Border.BorderBrushProperty, new SolidColorBrush(Color.FromRgb(229, 231, 235)));
+            chip.SetValue(Border.BorderThicknessProperty, new Thickness(1));
+            chip.SetValue(Border.CornerRadiusProperty, new CornerRadius(4));
+            chip.SetValue(Border.PaddingProperty, new Thickness(4, 2, 4, 2));
+            chip.SetValue(Border.MarginProperty, new Thickness(0, 0, 4, 4));
+
+            var label = new FrameworkElementFactory(typeof(TextBlock));
+            label.SetBinding(TextBlock.TextProperty, new Binding("."));
+            label.SetValue(TextBlock.FontSizeProperty, 10.0);
+            label.SetValue(TextBlock.ForegroundProperty, new SolidColorBrush(Color.FromRgb(75, 85, 99)));
+            chip.AppendChild(label);
+
+            return new DataTemplate { VisualTree = chip };
+        }
+
+        private static UIElement BuildToolbarHeader(string title, UIElement actions)
+        {
+            var header = new DockPanel();
+            var titleBlock = SectionHeader(title);
+            DockPanel.SetDock(titleBlock, Dock.Left);
+            header.Children.Add(titleBlock);
+            DockPanel.SetDock(actions, Dock.Right);
+            header.Children.Add(actions);
+            return header;
         }
 
         private static TabItem BuildTab(string title, UIElement content)
@@ -409,11 +736,8 @@ namespace PlugHub.Revit2020
             LoadRibbonLayoutRows();
             LoadRepositoryRows();
             LoadRepositoryPackageRows(new List<RepositoryPackageDescriptor>());
-            LoadPendingPackageOperationRows();
             LoadDiagnosticRows(FrameworkRuntimeState.Current);
-            RefreshStatus("已加载配置。布局和图标需重启 Revit 重绘。");
-            LoadCachedRepositoryPackages();
-            StartRepositoryUpdateCheck();
+            RefreshStatusWithPendingPackageOperations("已加载配置。请选择启用的仓库源并手动一键同步。布局和图标需重启 Revit 重绘。");
         }
 
         private void LoadPluginPackageRows()
@@ -764,9 +1088,8 @@ namespace PlugHub.Revit2020
         private UIElement BuildRibbonDesignerTabPreview(RibbonDesignerNodeRow tab)
         {
             var body = new StackPanel();
-            body.Children.Add(BuildRibbonDesignerPreviewButton(tab, DisplayName(tab.Text, tab.Id, "PlugHub"), 180, 30));
 
-            var panels = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
+            var panels = new WrapPanel { Orientation = Orientation.Horizontal };
             foreach (var panel in tab.Children)
             {
                 panels.Children.Add(BuildRibbonDesignerPanelPreview(panel));
@@ -2001,69 +2324,140 @@ namespace PlugHub.Revit2020
 
         private void LoadRepositoryRows()
         {
-            _repositoriesGrid.Columns.Clear();
-            _repositoriesGrid.Columns.Add(CheckColumn(nameof(RepositoryRow.Enabled), "启用"));
-            _repositoriesGrid.Columns.Add(ComboColumn(nameof(RepositoryRow.Provider), "类型", new[] { "github", "gitee" }, 0.8));
-            _repositoriesGrid.Columns.Add(ComboColumn(nameof(RepositoryRow.Visibility), "可见性", new[] { "public", "private" }, 0.9));
-            _repositoriesGrid.Columns.Add(TextColumn(nameof(RepositoryRow.Repository), "仓库", false, 1.7));
-            _repositoriesGrid.Columns.Add(TextColumn(nameof(RepositoryRow.Ref), "分支", false, 0.7));
-            _repositoriesGrid.Columns.Add(TextColumn(nameof(RepositoryRow.ApiKey), "私有 ApiKey", false, 1.1));
-            _repositoriesGrid.Columns.Add(TextColumn(nameof(RepositoryRow.Status), "状态", true, 1.4));
-
             _viewModel.Repositories.Clear();
             foreach (var row in (_configuration.Modules.Repositories ?? new List<PackageRepositoryConfiguration>())
-                .Select(repository => new RepositoryRow
-                {
-                    Id = repository.Id,
-                    Enabled = repository.Enabled,
-                    Provider = string.IsNullOrWhiteSpace(repository.Provider) ? DefaultRepositoryProvider : repository.Provider,
-                    Visibility = string.Equals(repository.Visibility, "private", StringComparison.OrdinalIgnoreCase) ? "private" : "public",
-                    Repository = repository.Repository,
-                    Ref = string.IsNullOrWhiteSpace(repository.Ref) ? "main" : repository.Ref,
-                    ManifestPath = string.IsNullOrWhiteSpace(repository.ManifestPath) ? DefaultPackageManifestName : repository.ManifestPath,
-                    ApiKey = string.Empty,
-                    PlainApiKey = repository.ApiKey,
-                    EncryptedApiKey = repository.EncryptedApiKey,
-                    ApiKeyProtection = repository.ApiKeyProtection,
-                    Status = repository.Enabled ? "可浏览" : "停用"
-                }))
+                .Select(CreateRepositoryRow))
             {
                 _viewModel.Repositories.Add(row);
             }
-            _repositoriesGrid.ItemsSource = _viewModel.Repositories;
+
+            _repositorySourcesList.ItemsSource = _viewModel.Repositories;
+            if (_repositorySourcesList.SelectedItem == null && _viewModel.Repositories.Count > 0)
+            {
+                _repositorySourcesList.SelectedItem = _viewModel.Repositories[0];
+            }
+            RefreshRepositorySourceCards();
+            RefreshRepositoryFilterOptions();
         }
 
         private void LoadRepositoryPackageRows(IEnumerable<RepositoryPackageDescriptor> packages)
         {
-            _repositoryPackagesGrid.Columns.Clear();
-            _repositoryPackagesGrid.Columns.Add(TextColumn(nameof(RepositoryPackageRow.RepositoryId), "仓库", true, 1.0));
-            _repositoryPackagesGrid.Columns.Add(TextColumn(nameof(RepositoryPackageRow.PackageId), "插件包 ID", true, 1.4));
-            _repositoryPackagesGrid.Columns.Add(TextColumn(nameof(RepositoryPackageRow.DisplayName), "功能", true, 1.8));
-            _repositoryPackagesGrid.Columns.Add(TextColumn(nameof(RepositoryPackageRow.Version), "版本", true, 0.8));
-            _repositoryPackagesGrid.Columns.Add(TextColumn(nameof(RepositoryPackageRow.InstallState), "安装状态", true, 0.9));
+            _repositoryPackageRows.Clear();
+            _repositoryPackageRows.AddRange((packages ?? new List<RepositoryPackageDescriptor>())
+                .Select(package =>
+                {
+                    var row = RepositoryPackageRow.FromDescriptor(package, IsLoadedInCurrentRuntime(package.PackageId, package.ModuleId));
+                    _repositorySettingsController.PreparePackageRow(row, _viewModel.Repositories);
+                    return row;
+                }));
+            RefreshRepositoryFilterOptions();
+            ApplyRepositoryPackageFilter();
+        }
 
+        private void RepositoryPackageFilterChanged(object sender, RoutedEventArgs args)
+        {
+            ApplyRepositoryPackageFilter();
+        }
+
+        private void ApplyRepositoryPackageFilter()
+        {
+            var source = SelectedRepositorySourceRow();
+            if (source == null || !source.Enabled || string.IsNullOrWhiteSpace(source.Id))
+            {
+                _viewModel.RepositoryPackages.Clear();
+                _warehousePackageList.ItemsSource = _viewModel.RepositoryPackages;
+                RefreshItems(_warehousePackageList);
+                return;
+            }
+
+            var filter = new RepositoryPackageFilterState
+            {
+                SearchText = (_repositoryPackageSearchText.Text ?? string.Empty).Trim(),
+                Status = _repositoryPackageStateFilter.SelectedItem as string ?? "全部",
+                RepositoryId = source.Id,
+                TagOrCategory = _repositoryPackageTagFilter.SelectedItem as string ?? "全部"
+            };
+
+            var filtered = _repositorySettingsController.ApplyPackageFilters(_repositoryPackageRows, filter);
             _viewModel.RepositoryPackages.Clear();
-            foreach (var row in (packages ?? new List<RepositoryPackageDescriptor>())
-                .Select(package => RepositoryPackageRow.FromDescriptor(package, IsLoadedInCurrentRuntime(package.PackageId, package.ModuleId))))
+            foreach (var row in filtered)
             {
                 _viewModel.RepositoryPackages.Add(row);
             }
-            _repositoryPackagesGrid.ItemsSource = _viewModel.RepositoryPackages;
+
+            _warehousePackageList.ItemsSource = _viewModel.RepositoryPackages;
+            RefreshItems(_warehousePackageList);
         }
 
-        private void LoadPendingPackageOperationRows()
+        private static bool ContainsText(string value, string search)
         {
-            _pendingPackageOperationsGrid.Columns.Clear();
-            _pendingPackageOperationsGrid.Columns.Add(TextColumn(nameof(PendingPackageOperationRow.Operation), "操作", true, 0.6));
-            _pendingPackageOperationsGrid.Columns.Add(TextColumn(nameof(PendingPackageOperationRow.PackageId), "插件包", true, 1.2));
-            _pendingPackageOperationsGrid.Columns.Add(TextColumn(nameof(PendingPackageOperationRow.CreatedAtUtc), "创建时间", true, 1.0));
+            return (value ?? string.Empty).IndexOf(search ?? string.Empty, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
 
-            _viewModel.PendingOperations.Clear();
-            foreach (var row in _packageRepositoryService.ListPendingOperations(BaseDirectory()).Select(PendingPackageOperationRow.FromOperation))
+        private RepositoryRow CreateRepositoryRow(PackageRepositoryConfiguration repository)
+        {
+            var row = new RepositoryRow
             {
-                _viewModel.PendingOperations.Add(row);
+                Id = repository.Id,
+                Enabled = repository.Enabled,
+                Provider = string.IsNullOrWhiteSpace(repository.Provider) ? DefaultRepositoryProvider : repository.Provider,
+                Visibility = string.Equals(repository.Visibility, "private", StringComparison.OrdinalIgnoreCase) ? "private" : "public",
+                Repository = repository.Repository,
+                Ref = string.IsNullOrWhiteSpace(repository.Ref) ? "main" : repository.Ref,
+                ManifestPath = string.IsNullOrWhiteSpace(repository.ManifestPath) ? DefaultPackageManifestName : repository.ManifestPath,
+                ApiKey = string.Empty,
+                PlainApiKey = repository.ApiKey,
+                EncryptedApiKey = repository.EncryptedApiKey,
+                ApiKeyProtection = repository.ApiKeyProtection,
+                Status = repository.Enabled ? "可浏览" : "停用"
+            };
+            row.DisplayName = _repositorySettingsController.RepositoryDisplayName(row);
+            return row;
+        }
+
+        private void RefreshRepositorySourceCards()
+        {
+            foreach (var row in _viewModel.Repositories)
+            {
+                row.DisplayName = _repositorySettingsController.RepositoryDisplayName(row);
             }
-            _pendingPackageOperationsGrid.ItemsSource = _viewModel.PendingOperations;
+
+            _repositorySourcesList.ItemsSource = _viewModel.Repositories;
+            RefreshItems(_repositorySourcesList);
+        }
+
+        private void RefreshRepositoryFilterOptions()
+        {
+            ReplaceComboItems(
+                _repositoryPackageTagFilter,
+                new[] { "全部" }
+                    .Concat(_repositoryPackageRows.SelectMany(row => new[] { row.CategoryText, row.TagsText })
+                        .Where(value => !string.IsNullOrWhiteSpace(value))
+                        .SelectMany(value => value.Split(new[] { ',', '，', ';', '；', ' ' }, StringSplitOptions.RemoveEmptyEntries))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)));
+        }
+
+        private static void ReplaceComboItems(ComboBox combo, IEnumerable<string> values)
+        {
+            var selected = combo.SelectedItem as string ?? "全部";
+            var items = values
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            combo.ItemsSource = items;
+            combo.SelectedItem = items.Any(item => string.Equals(item, selected, StringComparison.OrdinalIgnoreCase))
+                ? selected
+                : "全部";
+            if (combo.SelectedItem == null && combo.Items.Count > 0)
+            {
+                combo.SelectedIndex = 0;
+            }
+        }
+
+        private static void RefreshItems(ItemsControl control)
+        {
+            control.Items.Refresh();
         }
 
         private void LoadCachedRepositoryPackages()
@@ -2084,7 +2478,7 @@ namespace PlugHub.Revit2020
             if (packages.Count > 0)
             {
                 LoadRepositoryPackageRows(packages);
-                RefreshStatus("已从本地仓库缓存加载 " + packages.Count + " 个插件，正在后台检查更新。");
+                RefreshStatus("已从本地仓库缓存加载 " + packages.Count + " 个插件。需要远端状态时请手动一键同步。");
             }
 
             if (messages.Count > 0)
@@ -2092,17 +2486,61 @@ namespace PlugHub.Revit2020
                 LoadDiagnosticRowsFromMessages(messages);
             }
 
-            SafeRefreshGrid(_repositoriesGrid);
+            RefreshRepositorySourceCards();
         }
 
-        private void StartRepositoryUpdateCheck()
+        private void LoadCachedRepositoryPackages(RepositoryRow row)
         {
-            var repositories = EnabledRepositoriesWithCache()
+            if (row == null) return;
+
+            if (!row.Enabled)
+            {
+                LoadRepositoryPackageRows(new List<RepositoryPackageDescriptor>());
+                row.Status = "停用";
+                RefreshRepositorySourceCards();
+                RefreshStatus(row.DisplayName + " 已停用，未加载本地缓存。");
+                return;
+            }
+
+            var repository = row.ToConfiguration();
+            if (!_packageRepositoryService.HasRepositoryCache(BaseDirectory(), repository))
+            {
+                LoadRepositoryPackageRows(new List<RepositoryPackageDescriptor>());
+                row.Status = "本地缓存无插件";
+                RefreshRepositorySourceCards();
+                RefreshStatus(row.DisplayName + " 暂无本地缓存。使用一键同步后可在此浏览。");
+                return;
+            }
+
+            var packages = _packageRepositoryService.BrowseCached(BaseDirectory(), row.ToConfiguration(), out var diagnostics);
+            LoadRepositoryPackageRows(packages);
+            if (diagnostics.Count > 0)
+            {
+                LoadDiagnosticRowsFromMessages(diagnostics);
+            }
+
+            row.Status = packages.Count > 0 ? "已从本地缓存加载 " + packages.Count + " 个插件" : "本地缓存无插件";
+            RefreshRepositorySourceCards();
+            RefreshStatus(row.DisplayName + " 已从本地缓存加载 " + packages.Count + " 个插件。需要远端最新状态时请手动一键同步。");
+        }
+
+        private void CheckRepositoryUpdates()
+        {
+            EndGridEdits();
+            ApplyRepositoryRows();
+
+            var repositories = _viewModel.Repositories
+                .Where(row => row.Enabled)
                 .Select(row => row.ToConfiguration())
                 .ToList();
-            if (repositories.Count == 0) return;
+            if (repositories.Count == 0)
+            {
+                RefreshStatus("没有启用的仓库可检查。");
+                return;
+            }
 
             var baseDirectory = BaseDirectory();
+            RefreshStatus("正在检查 " + repositories.Count + " 个仓库，请稍候...");
             Task.Run(() =>
             {
                 var packages = new List<RepositoryPackageDescriptor>();
@@ -2148,8 +2586,8 @@ namespace PlugHub.Revit2020
                         }
                     }
 
-                    SafeRefreshGrid(_repositoriesGrid);
-                    RefreshStatus("仓库后台更新检查完成。");
+                    RefreshRepositorySourceCards();
+                    RefreshStatus("仓库检查完成，找到 " + packages.Count + " 个插件。");
                 }));
             });
         }
@@ -2999,13 +3437,12 @@ namespace PlugHub.Revit2020
         private ContextMenu BuildRepositoryMenu()
         {
             var menu = new ContextMenu();
-            menu.Items.Add(MenuItem("启用", (sender, args) => SetSelectedRepositoryEnabled(true)));
-            menu.Items.Add(MenuItem("禁用", (sender, args) => SetSelectedRepositoryEnabled(false)));
+            menu.Items.Add(MenuItem("编辑仓库源", (sender, args) => EditSelectedRepository()));
+            menu.Items.Add(MenuItem("同步仓库插件包", (sender, args) => BrowseSelectedRepository()));
             menu.Items.Add(new Separator());
-            menu.Items.Add(MenuItem("浏览仓库插件包", (sender, args) => BrowseSelectedRepository()));
-            menu.Items.Add(new Separator());
-            menu.Items.Add(MenuItem("新增仓库", (sender, args) => AddRepository()));
-            menu.Items.Add(MenuItem("删除仓库", (sender, args) => RemoveSelectedRepository()));
+            var delete = MenuItem("删除仓库", (sender, args) => RemoveSelectedRepository());
+            delete.Foreground = Brushes.DarkRed;
+            menu.Items.Add(delete);
             return menu;
         }
 
@@ -3015,13 +3452,9 @@ namespace PlugHub.Revit2020
             menu.Items.Add(MenuItem("安装插件包", (sender, args) => InstallSelectedRepositoryPackage()));
             menu.Items.Add(MenuItem("更新插件包", (sender, args) => UpdateSelectedRepositoryPackage()));
             menu.Items.Add(MenuItem("卸载插件包", (sender, args) => UninstallSelectedRepositoryPackage()));
-            return menu;
-        }
-
-        private ContextMenu BuildPendingPackageOperationMenu()
-        {
-            var menu = new ContextMenu();
-            menu.Items.Add(MenuItem("取消待处理操作", (sender, args) => CancelSelectedPendingPackageOperation()));
+            menu.Items.Add(new Separator());
+            menu.Items.Add(MenuItem("复制插件 ID", (sender, args) => CopySelectedRepositoryPackageId()));
+            menu.Items.Add(MenuItem("打开来源目录", (sender, args) => OpenSelectedRepositoryPackageSource()));
             return menu;
         }
 
@@ -3142,11 +3575,11 @@ namespace PlugHub.Revit2020
 
         private void SetSelectedRepositoryEnabled(bool enabled)
         {
-            if (_repositoriesGrid.SelectedItem is RepositoryRow row)
+            if (SelectedRepositorySourceRow() is RepositoryRow row)
             {
                 row.Enabled = enabled;
                 row.Status = enabled ? "可浏览" : "停用";
-                SafeRefreshGrid(_repositoriesGrid);
+                RefreshRepositorySourceCards();
             }
         }
 
@@ -3165,9 +3598,170 @@ namespace PlugHub.Revit2020
                 ApiKey = string.Empty,
                 Status = "待保存"
             };
+            row.DisplayName = _repositorySettingsController.RepositoryDisplayName(row);
             _viewModel.Repositories.Add(row);
-            _repositoriesGrid.SelectedItem = row;
-            SafeRefreshGrid(_repositoriesGrid);
+            _repositorySourcesList.SelectedItem = row;
+            RefreshRepositorySourceCards();
+            RefreshRepositoryFilterOptions();
+            EditRepository(row);
+        }
+
+        private void ToggleRepositorySourceFromCard(object sender, RoutedEventArgs args)
+        {
+            if (!(RowFromSender<RepositoryRow>(sender) is RepositoryRow row)) return;
+            _repositorySourcesList.SelectedItem = row;
+            row.Enabled = sender is CheckBox box ? box.IsChecked == true : !row.Enabled;
+            row.Status = row.Enabled ? "可浏览" : "停用";
+            RefreshRepositorySourceCards();
+            ApplyRepositoryPackageFilter();
+            RefreshStatus(row.DisplayName + (row.Enabled ? " 已启用。" : " 已停用。"));
+        }
+
+        private void RepositorySourceSelectionChanged(object sender, SelectionChangedEventArgs args)
+        {
+            ApplyRepositoryPackageFilter();
+        }
+
+        private void BrowseRepositorySourceCacheFromCard(object sender, MouseButtonEventArgs args)
+        {
+            if (!(RowFromSender<RepositoryRow>(sender) is RepositoryRow row)) return;
+            _repositorySourcesList.SelectedItem = row;
+            LoadCachedRepositoryPackages(row);
+            args.Handled = true;
+        }
+
+        private void OpenRepositorySourceMenuFromCard(object sender, RoutedEventArgs args)
+        {
+            if (!(RowFromSender<RepositoryRow>(sender) is RepositoryRow row)) return;
+            _repositorySourcesList.SelectedItem = row;
+            var menu = BuildRepositoryMenu();
+            menu.PlacementTarget = sender as UIElement;
+            menu.Placement = PlacementMode.Bottom;
+            menu.IsOpen = true;
+            if (args is MouseButtonEventArgs mouseArgs)
+            {
+                mouseArgs.Handled = true;
+            }
+        }
+
+        private void BrowseRepositorySourceFromCard(object sender, RoutedEventArgs args)
+        {
+            if (!(RowFromSender<RepositoryRow>(sender) is RepositoryRow row)) return;
+            _repositorySourcesList.SelectedItem = row;
+            BrowseSelectedRepository();
+        }
+
+        private void EditRepositorySourceFromCard(object sender, RoutedEventArgs args)
+        {
+            if (!(RowFromSender<RepositoryRow>(sender) is RepositoryRow row)) return;
+            _repositorySourcesList.SelectedItem = row;
+            EditRepository(row);
+        }
+
+        private void EditSelectedRepository()
+        {
+            if (!(SelectedRepositorySourceRow() is RepositoryRow row)) return;
+            EditRepository(row);
+        }
+
+        private void EditRepository(RepositoryRow row)
+        {
+            var dialog = new Window
+            {
+                Owner = this,
+                Title = "编辑仓库源",
+                Width = 520,
+                Height = 430,
+                MinWidth = 480,
+                MinHeight = 390,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Background = new SolidColorBrush(Color.FromRgb(247, 249, 252))
+            };
+
+            var root = new Grid { Margin = new Thickness(16) };
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            var form = new Grid();
+            form.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(96) });
+            form.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            for (var i = 0; i < 7; i++)
+            {
+                form.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            }
+
+            var enabled = new CheckBox { IsChecked = row.Enabled, VerticalAlignment = VerticalAlignment.Center };
+            var provider = new ComboBox { ItemsSource = new[] { "gitee", "github" }, SelectedItem = string.IsNullOrWhiteSpace(row.Provider) ? DefaultRepositoryProvider : row.Provider, Height = 26 };
+            var visibility = new ComboBox { ItemsSource = new[] { "public", "private" }, SelectedItem = string.IsNullOrWhiteSpace(row.Visibility) ? "public" : row.Visibility, Height = 26 };
+            var repository = new TextBox { Text = row.Repository, Height = 26, VerticalContentAlignment = VerticalAlignment.Center };
+            var gitRef = new TextBox { Text = row.Ref, Height = 26, VerticalContentAlignment = VerticalAlignment.Center };
+            var manifestPath = new TextBox { Text = row.ManifestPath, Height = 26, VerticalContentAlignment = VerticalAlignment.Center };
+            var apiKey = new TextBox { Text = string.Empty, Height = 26, VerticalContentAlignment = VerticalAlignment.Center };
+
+            AddRepositoryEditorRow(form, 0, "启用", enabled);
+            AddRepositoryEditorRow(form, 1, "类型", provider);
+            AddRepositoryEditorRow(form, 2, "可见性", visibility);
+            AddRepositoryEditorRow(form, 3, "仓库", repository);
+            AddRepositoryEditorRow(form, 4, "分支", gitRef);
+            AddRepositoryEditorRow(form, 5, "清单", manifestPath);
+            AddRepositoryEditorRow(form, 6, "Token", apiKey);
+            Grid.SetRow(form, 0);
+            root.Children.Add(form);
+
+            var buttons = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 16, 0, 0)
+            };
+            var cancel = CreateButton("取消", (sender, args) => dialog.DialogResult = false);
+            var save = CreateButton("保存", (sender, args) =>
+            {
+                row.Enabled = enabled.IsChecked == true;
+                row.Provider = Convert.ToString(provider.SelectedItem) ?? DefaultRepositoryProvider;
+                row.Visibility = Convert.ToString(visibility.SelectedItem) ?? "public";
+                row.Repository = repository.Text ?? string.Empty;
+                row.Ref = string.IsNullOrWhiteSpace(gitRef.Text) ? "main" : gitRef.Text.Trim();
+                row.ManifestPath = string.IsNullOrWhiteSpace(manifestPath.Text) ? DefaultPackageManifestName : manifestPath.Text.Trim();
+                if (!string.IsNullOrWhiteSpace(apiKey.Text))
+                {
+                    row.ApiKey = apiKey.Text;
+                }
+
+                row.Status = row.Enabled ? "可浏览" : "停用";
+                row.DisplayName = _repositorySettingsController.RepositoryDisplayName(row);
+                dialog.DialogResult = true;
+            });
+            buttons.Children.Add(cancel);
+            buttons.Children.Add(save);
+            Grid.SetRow(buttons, 1);
+            root.Children.Add(buttons);
+
+            dialog.Content = root;
+            if (dialog.ShowDialog() == true)
+            {
+                RefreshRepositorySourceCards();
+                RefreshRepositoryFilterOptions();
+                RefreshStatus("已更新仓库源设置，保存配置后持久化。");
+            }
+        }
+
+        private static void AddRepositoryEditorRow(Grid form, int rowIndex, string label, UIElement editor)
+        {
+            var text = EditorLabel(label);
+            text.Margin = new Thickness(0, 0, 10, 10);
+            Grid.SetRow(text, rowIndex);
+            Grid.SetColumn(text, 0);
+            form.Children.Add(text);
+
+            if (editor is FrameworkElement element)
+            {
+                element.Margin = new Thickness(0, 0, 0, 10);
+            }
+
+            Grid.SetRow(editor, rowIndex);
+            Grid.SetColumn(editor, 1);
+            form.Children.Add(editor);
         }
 
         private void BrowseSelectedRepository()
@@ -3177,14 +3771,21 @@ namespace PlugHub.Revit2020
                 EndGridEdits();
                 ApplyRepositoryRows();
 
-                if (!(_repositoriesGrid.SelectedItem is RepositoryRow row)) return;
+                if (!(SelectedRepositorySourceRow() is RepositoryRow row)) return;
+                if (!row.Enabled)
+                {
+                    RefreshStatus("仓库源已停用，启用后才能同步。");
+                    ApplyRepositoryPackageFilter();
+                    return;
+                }
+
                 var repository = row.ToConfiguration();
                 var packages = _packageRepositoryService.Browse(BaseDirectory(), repository, out var diagnostics);
 
                 row.Status = diagnostics.Any()
                     ? diagnostics.Last().Message
                     : "已浏览 " + packages.Count + " 个插件包";
-                SafeRefreshGrid(_repositoriesGrid);
+                RefreshRepositorySourceCards();
 
                 LoadRepositoryPackageRows(packages);
                 LoadDiagnosticRowsFromMessages(diagnostics);
@@ -3208,27 +3809,32 @@ namespace PlugHub.Revit2020
 
         private void UninstallSelectedRepositoryPackage()
         {
-            if (!(_repositoryPackagesGrid.SelectedItem is RepositoryPackageRow row)) return;
-            RunRepositoryPackageOperation(package => _packageRepositoryService.Uninstall(BaseDirectory(), package));
+            if (!(SelectedRepositoryPackageRow() is RepositoryPackageRow row)) return;
+            RunRepositoryPackageOperation(row, package => _packageRepositoryService.Uninstall(BaseDirectory(), package));
         }
 
         private void RunRepositoryPackageOperation(Func<RepositoryPackageDescriptor, PackageRepositoryOperationResult> operation)
         {
+            if (!(SelectedRepositoryPackageRow() is RepositoryPackageRow row)) return;
+            RunRepositoryPackageOperation(row, operation);
+        }
+
+        private void RunRepositoryPackageOperation(RepositoryPackageRow row, Func<RepositoryPackageDescriptor, PackageRepositoryOperationResult> operation)
+        {
             try
             {
                 EndGridEdits();
-                if (!(_repositoryPackagesGrid.SelectedItem is RepositoryPackageRow row)) return;
 
                 var result = operation(row.ToDescriptor());
                 RefreshRepositoryPackageInstallState(row.PackageId, row.InstallDirectory);
-                LoadPendingPackageOperationRows();
-                SafeRefreshGrid(_repositoryPackagesGrid);
+                ApplyRepositoryPackageFilter();
+                RefreshItems(_warehousePackageList);
 
                 _moduleDocuments = _configurationStore.LoadModuleDocuments(_configuration);
                 LoadGroupRows();
                 LoadFeatureRows();
                 LoadRibbonLayoutRows();
-                RefreshStatus(result.Message);
+                RefreshStatusWithPendingPackageOperations(result.Message);
             }
             catch (Exception ex)
             {
@@ -3236,19 +3842,104 @@ namespace PlugHub.Revit2020
             }
         }
 
-        private void CancelSelectedPendingPackageOperation()
+        private void RunRepositoryPackagePrimaryAction(object sender, RoutedEventArgs args)
         {
-            if (!(_pendingPackageOperationsGrid.SelectedItem is PendingPackageOperationRow row)) return;
-            var result = _packageRepositoryService.CancelPendingOperation(BaseDirectory(), row.PackageId, row.ModuleId);
-            RefreshRepositoryPackageInstallState(row.PackageId, row.InstallDirectory);
-            LoadPendingPackageOperationRows();
-            SafeRefreshGrid(_repositoryPackagesGrid);
-            RefreshStatus(result.Message);
+            if (!(RowFromSender<RepositoryPackageRow>(sender) is RepositoryPackageRow row)) return;
+            _warehousePackageList.SelectedItem = row;
+
+            if (string.Equals(row.PrimaryAction, RepositoryPackageAction.Install.ToString(), StringComparison.OrdinalIgnoreCase))
+            {
+                RunRepositoryPackageOperation(row, package => _packageRepositoryService.Install(BaseDirectory(), package));
+                return;
+            }
+
+            if (string.Equals(row.PrimaryAction, RepositoryPackageAction.Update.ToString(), StringComparison.OrdinalIgnoreCase))
+            {
+                RunRepositoryPackageOperation(row, package => _packageRepositoryService.Update(BaseDirectory(), package));
+                return;
+            }
+
+            if (string.Equals(row.PrimaryAction, RepositoryPackageAction.Uninstall.ToString(), StringComparison.OrdinalIgnoreCase))
+            {
+                RefreshStatus(row.DisplayName + " 已安装，可使用下方卸载按钮。");
+                return;
+            }
+
+            RefreshStatusWithPendingPackageOperations("该插件包已有待重启操作。");
+        }
+
+        private void RunRepositoryPackageUninstallAction(object sender, RoutedEventArgs args)
+        {
+            if (!(RowFromSender<RepositoryPackageRow>(sender) is RepositoryPackageRow row)) return;
+            _warehousePackageList.SelectedItem = row;
+
+            if (!string.Equals(row.PrimaryAction, RepositoryPackageAction.Uninstall.ToString(), StringComparison.OrdinalIgnoreCase))
+            {
+                RefreshStatus("未安装插件无需卸载。");
+                return;
+            }
+
+            RunRepositoryPackageOperation(row, package => _packageRepositoryService.Uninstall(BaseDirectory(), package));
+        }
+
+        private void RepositoryPackageUninstallHoverEnter(object sender, MouseEventArgs args)
+        {
+            if (!(sender is Button button)) return;
+            button.Background = RepositoryPackageUninstallHoverBackground();
+            button.Foreground = RepositoryPackageUninstallHoverForeground();
+            button.BorderBrush = RepositoryPackageUninstallHoverBorder();
+        }
+
+        private void RepositoryPackageUninstallHoverLeave(object sender, MouseEventArgs args)
+        {
+            if (!(sender is Button button)) return;
+            button.Background = RepositoryPackageUninstallBackground();
+            button.Foreground = RepositoryPackageUninstallForeground();
+            button.BorderBrush = RepositoryPackageUninstallBorder();
+        }
+
+        private RepositoryRow? SelectedRepositorySourceRow()
+        {
+            return _repositorySourcesList.SelectedItem as RepositoryRow;
+        }
+
+        private RepositoryPackageRow? SelectedRepositoryPackageRow()
+        {
+            return _warehousePackageList.SelectedItem as RepositoryPackageRow;
+        }
+
+        private static T? RowFromSender<T>(object sender) where T : class
+        {
+            return (sender as FrameworkElement)?.DataContext as T;
+        }
+
+        private void CopySelectedRepositoryPackageId()
+        {
+            if (!(SelectedRepositoryPackageRow() is RepositoryPackageRow row)) return;
+            Clipboard.SetText(row.PackageId ?? string.Empty);
+            RefreshStatus("已复制插件 ID: " + row.PackageId);
+        }
+
+        private void OpenSelectedRepositoryPackageSource()
+        {
+            if (!(SelectedRepositoryPackageRow() is RepositoryPackageRow row)) return;
+            if (string.IsNullOrWhiteSpace(row.SourceDirectory) || !Directory.Exists(row.SourceDirectory))
+            {
+                RefreshStatus("来源目录不存在。");
+                return;
+            }
+
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = row.SourceDirectory,
+                UseShellExecute = true
+            });
         }
 
         private void RefreshRepositoryPackageInstallState(string packageId, string installDirectory)
         {
-            foreach (var row in _viewModel.RepositoryPackages.Where(item =>
+            var rows = _repositoryPackageRows.Count > 0 ? _repositoryPackageRows : _viewModel.RepositoryPackages.AsEnumerable();
+            foreach (var row in rows.Where(item =>
                 string.Equals(item.PackageId, packageId, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(item.InstallDirectory, installDirectory, StringComparison.OrdinalIgnoreCase)))
             {
@@ -3257,6 +3948,7 @@ namespace PlugHub.Revit2020
                 row.InstalledVersion = refreshed.InstalledVersion;
                 row.PendingOperation = refreshed.PendingOperation;
                 row.InstallState = RepositoryPackageRow.InstallStateFor(row.IsInstalled, row.Version, row.InstalledVersion, row.PendingOperation, IsLoadedInCurrentRuntime(row.PackageId, row.ModuleId));
+                _repositorySettingsController.PreparePackageRow(row, _viewModel.Repositories);
             }
         }
 
@@ -3587,9 +4279,11 @@ namespace PlugHub.Revit2020
 
         private void RemoveSelectedRepository()
         {
-            if (_repositoriesGrid.SelectedItem is RepositoryRow row)
+            if (SelectedRepositorySourceRow() is RepositoryRow row)
             {
                 _viewModel.Repositories.Remove(row);
+                RefreshRepositorySourceCards();
+                RefreshRepositoryFilterOptions();
             }
         }
 
@@ -3760,6 +4454,16 @@ namespace PlugHub.Revit2020
             grid.CurrentItem = row.Item;
         }
 
+        private static void ListBoxPreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (!(sender is ListBox list)) return;
+            var row = FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject);
+            if (row == null) return;
+
+            row.IsSelected = true;
+            list.SelectedItem = row.DataContext;
+        }
+
         private void GridPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             if (!(sender is DataGrid grid)) return;
@@ -3896,8 +4600,6 @@ namespace PlugHub.Revit2020
             CommitGrid(_pluginPackagesGrid);
             CommitGrid(_featuresGrid);
             CommitGrid(_groupsGrid);
-            CommitGrid(_repositoriesGrid);
-            CommitGrid(_repositoryPackagesGrid);
         }
 
         private static void CommitGrid(DataGrid grid)
@@ -3909,6 +4611,28 @@ namespace PlugHub.Revit2020
         private void RefreshStatus(string text)
         {
             _statusText.Text = text;
+        }
+
+        private string PendingPackageOperationsStatusText()
+        {
+            var pendingCount = _packageRepositoryService.ListPendingOperations(BaseDirectory()).Count;
+            return pendingCount == 0
+                ? string.Empty
+                : "待重启操作 " + pendingCount + " 项，重启 Revit 后生效。";
+        }
+
+        private void RefreshStatusWithPendingPackageOperations(string message)
+        {
+            var pendingStatus = PendingPackageOperationsStatusText();
+            if (string.IsNullOrWhiteSpace(pendingStatus))
+            {
+                RefreshStatus(message);
+                return;
+            }
+
+            RefreshStatus(string.IsNullOrWhiteSpace(message)
+                ? pendingStatus
+                : message + " " + pendingStatus);
         }
 
         private void ReportSettingsError(string title, Exception ex)
@@ -3925,6 +4649,24 @@ namespace PlugHub.Revit2020
                 }
             });
             RefreshStatus(message);
+        }
+
+        private void OpenLogsDirectory()
+        {
+            try
+            {
+                var logsDirectory = PlugHubLogger.LogsDirectory(BaseDirectory());
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = logsDirectory,
+                    UseShellExecute = true
+                });
+                RefreshStatus("已打开日志目录: " + logsDirectory);
+            }
+            catch (Exception ex)
+            {
+                ReportSettingsError("打开日志目录失败", ex);
+            }
         }
 
         private void ExportLogs()
@@ -4065,6 +4807,131 @@ namespace PlugHub.Revit2020
 
             public string Value { get; }
             public string DisplayText { get; }
+        }
+
+        private static Brush RepositoryPackageActionBackground(string action)
+        {
+            if (string.Equals(action, RepositoryPackageAction.Install.ToString(), StringComparison.OrdinalIgnoreCase)) return new SolidColorBrush(Color.FromRgb(22, 163, 74));
+            if (string.Equals(action, RepositoryPackageAction.Update.ToString(), StringComparison.OrdinalIgnoreCase)) return new SolidColorBrush(Color.FromRgb(37, 99, 235));
+            if (string.Equals(action, RepositoryPackageAction.Uninstall.ToString(), StringComparison.OrdinalIgnoreCase)) return new SolidColorBrush(Color.FromRgb(22, 163, 74));
+            return new SolidColorBrush(Color.FromRgb(243, 244, 246));
+        }
+
+        private static Brush RepositoryPackageActionForeground(string action)
+        {
+            if (string.Equals(action, RepositoryPackageAction.Install.ToString(), StringComparison.OrdinalIgnoreCase)) return Brushes.White;
+            if (string.Equals(action, RepositoryPackageAction.Update.ToString(), StringComparison.OrdinalIgnoreCase)) return Brushes.White;
+            if (string.Equals(action, RepositoryPackageAction.Uninstall.ToString(), StringComparison.OrdinalIgnoreCase)) return Brushes.White;
+            return new SolidColorBrush(Color.FromRgb(75, 85, 99));
+        }
+
+        private static Brush RepositoryPackageActionBorder(string action)
+        {
+            if (string.Equals(action, RepositoryPackageAction.Install.ToString(), StringComparison.OrdinalIgnoreCase)) return new SolidColorBrush(Color.FromRgb(22, 163, 74));
+            if (string.Equals(action, RepositoryPackageAction.Update.ToString(), StringComparison.OrdinalIgnoreCase)) return new SolidColorBrush(Color.FromRgb(37, 99, 235));
+            if (string.Equals(action, RepositoryPackageAction.Uninstall.ToString(), StringComparison.OrdinalIgnoreCase)) return new SolidColorBrush(Color.FromRgb(22, 163, 74));
+            return new SolidColorBrush(Color.FromRgb(229, 231, 235));
+        }
+
+        private static Brush RepositoryPackageUninstallBackground()
+        {
+            return new SolidColorBrush(Color.FromRgb(243, 244, 246));
+        }
+
+        private static Brush RepositoryPackageUninstallForeground()
+        {
+            return new SolidColorBrush(Color.FromRgb(75, 85, 99));
+        }
+
+        private static Brush RepositoryPackageUninstallBorder()
+        {
+            return new SolidColorBrush(Color.FromRgb(229, 231, 235));
+        }
+
+        private static Brush RepositoryPackageUninstallHoverBackground()
+        {
+            return new SolidColorBrush(Color.FromRgb(254, 226, 226));
+        }
+
+        private static Brush RepositoryPackageUninstallHoverForeground()
+        {
+            return new SolidColorBrush(Color.FromRgb(153, 27, 27));
+        }
+
+        private static Brush RepositoryPackageUninstallHoverBorder()
+        {
+            return new SolidColorBrush(Color.FromRgb(252, 165, 165));
+        }
+
+        private sealed class RepositoryMetaLabelConverter : IValueConverter
+        {
+            public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+            {
+                if (!(value is RepositoryRow row)) return string.Empty;
+                var provider = string.IsNullOrWhiteSpace(row.Provider) ? DefaultRepositoryProvider : row.Provider;
+                var visibility = string.Equals(row.Visibility, "private", StringComparison.OrdinalIgnoreCase) ? "私有" : "公开";
+                return provider + " · " + visibility;
+            }
+
+            public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+            {
+                return Binding.DoNothing;
+            }
+        }
+
+        private sealed class RepositoryPackageMetaLabelConverter : IValueConverter
+        {
+            public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+            {
+                if (!(value is RepositoryPackageRow row)) return string.Empty;
+                var version = string.IsNullOrWhiteSpace(row.Version) ? "版本未知" : "版本 " + row.Version;
+                var installed = string.IsNullOrWhiteSpace(row.InstalledVersion) ? string.Empty : "，已装 " + row.InstalledVersion;
+                return row.RepositoryDisplayName + "，" + version + installed;
+            }
+
+            public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+            {
+                return Binding.DoNothing;
+            }
+        }
+
+        private sealed class RepositoryPackageActionBrushConverter : IValueConverter
+        {
+            public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+            {
+                return RepositoryPackageActionBackground(System.Convert.ToString(value) ?? string.Empty);
+            }
+
+            public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+            {
+                return Binding.DoNothing;
+            }
+        }
+
+        private sealed class RepositoryPackageActionForegroundConverter : IValueConverter
+        {
+            public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+            {
+                return RepositoryPackageActionForeground(System.Convert.ToString(value) ?? string.Empty);
+            }
+
+            public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+            {
+                return Binding.DoNothing;
+            }
+        }
+
+        private sealed class RepositoryPackageActionBorderConverter : IValueConverter
+        {
+            public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+            {
+                return RepositoryPackageActionBorder(System.Convert.ToString(value) ?? string.Empty);
+            }
+
+            public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+            {
+                return Binding.DoNothing;
+            }
         }
 
     }

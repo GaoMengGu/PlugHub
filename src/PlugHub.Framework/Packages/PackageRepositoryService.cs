@@ -886,6 +886,9 @@ namespace PlugHub.Framework.Packages
         public string InstallDirectory { get; set; } = string.Empty;
         public string InstalledVersion { get; set; } = string.Empty;
         public string PendingOperation { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public List<string> Tags { get; set; } = new List<string>();
+        public List<string> Categories { get; set; } = new List<string>();
         public bool IsInstalled { get; set; }
     }
 
