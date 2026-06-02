@@ -73,6 +73,7 @@ namespace PlugHub.StaticValidation
                 ValidateGiteeGoReleasePackaging();
                 ValidateMachineWideAddinRegistration();
                 ValidateUninstallerPackaging();
+                ValidateFrameworkAutoUpdateSpecification();
                 ValidateSigningGuidance();
                 ValidateRevitDeploymentConfiguration();
 
@@ -191,7 +192,17 @@ namespace PlugHub.StaticValidation
                 "PlugHub.slnx",
                 "src/PlugHub.Contracts/PlugHub.Contracts.csproj",
                 "src/PlugHub.Framework/PlugHub.Framework.csproj",
+                "src/PlugHub.Framework/Updates/FrameworkUpdateService.cs",
+                "src/PlugHub.Framework/Updates/FrameworkUpdateModels.cs",
+                "src/PlugHub.Framework/Updates/ReleaseClient.cs",
+                "src/PlugHub.Framework/Updates/ReleaseAssetDownloader.cs",
+                "src/PlugHub.Framework/Updates/FrameworkUpdatePackageValidator.cs",
                 "src/PlugHub.Revit2020/PlugHub.Revit2020.csproj",
+                "src/PlugHub.Updater/PlugHub.Updater.csproj",
+                "src/PlugHub.Updater/Program.cs",
+                "src/PlugHub.Updater/UpdaterArguments.cs",
+                "src/PlugHub.Updater/FrameworkDllUpdater.cs",
+                "src/PlugHub.Updater/UpdaterLogger.cs",
                 "src/PlugHub.Installer/PlugHub.Installer.csproj",
                 "src/PlugHub.Installer/Program.cs",
                 "src/PlugHub.Installer/InstallerForm.cs",
@@ -2403,6 +2414,47 @@ namespace PlugHub.StaticValidation
             Require(installerForm.Contains("PlugHub-Uninstall.exe"), "installer UI must report or create the installed uninstaller.");
             Require(githubWorkflow.Contains("Build PlugHub uninstaller") && githubWorkflow.Contains("InstallerUninstallerExe"), "GitHub release workflow must build and embed the uninstaller.");
             Require(readme.Contains("PlugHub-Uninstall.exe") && development.Contains("PlugHub-Uninstall.exe"), "README and development docs must document the uninstaller.");
+        }
+
+        private static void ValidateFrameworkAutoUpdateSpecification()
+        {
+            var solution = ReadText("PlugHub.sln");
+            var solutionX = ReadText("PlugHub.slnx");
+            var settingsWindow = ReadText("src/PlugHub.Revit2020/FrameworkSettingsWindow.cs");
+            var frameworkProject = ReadText("src/PlugHub.Framework/PlugHub.Framework.csproj");
+            var service = ReadText("src/PlugHub.Framework/Updates/FrameworkUpdateService.cs");
+            var releaseClient = ReadText("src/PlugHub.Framework/Updates/ReleaseClient.cs");
+            var validator = ReadText("src/PlugHub.Framework/Updates/FrameworkUpdatePackageValidator.cs");
+            var updaterProject = ReadText("src/PlugHub.Updater/PlugHub.Updater.csproj");
+            var updaterProgram = ReadText("src/PlugHub.Updater/Program.cs");
+            var updaterArguments = ReadText("src/PlugHub.Updater/UpdaterArguments.cs");
+            var updaterRunner = ReadText("src/PlugHub.Updater/FrameworkDllUpdater.cs");
+            var githubWorkflow = ReadText(".github/workflows/release.yml");
+            var giteeWorkflow = ReadText(".gitee/workflows/release.yml");
+            var buildScript = ReadText("scripts/build-revit2020.ps1");
+            var readme = ReadText("README.md");
+            var development = ReadText("docs/development.md");
+
+            Require(frameworkProject.Contains("System.Web.Extensions"), "framework update release JSON parsing must keep using available net48 framework references.");
+            Require(solution.Contains("src\\PlugHub.Updater\\PlugHub.Updater.csproj"), "updater project must be included in PlugHub.sln.");
+            Require(solutionX.Contains("src/PlugHub.Updater/PlugHub.Updater.csproj"), "updater project must be included in PlugHub.slnx.");
+            Require(updaterProject.Contains("<TargetFramework>net48</TargetFramework>") && updaterProject.Contains("<OutputType>WinExe</OutputType>"), "updater must build as a silent net48 Windows EXE.");
+            Require(settingsWindow.Contains("\"检查更新\"") && settingsWindow.Contains("\"更新框架\""), "About tab must expose Check Update and Update Framework buttons.");
+            Require(settingsWindow.Contains("CheckFrameworkUpdate") && settingsWindow.Contains("UpdateFramework") && settingsWindow.Contains("RefreshStatus"), "About tab update actions must write to the bottom-left status text.");
+            Require(service.Contains("https://api.github.com/repos/GaoMengGu/PlugHub/releases/latest") && service.Contains("PlugHub-Revit2020-"), "framework update service must target GitHub latest release assets.");
+            Require(service.Contains("PlugHub.Updater.exe") && service.Contains("StartUpdater"), "framework update service must start the silent updater instead of copying DLLs in-process.");
+            Require(releaseClient.Contains("HttpWebRequest") && releaseClient.Contains("UserAgent") && releaseClient.Contains("JavaScriptSerializer"), "release client must use net48-compatible HTTP and JSON APIs.");
+            Require(validator.Contains("PlugHub.Revit2020.dll") && validator.Contains("PlugHub.Framework.dll") && validator.Contains("PlugHub.Contracts.dll"), "update package validator must require the core framework DLLs.");
+            Require(validator.Contains("IsSafeZipEntry") && validator.Contains("Path.DirectorySeparatorChar"), "update package validator must reject unsafe zip paths.");
+            Require(updaterArguments.Contains("/payloadZip") && updaterArguments.Contains("/installDir") && updaterArguments.Contains("/targetVersion") && updaterArguments.Contains("/revitProcessId"), "updater must accept the documented arguments.");
+            Require(updaterProgram.Contains("FrameworkDllUpdater") && !updaterProgram.Contains("Application.Run"), "updater must run silently without a WinForms window.");
+            Require(updaterRunner.Contains("WaitForExit") && updaterRunner.Contains("CopyFrameworkDllsOnly"), "updater must wait for Revit exit before copying DLLs.");
+            Require(updaterRunner.Contains("PlugHub.addin") && updaterRunner.Contains("SkipNonDllEntry") && !updaterRunner.Contains("Directory.Delete(installDirectory"), "updater must avoid addin/config/packages replacement and install directory deletion.");
+            Require(githubWorkflow.Contains("Build PlugHub updater") && githubWorkflow.Contains("PlugHub.Updater.csproj"), "GitHub release workflow must build the updater before packaging the release zip.");
+            Require(giteeWorkflow.Contains("Build PlugHub updater") && giteeWorkflow.Contains("PlugHub.Updater.csproj"), "Gitee release workflow must build the updater before packaging the release zip.");
+            Require(buildScript.Contains("PlugHub.Updater.csproj") && buildScript.Contains("PlugHub.Updater.exe"), "local Revit 2020 build script must stage PlugHub.Updater.exe.");
+            Require(readme.Contains("检查更新") && readme.Contains("更新框架") && readme.Contains("只覆盖框架 DLL"), "README must document framework auto-update behavior.");
+            Require(development.Contains("检查更新") && development.Contains("更新框架") && development.Contains("不能声明 Revit 实机测试成功"), "development docs must document updater verification boundaries.");
         }
 
         private static void ValidateSigningGuidance()
