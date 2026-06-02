@@ -2,5 +2,6 @@
   <Project Path="src/PlugHub.Contracts/PlugHub.Contracts.csproj" />
   <Project Path="src/PlugHub.Framework/PlugHub.Framework.csproj" />
   <Project Path="src/PlugHub.Revit2020/PlugHub.Revit2020.csproj" />
+  <Project Path="src/PlugHub.Installer/PlugHub.Installer.csproj" />
   <Project Path="src/PlugHub.StaticValidation/PlugHub.StaticValidation.csproj" />
 </Solution>

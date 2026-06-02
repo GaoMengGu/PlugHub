@@ -51,6 +51,19 @@ dist\Revit2020
 .\scripts\build-revit2020.ps1 -RevitApiDir "D:\Program Files\Autodesk\Revit 2020" -InstallAddin
 ```
 
+## 安装包
+
+发布 `V*` tag 后，GitHub Release 会同时生成：
+
+- `PlugHub-Revit2020-<tag>.zip`：手动部署包。
+- `PlugHub-Setup-<tag>.exe`：安装程序，默认安装目录为 `D:\Program Files\PlugHub`，用户可以手动选择其他目录。
+
+安装程序会复制 PlugHub 文件，自动把 `PlugHub.addin` 中的 DLL 地址改为安装目录下的 `PlugHub.Revit2020.dll` 绝对路径，并复制 addin 到当前用户的 Revit 2020 插件目录：
+
+```text
+%APPDATA%\Autodesk\Revit\Addins\2020\PlugHub.addin
+```
+
 发布 workflow 使用 NuGet 编译引用，不需要把 `RevitAPI.dll` 或 `RevitAPIUI.dll` 放入仓库。
 
 ## 文档

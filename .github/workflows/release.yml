@@ -65,12 +65,36 @@ jobs:
           Compress-Archive -Path "$artifactDir\*" -DestinationPath $zipPath -Force
           cosign sign-blob --yes --bundle "$zipPath.sigstore.json" "$zipPath"
 
+      - name: Build PlugHub installer
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $zipPath = "PlugHub-Revit2020-$tag.zip"
+          $payloadZip = (Resolve-Path $zipPath).Path
+          $installerOutput = Join-Path $env:RUNNER_TEMP "PlugHubInstaller"
+          $installerExe = "PlugHub-Setup-${{ github.ref_name }}.exe"
+          if (Test-Path $installerOutput) {
+            Remove-Item -LiteralPath $installerOutput -Recurse -Force
+          }
+
+          New-Item -ItemType Directory -Force -Path $installerOutput | Out-Null
+          dotnet build src\PlugHub.Installer\PlugHub.Installer.csproj -c Release -t:Rebuild /p:InstallerPayloadZip="$payloadZip" /p:OutDir="$installerOutput\"
+          $builtInstaller = Join-Path $installerOutput "PlugHub.Installer.exe"
+          if (!(Test-Path $builtInstaller)) {
+            throw "Installer build finished but $builtInstaller was not found."
+          }
+
+          Copy-Item -LiteralPath $builtInstaller -Destination $installerExe -Force
+          cosign sign-blob --yes --bundle "$installerExe.sigstore.json" "$installerExe"
+
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: PlugHub ${{ github.ref_name }}
           files: |
+            PlugHub-Setup-${{ github.ref_name }}.exe
+            PlugHub-Setup-${{ github.ref_name }}.exe.sigstore.json
             PlugHub-Revit2020-${{ github.ref_name }}.zip
             PlugHub-Revit2020-${{ github.ref_name }}.zip.sigstore.json
             dist/Revit2020/PlugHub*.dll.sigstore.json

@@ -48,24 +48,42 @@ PlugHub.StaticValidation      # 静态验证入口
 
 外部插件包目录推荐使用 `package.json` 作为插件包清单。平铺投放单个 DLL 时，可使用 `<DllName>.package.json` 作为邻接清单。`packages` 中可以包含多个插件包文件夹或多个邻接清单；框架会递归扫描 `packageDirectories` 中的 `package.json` 和 `*.package.json`。仓库浏览得到的包清单不会直接参与启动加载，只有安装到 `packages` 后才会进入发现流程。
 
+运行时硬性要求：
+
+- 根对象必须包含 `schemaVersion` 和 `modules`。
+- `modules` 必须至少包含 1 个 module 才能通过当前静态验证。
+- module 应包含 `id`、`enabled`、`visible` 和 `features`。
+- 真实功能应包含稳定唯一的 `id`；同一运行时中的重复 feature id 会被诊断并跳过。
+
+根级兼容字段：
+
+- `version`：仓库页展示和更新判断使用。
+- `revitVersions`：当前运行时只支持 Revit 2020；如果根级或 module 级声明了版本列表且不包含 `2020`，该 module 会被跳过。
+- `frameworkVersionRange`：目前只保留为元数据，不做范围求值。
+- `sha256` / `signature`：仓库分发元数据。安装器把多 module 清单拆成单 module 本地清单时不会复制这两个字段，避免签名和 hash 指向已经改写过的旧根清单。
+
 模块关键字段：
 
 - `id`：模块唯一 ID。
 - `assembly` / `type`：可选模块实现元数据。启动发现不依赖它们加载模块；当功能未单独配置 `commandAssembly` 时，`assembly` 仍作为默认命令程序集路径。
-- `displayName`：用户可见模块名。
+- `name` / `displayName` / `description`：展示信息；`displayName` 优先。
 - `enabled` / `visible`：是否加载、是否进入功能列表。
 - `order`：模块排序，设置页以「第 N 项」展示，不暴露裸数字。
+- `tags`：仓库筛选和展示元数据。
+- `dependsOn`：模型兼容保留，当前运行时没有依赖调度器。
 - `features`：功能入口列表。
 
 功能关键字段：
 
-- `id`：全局唯一 feature ID。
-- `displayName`：用户可见功能名。
-- `category` / `group` / `tags`：匹配 `workspace` 分组。
+- `id`：全局唯一 feature ID，也是 Ribbon layout 引用的权威键。
+- `name` / `displayName` / `description`：展示信息；`displayName` 优先。
+- `category` / `group` / `tags`：匹配 `workspace` 分组、搜索和筛选。
+- `order`：同组排序。
 - `defaultState`：`Visible`、`Disabled` 或 `Hidden`。
 - `buttonSize`：`large` 或 `small`。
 - `iconPath`：可选图标路径；为空时使用内置默认图标。
-- `commandAssembly` / `commandType`：指向实际 `IExternalCommand`。
+- `commandKey`：旧命令入口兼容和诊断展示字段，新包优先使用 feature `id`。
+- `commandAssembly` / `commandType`：指向实际 `IExternalCommand`。缺少 `commandType` 时，按钮回落到框架状态窗口。
 
 ### `views.json`
 

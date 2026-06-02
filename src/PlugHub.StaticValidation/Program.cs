@@ -68,6 +68,7 @@ namespace PlugHub.StaticValidation
                 ValidateRepositoryInstallFailureDoesNotCreateOrRemovePackages();
                 ValidateLockedPackageOperationBehavior();
                 ValidateRevitApiReferenceStrategy();
+                ValidateReleaseInstallerPackaging();
                 ValidateSigningGuidance();
                 ValidateRevitDeploymentConfiguration();
 
@@ -186,6 +187,11 @@ namespace PlugHub.StaticValidation
                 "src/PlugHub.Contracts/PlugHub.Contracts.csproj",
                 "src/PlugHub.Framework/PlugHub.Framework.csproj",
                 "src/PlugHub.Revit2020/PlugHub.Revit2020.csproj",
+                "src/PlugHub.Installer/PlugHub.Installer.csproj",
+                "src/PlugHub.Installer/Program.cs",
+                "src/PlugHub.Installer/InstallerForm.cs",
+                "src/PlugHub.Installer/InstallerPayload.cs",
+                "src/PlugHub.Installer/AddinManifestWriter.cs",
                 "src/PlugHub.StaticValidation/PlugHub.StaticValidation.csproj",
                 "src/PlugHub.StaticValidation/Validation/ValidationSeverity.cs",
                 "src/PlugHub.StaticValidation/Validation/ValidationIssue.cs",
@@ -276,7 +282,11 @@ namespace PlugHub.StaticValidation
                 "docs/module-contract.md",
                 "docs/requirements.md",
                 "docs/review.md",
-                "docs/verification.md"
+                "docs/verification.md",
+                "docs/PlugHub Revit 模块化插件可视化配置工具.md",
+                "docs/新版 UI 的精细化抛光建议.md",
+                "docs/仓库UI优化意见.md",
+                "docs/仓库UI优化实现蓝图.md"
             })
             {
                 Require(!File.Exists(FullPath(obsolete)), "obsolete documentation should be consolidated or removed: " + obsolete);
@@ -290,6 +300,9 @@ namespace PlugHub.StaticValidation
 
             Require(ReadText("docs/plugin-development.md").Contains("package.json"), "plugin development docs must describe package.json.");
             Require(ReadText("docs/plugin-development.md").Contains("IExternalCommand"), "plugin development docs must describe IExternalCommand integration.");
+            Require(ReadText("docs/plugin-development.md").Contains("运行时硬性要求"), "plugin development docs must separate runtime package manifest requirements from recommendations.");
+            Require(ReadText("docs/plugin-development.md").Contains("推荐字段"), "plugin development docs must document recommended package manifest fields.");
+            Require(ReadText("docs/plugin-development.md").Contains("不再建议"), "plugin development docs must document obsolete or no-longer-recommended package manifest fields.");
             Require(ReadText("docs/development.md").Contains("StagePlugHubOutput=false"), "development docs must document staging opt-out.");
             Require(ReadText("docs/architecture.md").Contains("DPAPI"), "architecture docs must document credential protection.");
             Require(ReadText("docs/project-overview.md").Contains("V1.2"), "project overview must mention V1.2 architecture hardening.");
@@ -437,6 +450,26 @@ namespace PlugHub.StaticValidation
             Require(schema.Contains("\"frameworkVersionRange\""), "package schema must define frameworkVersionRange.");
             Require(schema.Contains("\"sha256\""), "package schema must define sha256.");
             Require(schema.Contains("\"signature\""), "package schema must define signature.");
+            foreach (var token in new[]
+            {
+                "\"name\"",
+                "\"description\"",
+                "\"sourceId\"",
+                "\"dependsOn\"",
+                "\"category\"",
+                "\"group\"",
+                "\"tags\"",
+                "\"order\"",
+                "\"defaultState\"",
+                "\"buttonSize\"",
+                "\"iconPath\"",
+                "\"commandKey\"",
+                "\"commandAssembly\"",
+                "\"commandType\""
+            })
+            {
+                Require(schema.Contains(token), "package schema must define current module or feature field: " + token);
+            }
 
             var packageValidation = ReadText("src/PlugHub.StaticValidation/Validation/PackageManifestValidation.cs");
             Require(packageValidation.Contains("IEnumerable") && packageValidation.Contains("Cast<object>().Any()") && !packageValidation.Contains("object[]"), "package manifest validation must accept JavaScriptSerializer ArrayList modules.");
@@ -2198,6 +2231,33 @@ namespace PlugHub.StaticValidation
             Require(installScript.Contains("Backup-ExistingAddin") && installScript.Contains("Restore-AddinBackup"), "addin install script must backup and restore the addin manifest.");
             Require(workflow.Contains("-UseRevitApiNuGet"), "release workflow must build through NuGet API references.");
             Require(!workflow.Contains("REVIT2020_API_ZIP_BASE64"), "release workflow must not require a secret containing Autodesk Revit API DLLs.");
+        }
+
+        private static void ValidateReleaseInstallerPackaging()
+        {
+            var installerProject = ReadText("src/PlugHub.Installer/PlugHub.Installer.csproj");
+            var installerForm = ReadText("src/PlugHub.Installer/InstallerForm.cs");
+            var installerPayload = ReadText("src/PlugHub.Installer/InstallerPayload.cs");
+            var addinWriter = ReadText("src/PlugHub.Installer/AddinManifestWriter.cs");
+            var workflow = ReadText(".github/workflows/release.yml");
+            var solution = ReadText("PlugHub.sln");
+            var solutionX = ReadText("PlugHub.slnx");
+            var readme = ReadText("README.md");
+            var development = ReadText("docs/development.md");
+
+            Require(installerProject.Contains("<OutputType>WinExe</OutputType>"), "installer project must build a Windows EXE.");
+            Require(installerProject.Contains("<TargetFramework>net48</TargetFramework>"), "installer project must target net48.");
+            Require(installerProject.Contains("InstallerPayloadZip") && installerProject.Contains("PlugHubPayload.zip"), "installer project must embed the release payload zip through InstallerPayloadZip.");
+            Require(solution.Contains("src\\PlugHub.Installer\\PlugHub.Installer.csproj"), "installer project must be included in PlugHub.sln.");
+            Require(solutionX.Contains("src/PlugHub.Installer/PlugHub.Installer.csproj"), "installer project must be included in PlugHub.slnx.");
+            Require(installerForm.Contains(@"D:\Program Files\PlugHub"), "installer UI must default the install directory to D:\\Program Files\\PlugHub.");
+            Require(installerForm.Contains("FolderBrowserDialog"), "installer UI must let users choose the install directory.");
+            Require(installerPayload.Contains("GetManifestResourceStream") && installerPayload.Contains("ZipFile.ExtractToDirectory"), "installer payload must be embedded and extracted by the installer.");
+            Require(addinWriter.Contains("Autodesk") && addinWriter.Contains("Revit") && addinWriter.Contains("Addins") && addinWriter.Contains("2020"), "installer must write the Revit 2020 addins manifest directory.");
+            Require(addinWriter.Contains("PlugHub.Revit2020.dll") && addinWriter.Contains("Assembly") && addinWriter.Contains("Backup"), "installer must rewrite addin Assembly to the installed DLL path and backup existing manifests.");
+            Require(workflow.Contains("Build PlugHub installer") && workflow.Contains("-t:Rebuild") && workflow.Contains("InstallerPayloadZip") && workflow.Contains("PlugHub-Setup-${{ github.ref_name }}.exe"), "release workflow must rebuild and upload PlugHub installer EXE.");
+            Require(readme.Contains("PlugHub-Setup") && readme.Contains(@"D:\Program Files\PlugHub"), "README must document the installer EXE and default install directory.");
+            Require(development.Contains("PlugHub-Setup") && development.Contains("复制 addin") && development.Contains("Revit 2020"), "development docs must document release installer behavior.");
         }
 
         private static void ValidateSigningGuidance()

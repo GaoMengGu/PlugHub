@@ -68,6 +68,18 @@ CI 发布构建使用 `NuGet` 引用模式，只把 Revit API 当作编译引用
 
 如果复制到 `dist\Revit2020` 失败，优先检查 Revit 是否正在占用 DLL。
 
+## Release 安装程序
+
+发布 `V*` tag 时，Release workflow 会在 `PlugHub-Revit2020-<tag>.zip` 之外构建 `PlugHub-Setup-<tag>.exe`。安装程序是 `src\PlugHub.Installer` 生成的 C# WinForms EXE，内部嵌入同一次 release 的 Revit 2020 zip payload。
+
+安装程序行为：
+
+- 默认安装目录为 `D:\Program Files\PlugHub`，用户可以手动选择其他目录。
+- 解压并复制 PlugHub 文件到安装目录。
+- 自动把安装目录中的 `PlugHub.addin` 的 `<Assembly>` 写成 `PlugHub.Revit2020.dll` 的绝对路径。
+- 复制 addin 到当前用户 `%APPDATA%\Autodesk\Revit\Addins\2020\PlugHub.addin`；如果已有文件，会先写 `.bak` 备份。
+- 安装程序只注册 Revit 2020 addin，不声明 Revit 实机验收通过。
+
 ### 跳过 dist staging
 
 Revit 正在运行时可能占用 `dist\Revit2020` 中的 DLL，导致构建后的复制输出失败。只需要验证编译、不需要刷新 `dist` 目录时，可以显式关闭 staging：
