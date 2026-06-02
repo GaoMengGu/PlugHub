@@ -19,6 +19,7 @@ using PlugHub.Framework.Configuration;
 using PlugHub.Framework.Diagnostics;
 using PlugHub.Framework.Packages;
 using PlugHub.Framework.Runtime;
+using PlugHub.Framework.Updates;
 using PlugHub.Revit2020.Settings;
 using PlugHub.Revit2020.Settings.RibbonDesigner;
 using PlugHub.Revit2020.Settings.Rows;
@@ -61,6 +62,7 @@ namespace PlugHub.Revit2020
         private FrameworkConfiguration _configuration;
         private readonly PackageRepositoryService _packageRepositoryService = new PackageRepositoryService();
         private readonly RepositoryCredentialService _credentialService = new RepositoryCredentialService();
+        private readonly FrameworkUpdateService _frameworkUpdateService = new FrameworkUpdateService();
         private readonly RepositorySettingsController _repositorySettingsController = new RepositorySettingsController();
         private readonly RibbonDesignerMapper _ribbonDesignerMapper = new RibbonDesignerMapper();
         private readonly RibbonDesignerDropService _ribbonDesignerDropService = new RibbonDesignerDropService();
@@ -96,6 +98,8 @@ namespace PlugHub.Revit2020
         private DataGrid? _dragSourceGrid;
         private bool _syncingSelectedFeatureEditor;
         private bool _syncingSelectedRibbonDesignerEditor;
+        private FrameworkUpdateCheckResult? _latestFrameworkUpdate;
+        private Button? _updateFrameworkButton;
 
         public FrameworkSettingsWindow(string configDirectory, FrameworkConfiguration configuration)
         {
@@ -466,6 +470,7 @@ namespace PlugHub.Revit2020
             metrics.Children.Add(BuildAboutMetric("仓库数", ConfiguredRepositoryCount().ToString(CultureInfo.InvariantCulture)));
             metrics.Children.Add(BuildAboutMetric("目标版本", "Revit 2020"));
             summary.Children.Add(metrics);
+            summary.Children.Add(BuildFrameworkUpdateActions());
             Grid.SetColumn(summary, 0);
             root.Children.Add(summary);
 
@@ -551,6 +556,25 @@ namespace PlugHub.Revit2020
                 BorderThickness = new Thickness(1),
                 Child = panel
             };
+        }
+
+        private UIElement BuildFrameworkUpdateActions()
+        {
+            var panel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Margin = new Thickness(0, 16, 0, 0)
+            };
+
+            var checkButton = CreateButton("检查更新", (sender, args) => CheckFrameworkUpdate());
+            checkButton.Margin = new Thickness(0, 0, 0, 0);
+            panel.Children.Add(checkButton);
+
+            _updateFrameworkButton = CreateButton("更新框架", (sender, args) => UpdateFramework());
+            _updateFrameworkButton.IsEnabled = false;
+            _updateFrameworkButton.Margin = new Thickness(8, 0, 0, 0);
+            panel.Children.Add(_updateFrameworkButton);
+            return panel;
         }
 
         private static UIElement BuildAboutInfoRow(string label, string value)
@@ -4960,6 +4984,74 @@ namespace PlugHub.Revit2020
         {
             grid.CommitEdit(DataGridEditingUnit.Cell, true);
             grid.CommitEdit(DataGridEditingUnit.Row, true);
+        }
+
+        private void CheckFrameworkUpdate()
+        {
+            RefreshStatus("正在检查框架更新，请稍候。");
+            Task.Run(() =>
+            {
+                try
+                {
+                    return _frameworkUpdateService.Check(AssemblyVersionText());
+                }
+                catch (Exception ex)
+                {
+                    return new FrameworkUpdateCheckResult { Success = false, Message = "检查更新失败：" + ex.Message };
+                }
+            }).ContinueWith(task => Dispatcher.BeginInvoke(new Action(() =>
+            {
+                _latestFrameworkUpdate = task.Result;
+                if (_updateFrameworkButton != null)
+                {
+                    _updateFrameworkButton.IsEnabled = task.Result.Success && task.Result.HasUpdate;
+                }
+
+                RefreshStatus(task.Result.Message);
+            })));
+        }
+
+        private void UpdateFramework()
+        {
+            if (_latestFrameworkUpdate == null || !_latestFrameworkUpdate.Success || !_latestFrameworkUpdate.HasUpdate)
+            {
+                RefreshStatus("请先检查更新。");
+                return;
+            }
+
+            if (_updateFrameworkButton != null)
+            {
+                _updateFrameworkButton.IsEnabled = false;
+            }
+
+            RefreshStatus("正在下载框架更新，请稍候。");
+            var baseDirectory = BaseDirectory();
+            var processId = Process.GetCurrentProcess().Id;
+            var checkResult = _latestFrameworkUpdate;
+            Task.Run(() =>
+            {
+                try
+                {
+                    var download = _frameworkUpdateService.Download(checkResult);
+                    if (!download.Success)
+                    {
+                        return new FrameworkUpdateOperationResult { Success = false, Message = download.Message };
+                    }
+
+                    return _frameworkUpdateService.StartUpdater(baseDirectory, download.PackagePath, download.LatestVersion, processId);
+                }
+                catch (Exception ex)
+                {
+                    return new FrameworkUpdateOperationResult { Success = false, Message = "更新框架失败：" + ex.Message };
+                }
+            }).ContinueWith(task => Dispatcher.BeginInvoke(new Action(() =>
+            {
+                RefreshStatus(task.Result.Message);
+                if (_updateFrameworkButton != null && !task.Result.Success)
+                {
+                    _updateFrameworkButton.IsEnabled = true;
+                }
+            })));
         }
 
         private void RefreshStatus(string text)

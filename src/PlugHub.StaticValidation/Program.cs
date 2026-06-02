@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Web.Script.Serialization;
 
@@ -1469,7 +1470,8 @@ namespace PlugHub.StaticValidation
             Require(settingsWindow.Contains("BrowseRepositorySourceCacheFromCard") && settingsWindow.Contains("_packageRepositoryService.BrowseCached(BaseDirectory(), row.ToConfiguration()"), "clicking a repository source card must browse its local cached packages without remote sync.");
             Require(settingsWindow.Contains("同步仓库插件包") && settingsWindow.Contains("编辑仓库源") && settingsWindow.Contains("删除仓库"), "repository source menu must expose edit, sync, and delete actions.");
             Require(settingsWindow.Contains("RevitUiTheme.Current.DangerBrush"), "repository source delete menu item must be visually highlighted as destructive.");
-            Require(settingsWindow.Contains("一键同步") && !settingsWindow.Contains("浏览所选") && !settingsWindow.Contains("检查更新"), "repository toolbar must expose manual sync-all and remove redundant repository actions.");
+            var repositoryToolbar = MethodBody(settingsWindow, "BuildRepositoryToolbar");
+            Require(repositoryToolbar.Contains("一键同步") && !repositoryToolbar.Contains("浏览所选") && !repositoryToolbar.Contains("检查更新"), "repository toolbar must expose manual sync-all and remove redundant repository actions.");
             Require(!settingsWindow.Contains("LoadCachedRepositoryPackages();"), "settings must not auto-populate repository packages before the user manually syncs repositories.");
             var sourceTemplate = MethodBody(settingsWindow, "BuildRepositorySourceCardTemplate");
             Require(sourceTemplate.Contains("border.SetValue(Border.WidthProperty, RepositorySourceCardWidth)") && sourceTemplate.Contains("border.SetValue(Border.MarginProperty, new Thickness(RepositoryCardHorizontalMargin, RepositoryPackageCardVerticalMargin, RepositoryCardHorizontalMargin, RepositorySourceCardBottomMargin))"), "repository source card horizontal gaps must match package card vertical gaps while preserving source-row bottom spacing.");
@@ -2455,6 +2457,39 @@ namespace PlugHub.StaticValidation
             Require(buildScript.Contains("PlugHub.Updater.csproj") && buildScript.Contains("PlugHub.Updater.exe"), "local Revit 2020 build script must stage PlugHub.Updater.exe.");
             Require(readme.Contains("检查更新") && readme.Contains("更新框架") && readme.Contains("只覆盖框架 DLL"), "README must document framework auto-update behavior.");
             Require(development.Contains("检查更新") && development.Contains("更新框架") && development.Contains("不能声明 Revit 实机测试成功"), "development docs must document updater verification boundaries.");
+
+            ValidateFrameworkUpdatePackageRejectsUnsafeZip();
+        }
+
+        private static void ValidateFrameworkUpdatePackageRejectsUnsafeZip()
+        {
+            var validator = new PlugHub.Framework.Updates.FrameworkUpdatePackageValidator();
+            var temp = Path.Combine(Path.GetTempPath(), "PlugHubStaticValidation", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(temp);
+            try
+            {
+                var zip = Path.Combine(temp, "unsafe.zip");
+                using (var archive = ZipFile.Open(zip, ZipArchiveMode.Create))
+                {
+                    archive.CreateEntry("../PlugHub.Revit2020.dll");
+                }
+
+                var failed = false;
+                try
+                {
+                    validator.Validate(zip);
+                }
+                catch (InvalidDataException)
+                {
+                    failed = true;
+                }
+
+                Require(failed, "framework update validator must reject unsafe zip entry paths.");
+            }
+            finally
+            {
+                Directory.Delete(temp, true);
+            }
         }
 
         private static void ValidateSigningGuidance()

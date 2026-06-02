@@ -4,5 +4,6 @@
   <Project Path="src/PlugHub.Revit2020/PlugHub.Revit2020.csproj" />
   <Project Path="src/PlugHub.Installer/PlugHub.Installer.csproj" />
   <Project Path="src/PlugHub.Uninstaller/PlugHub.Uninstaller.csproj" />
+  <Project Path="src/PlugHub.Updater/PlugHub.Updater.csproj" />
   <Project Path="src/PlugHub.StaticValidation/PlugHub.StaticValidation.csproj" />
 </Solution>

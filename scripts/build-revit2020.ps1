@@ -14,6 +14,7 @@ param(
 $ErrorActionPreference = "Stop"
 $Root = Resolve-Path "$PSScriptRoot\.."
 $Project = Join-Path $Root "src\PlugHub.Revit2020\PlugHub.Revit2020.csproj"
+$UpdaterProject = Join-Path $Root "src\PlugHub.Updater\PlugHub.Updater.csproj"
 
 function Assert-PathInsideRoot {
     param([string]$Path)
@@ -86,6 +87,8 @@ if ($Clean) {
     Remove-RepoPath (Join-Path $Root "src\PlugHub.Framework\obj")
     Remove-RepoPath (Join-Path $Root "src\PlugHub.Revit2020\bin")
     Remove-RepoPath (Join-Path $Root "src\PlugHub.Revit2020\obj")
+    Remove-RepoPath (Join-Path $Root "src\PlugHub.Updater\bin")
+    Remove-RepoPath (Join-Path $Root "src\PlugHub.Updater\obj")
     Remove-RepoPath (Join-Path $Root "src\PlugHub.StaticValidation\bin")
     Remove-RepoPath (Join-Path $Root "src\PlugHub.StaticValidation\obj")
 }
@@ -163,10 +166,17 @@ if ($NoStage) {
     return
 }
 
+& dotnet build $UpdaterProject -c $Configuration -t:Rebuild "/p:OutDir=$OutputDir\"
+if ($LASTEXITCODE -ne 0) {
+    throw "dotnet build PlugHub.Updater failed with exit code $LASTEXITCODE."
+}
+
 $Addin = Join-Path $OutputDir "PlugHub.addin"
 $Dll = Join-Path $OutputDir "PlugHub.Revit2020.dll"
+$Updater = Join-Path $OutputDir "PlugHub.Updater.exe"
 if (!(Test-Path $Dll)) { throw "Build finished but $Dll was not found." }
 if (!(Test-Path $Addin)) { throw "Build finished but $Addin was not found." }
+if (!(Test-Path $Updater)) { throw "Build finished but $Updater was not found." }
 
 $RequiredConfigFiles = @(
     "config\sources.json",

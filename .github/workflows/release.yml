@@ -37,6 +37,16 @@ jobs:
             cosign sign-blob --yes --bundle "$($dll.FullName).sigstore.json" "$($dll.FullName)"
           }
 
+      - name: Build PlugHub updater
+        shell: pwsh
+        run: |
+          $updaterOutput = (Resolve-Path "dist\Revit2020").Path
+          dotnet build src\PlugHub.Updater\PlugHub.Updater.csproj -c Release -t:Rebuild /p:OutDir="$updaterOutput\"
+          $builtUpdater = Join-Path $updaterOutput "PlugHub.Updater.exe"
+          if (!(Test-Path $builtUpdater)) {
+            throw "Updater build finished but $builtUpdater was not found."
+          }
+
       - name: Package release artifact
         shell: pwsh
         run: |

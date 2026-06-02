@@ -81,6 +81,17 @@ C:\ProgramData\Autodesk\Revit\Addins\2020\PlugHub.addin
 - 在安装目录写入 `PlugHub-Uninstall.exe`。卸载器会删除机器级 addin manifest 和安装目录；如果 Revit 正在占用 DLL，需要关闭 Revit 后重试。
 - 安装程序只注册 Revit 2020 addin，不声明 Revit 实机验收通过。
 
+## 框架自动更新
+
+设置窗口「关于」页签包含 `检查更新` 和 `更新框架`。
+
+- `检查更新` 只访问 release 元数据，不修改本地文件。
+- `更新框架` 下载 release zip，校验核心 DLL 后启动 `PlugHub.Updater.exe`。
+- updater 静默等待当前 Revit 进程退出，只覆盖安装目录根部的框架 DLL。
+- updater 不重写 `PlugHub.addin`，不覆盖 `packages`、`config`、`repository-cache`、`runtime-cache` 和 `logs`。
+
+非 Revit 环境只能验证静态规则、构建、zip 校验和临时目录 DLL 覆盖流程，不能声明 Revit 实机测试成功。
+
 ### 跳过 dist staging
 
 Revit 正在运行时可能占用 `dist\Revit2020` 中的 DLL，导致构建后的复制输出失败。只需要验证编译、不需要刷新 `dist` 目录时，可以显式关闭 staging：
