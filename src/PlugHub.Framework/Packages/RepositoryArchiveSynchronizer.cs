@@ -12,6 +12,8 @@ namespace PlugHub.Framework.Packages
 {
     public sealed class RepositoryArchiveSynchronizer
     {
+        private const string ArchiveDownloadUserAgent = "curl/8.0.1";
+
         private readonly RepositoryCredentialService _credentialService;
 
         public RepositoryArchiveSynchronizer(RepositoryCredentialService credentialService)
@@ -43,6 +45,7 @@ namespace PlugHub.Framework.Packages
 
                 var archiveUrl = ArchiveUrl(address, repository);
                 DownloadArchive(archiveUrl, repository, archivePath);
+                ValidateArchiveFile(archivePath, archiveUrl);
                 ExtractArchive(archivePath, stagingDirectory);
                 ReplaceCacheDirectory(stagingDirectory, cacheDirectory);
                 return true;
@@ -89,7 +92,7 @@ namespace PlugHub.Framework.Packages
             request.AllowAutoRedirect = true;
             request.Timeout = 30000;
             request.ReadWriteTimeout = 30000;
-            request.UserAgent = "PlugHub";
+            request.UserAgent = ArchiveDownloadUserAgent;
 
             var apiKey = _credentialService.ResolveApiKey(repository);
             if (string.Equals(repository.Provider, "github", StringComparison.OrdinalIgnoreCase)
@@ -134,6 +137,38 @@ namespace PlugHub.Framework.Packages
                     entry.ExtractToFile(destinationPath, true);
                 }
             }
+        }
+
+        private static void ValidateArchiveFile(string archivePath, Uri archiveUrl)
+        {
+            var length = File.Exists(archivePath) ? new FileInfo(archivePath).Length : 0;
+            if (length < 4)
+            {
+                throw InvalidArchive(archiveUrl);
+            }
+
+            var header = new byte[4];
+            using (var source = File.OpenRead(archivePath))
+            {
+                if (source.Read(header, 0, header.Length) != header.Length)
+                {
+                    throw InvalidArchive(archiveUrl);
+                }
+            }
+
+            if (header[0] != 0x50
+                || header[1] != 0x4B
+                || !((header[2] == 0x03 && header[3] == 0x04)
+                    || (header[2] == 0x05 && header[3] == 0x06)
+                    || (header[2] == 0x07 && header[3] == 0x08)))
+            {
+                throw InvalidArchive(archiveUrl);
+            }
+        }
+
+        private static InvalidDataException InvalidArchive(Uri archiveUrl)
+        {
+            return new InvalidDataException("Downloaded repository archive is not a zip file. Check repository URL, ref, and credentials: " + SensitiveTextRedactor.Redact(archiveUrl.ToString()));
         }
 
         private static void ReplaceCacheDirectory(string stagingDirectory, string cacheDirectory)

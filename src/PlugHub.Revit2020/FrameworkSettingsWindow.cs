@@ -4884,9 +4884,9 @@ namespace PlugHub.Revit2020
             public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
             {
                 if (!(value is RepositoryPackageRow row)) return string.Empty;
-                var version = string.IsNullOrWhiteSpace(row.Version) ? "版本未知" : "版本 " + row.Version;
-                var installed = string.IsNullOrWhiteSpace(row.InstalledVersion) ? string.Empty : "，已装 " + row.InstalledVersion;
-                return row.RepositoryDisplayName + "，" + version + installed;
+                var localVersion = string.IsNullOrWhiteSpace(row.InstalledVersion) ? "-" : row.InstalledVersion.Trim();
+                var repositoryVersion = string.IsNullOrWhiteSpace(row.Version) ? "?" : row.Version.Trim();
+                return "本 " + localVersion + " · 仓 " + repositoryVersion;
             }
 
             public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
