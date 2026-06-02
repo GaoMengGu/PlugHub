@@ -69,6 +69,9 @@ namespace PlugHub.StaticValidation
                 ValidateLockedPackageOperationBehavior();
                 ValidateRevitApiReferenceStrategy();
                 ValidateReleaseInstallerPackaging();
+                ValidateGiteeGoReleasePackaging();
+                ValidateMachineWideAddinRegistration();
+                ValidateUninstallerPackaging();
                 ValidateSigningGuidance();
                 ValidateRevitDeploymentConfiguration();
 
@@ -182,6 +185,7 @@ namespace PlugHub.StaticValidation
                 "AGENTS.md",
                 ".github/workflows/release.yml",
                 ".github/workflows/sync-gitee.yml",
+                ".gitee/workflows/release.yml",
                 "PlugHub.sln",
                 "PlugHub.slnx",
                 "src/PlugHub.Contracts/PlugHub.Contracts.csproj",
@@ -192,6 +196,9 @@ namespace PlugHub.StaticValidation
                 "src/PlugHub.Installer/InstallerForm.cs",
                 "src/PlugHub.Installer/InstallerPayload.cs",
                 "src/PlugHub.Installer/AddinManifestWriter.cs",
+                "src/PlugHub.Uninstaller/PlugHub.Uninstaller.csproj",
+                "src/PlugHub.Uninstaller/Program.cs",
+                "src/PlugHub.Uninstaller/UninstallerForm.cs",
                 "src/PlugHub.StaticValidation/PlugHub.StaticValidation.csproj",
                 "src/PlugHub.StaticValidation/Validation/ValidationSeverity.cs",
                 "src/PlugHub.StaticValidation/Validation/ValidationIssue.cs",
@@ -2258,6 +2265,69 @@ namespace PlugHub.StaticValidation
             Require(workflow.Contains("Build PlugHub installer") && workflow.Contains("-t:Rebuild") && workflow.Contains("InstallerPayloadZip") && workflow.Contains("PlugHub-Setup-${{ github.ref_name }}.exe"), "release workflow must rebuild and upload PlugHub installer EXE.");
             Require(readme.Contains("PlugHub-Setup") && readme.Contains(@"D:\Program Files\PlugHub"), "README must document the installer EXE and default install directory.");
             Require(development.Contains("PlugHub-Setup") && development.Contains("复制 addin") && development.Contains("Revit 2020"), "development docs must document release installer behavior.");
+        }
+
+        private static void ValidateGiteeGoReleasePackaging()
+        {
+            var giteeWorkflow = ReadText(".gitee/workflows/release.yml");
+
+            Require(giteeWorkflow.Contains("V*"), "Gitee Go release workflow must run for V* tags.");
+            Require(giteeWorkflow.Contains("windows") || giteeWorkflow.Contains("Windows"), "Gitee Go release workflow must use a Windows build environment.");
+            Require(giteeWorkflow.Contains("PlugHub.StaticValidation") && giteeWorkflow.Contains("build-revit2020.ps1"), "Gitee Go release workflow must run validation and build the Revit 2020 package.");
+            Require(giteeWorkflow.Contains("-UseRevitApiNuGet") && giteeWorkflow.Contains("-UseRelativeAddinAssembly"), "Gitee Go release workflow must use NuGet Revit API references and relative addin assembly paths.");
+            Require(giteeWorkflow.Contains("PlugHub.Uninstaller.csproj") && giteeWorkflow.Contains("PlugHub-Uninstall.exe"), "Gitee Go release workflow must build the uninstaller artifact for the installer.");
+            Require(giteeWorkflow.Contains("PlugHub.Installer.csproj") && giteeWorkflow.Contains("InstallerPayloadZip") && giteeWorkflow.Contains("InstallerUninstallerExe"), "Gitee Go release workflow must build the installer with embedded payload and uninstaller.");
+            Require(giteeWorkflow.Contains("PlugHub-Revit2020-") && giteeWorkflow.Contains("PlugHub-Setup-"), "Gitee Go release workflow must package the same zip and setup exe names as GitHub releases.");
+            Require(giteeWorkflow.Contains("GITEE_TOKEN") && giteeWorkflow.Contains("api/v5/repos/GaoMengGu/PlugHub/releases"), "Gitee Go release workflow must publish to GaoMengGu/PlugHub releases through the Gitee API token.");
+            Require(giteeWorkflow.Contains("attach_files") || giteeWorkflow.Contains("attach"), "Gitee Go release workflow must upload release attachments.");
+        }
+
+        private static void ValidateMachineWideAddinRegistration()
+        {
+            var addinWriter = ReadText("src/PlugHub.Installer/AddinManifestWriter.cs");
+            var installerForm = ReadText("src/PlugHub.Installer/InstallerForm.cs");
+            var buildScript = ReadText("scripts/build-revit2020.ps1");
+            var installScript = ReadText("scripts/install-addin.ps1");
+            var buildProps = ReadText("build/Directory.Build.props");
+            var readme = ReadText("README.md");
+            var development = ReadText("docs/development.md");
+
+            Require(addinWriter.Contains("Environment.SpecialFolder.CommonApplicationData"), "installer must resolve the machine-wide ProgramData addins directory.");
+            Require(!addinWriter.Contains("Environment.SpecialFolder.ApplicationData"), "installer must not register addins under the current user's APPDATA directory.");
+            Require(addinWriter.Contains("Autodesk") && addinWriter.Contains("Revit") && addinWriter.Contains("Addins") && addinWriter.Contains("2020"), "installer must still target the Revit 2020 addins subdirectory.");
+            Require(installerForm.Contains("all Windows users") || installerForm.Contains("machine-wide"), "installer UI must describe machine-wide Revit addin registration.");
+            Require(buildScript.Contains("$env:ProgramData") && installScript.Contains("$env:ProgramData"), "build and install scripts must use ProgramData for Revit addin manifests.");
+            Require(!buildScript.Contains("$env:APPDATA") && !installScript.Contains("$env:APPDATA"), "build and install scripts must not use APPDATA for Revit addin manifests.");
+            Require(buildProps.Contains("$(ProgramData)\\Autodesk\\Revit\\Addins\\$(RevitVersion)"), "MSBuild default RevitAddinsDir must use ProgramData.");
+            Require(readme.Contains(@"C:\ProgramData\Autodesk\Revit\Addins\2020\PlugHub.addin"), "README must document the machine-wide ProgramData addin path.");
+            Require(development.Contains(@"C:\ProgramData\Autodesk\Revit\Addins\2020\PlugHub.addin"), "development docs must document the machine-wide ProgramData addin path.");
+        }
+
+        private static void ValidateUninstallerPackaging()
+        {
+            var uninstallerProject = ReadText("src/PlugHub.Uninstaller/PlugHub.Uninstaller.csproj");
+            var uninstallerProgram = ReadText("src/PlugHub.Uninstaller/Program.cs");
+            var uninstallerForm = ReadText("src/PlugHub.Uninstaller/UninstallerForm.cs");
+            var installerProject = ReadText("src/PlugHub.Installer/PlugHub.Installer.csproj");
+            var installerPayload = ReadText("src/PlugHub.Installer/InstallerPayload.cs");
+            var installerForm = ReadText("src/PlugHub.Installer/InstallerForm.cs");
+            var githubWorkflow = ReadText(".github/workflows/release.yml");
+            var solution = ReadText("PlugHub.sln");
+            var solutionX = ReadText("PlugHub.slnx");
+            var readme = ReadText("README.md");
+            var development = ReadText("docs/development.md");
+
+            Require(uninstallerProject.Contains("<OutputType>WinExe</OutputType>") && uninstallerProject.Contains("<TargetFramework>net48</TargetFramework>"), "uninstaller project must build a net48 Windows EXE.");
+            Require(solution.Contains("src\\PlugHub.Uninstaller\\PlugHub.Uninstaller.csproj"), "uninstaller project must be included in PlugHub.sln.");
+            Require(solutionX.Contains("src/PlugHub.Uninstaller/PlugHub.Uninstaller.csproj"), "uninstaller project must be included in PlugHub.slnx.");
+            Require(uninstallerProgram.Contains("/run-from-temp") && uninstallerProgram.Contains("/installDir"), "uninstaller must support temporary self-copy execution with an explicit install directory.");
+            Require(uninstallerForm.Contains("PlugHub.addin") && uninstallerForm.Contains("SpecialFolder.CommonApplicationData"), "uninstaller must remove the machine-wide ProgramData addin manifest.");
+            Require(uninstallerForm.Contains("Directory.Delete") && uninstallerForm.Contains("Close Revit"), "uninstaller must delete the install directory and report locked-file guidance.");
+            Require(installerProject.Contains("InstallerUninstallerExe") && installerProject.Contains("PlugHubUninstaller.exe"), "installer project must embed the uninstaller exe through InstallerUninstallerExe.");
+            Require(installerPayload.Contains("PlugHub-Uninstall.exe") && installerPayload.Contains("WriteUninstaller"), "installer payload must write PlugHub-Uninstall.exe to the install directory.");
+            Require(installerForm.Contains("PlugHub-Uninstall.exe"), "installer UI must report or create the installed uninstaller.");
+            Require(githubWorkflow.Contains("Build PlugHub uninstaller") && githubWorkflow.Contains("InstallerUninstallerExe"), "GitHub release workflow must build and embed the uninstaller.");
+            Require(readme.Contains("PlugHub-Uninstall.exe") && development.Contains("PlugHub-Uninstall.exe"), "README and development docs must document the uninstaller.");
         }
 
         private static void ValidateSigningGuidance()

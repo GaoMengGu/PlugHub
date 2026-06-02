@@ -9,6 +9,8 @@ namespace PlugHub.Installer
     internal static class InstallerPayload
     {
         private const string ResourceName = "PlugHubPayload.zip";
+        private const string UninstallerResourceName = "PlugHubUninstaller.exe";
+        private const string InstalledUninstallerName = "PlugHub-Uninstall.exe";
 
         public static void ExtractTo(string installDirectory)
         {
@@ -27,12 +29,31 @@ namespace PlugHub.Installer
                 WritePayloadZip(payloadZip);
                 ZipFile.ExtractToDirectory(payloadZip, extractedDirectory);
                 CopyDirectory(extractedDirectory, installDirectory);
+                WriteUninstaller(installDirectory);
             }
             finally
             {
                 if (Directory.Exists(stagingRoot))
                 {
                     Directory.Delete(stagingRoot, true);
+                }
+            }
+        }
+
+        private static void WriteUninstaller(string installDirectory)
+        {
+            using (var source = OpenUninstallerStream())
+            {
+                if (source == null)
+                {
+                    throw new FileNotFoundException("PlugHub uninstaller was not embedded and no adjacent PlugHub.Uninstaller.exe was found.");
+                }
+
+                Directory.CreateDirectory(installDirectory);
+                var targetPath = Path.Combine(installDirectory, InstalledUninstallerName);
+                using (var target = File.Create(targetPath))
+                {
+                    source.CopyTo(target);
                 }
             }
         }
@@ -65,6 +86,20 @@ namespace PlugHub.Installer
             }
 
             throw new FileNotFoundException("PlugHub installer payload was not embedded and no adjacent PlugHub-Revit2020 zip was found.");
+        }
+
+        private static Stream? OpenUninstallerStream()
+        {
+            var assembly = Assembly.GetExecutingAssembly();
+            var stream = assembly.GetManifestResourceStream(UninstallerResourceName);
+            if (stream != null)
+            {
+                return stream;
+            }
+
+            var directory = Path.GetDirectoryName(assembly.Location) ?? AppDomain.CurrentDomain.BaseDirectory;
+            var adjacentUninstaller = Path.Combine(directory, "PlugHub.Uninstaller.exe");
+            return File.Exists(adjacentUninstaller) ? File.OpenRead(adjacentUninstaller) : null;
         }
 
         private static void CopyDirectory(string sourceDirectory, string targetDirectory)

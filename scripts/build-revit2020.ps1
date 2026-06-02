@@ -34,16 +34,16 @@ function Remove-RepoPath {
 }
 
 function Get-Revit2020AddinManifestPath {
-    if ([string]::IsNullOrWhiteSpace($env:APPDATA)) {
-        throw "APPDATA is not set; cannot resolve the Revit 2020 addins directory."
+    if ([string]::IsNullOrWhiteSpace($env:ProgramData)) {
+        throw "ProgramData is not set; cannot resolve the machine-wide Revit 2020 addins directory."
     }
 
-    return Join-Path $env:APPDATA "Autodesk\Revit\Addins\2020\PlugHub.addin"
+    return Join-Path $env:ProgramData "Autodesk\Revit\Addins\2020\PlugHub.addin"
 }
 
 function Remove-InstalledAddin {
     $target = Get-Revit2020AddinManifestPath
-    $expected = [System.IO.Path]::GetFullPath((Join-Path $env:APPDATA "Autodesk\Revit\Addins\2020\PlugHub.addin"))
+    $expected = [System.IO.Path]::GetFullPath((Join-Path $env:ProgramData "Autodesk\Revit\Addins\2020\PlugHub.addin"))
     $fullPath = [System.IO.Path]::GetFullPath($target)
     if (![string]::Equals($fullPath, $expected, [System.StringComparison]::OrdinalIgnoreCase)) {
         throw "Refusing to clean unexpected addin manifest path: $fullPath"

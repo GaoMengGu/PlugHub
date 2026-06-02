@@ -34,7 +34,7 @@ namespace PlugHub.Installer
 
             var descriptionLabel = new Label
             {
-                Text = "Choose the PlugHub install directory. The installer will copy files and register the Revit 2020 addin for the current Windows user.",
+                Text = "Choose the PlugHub install directory. The installer will copy files and register the Revit 2020 addin for all Windows users.",
                 AutoSize = false,
                 Location = new Point(20, 52),
                 Size = new Size(570, 42)
@@ -121,8 +121,9 @@ namespace PlugHub.Installer
 
                 _statusLabel.Text = "Registering Revit addin...";
                 var addinPath = AddinManifestWriter.Install(installDirectory);
+                var uninstallerPath = Path.Combine(Path.GetFullPath(installDirectory), "PlugHub-Uninstall.exe");
 
-                _statusLabel.Text = "Installed. Addin: " + addinPath;
+                _statusLabel.Text = "Installed. Addin: " + addinPath + " Uninstaller: " + uninstallerPath;
                 MessageBox.Show(this, "PlugHub was installed successfully.", Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)

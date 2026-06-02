@@ -65,12 +65,29 @@ jobs:
           Compress-Archive -Path "$artifactDir\*" -DestinationPath $zipPath -Force
           cosign sign-blob --yes --bundle "$zipPath.sigstore.json" "$zipPath"
 
+      - name: Build PlugHub uninstaller
+        shell: pwsh
+        run: |
+          $uninstallerOutput = Join-Path $env:RUNNER_TEMP "PlugHubUninstaller"
+          if (Test-Path $uninstallerOutput) {
+            Remove-Item -LiteralPath $uninstallerOutput -Recurse -Force
+          }
+
+          New-Item -ItemType Directory -Force -Path $uninstallerOutput | Out-Null
+          dotnet build src\PlugHub.Uninstaller\PlugHub.Uninstaller.csproj -c Release -t:Rebuild /p:OutDir="$uninstallerOutput\"
+          $builtUninstaller = Join-Path $uninstallerOutput "PlugHub.Uninstaller.exe"
+          if (!(Test-Path $builtUninstaller)) {
+            throw "Uninstaller build finished but $builtUninstaller was not found."
+          }
+          Copy-Item -LiteralPath $builtUninstaller -Destination (Join-Path $uninstallerOutput "PlugHub-Uninstall.exe") -Force
+
       - name: Build PlugHub installer
         shell: pwsh
         run: |
           $tag = "${{ github.ref_name }}"
           $zipPath = "PlugHub-Revit2020-$tag.zip"
           $payloadZip = (Resolve-Path $zipPath).Path
+          $uninstallerExe = (Resolve-Path (Join-Path $env:RUNNER_TEMP "PlugHubUninstaller\PlugHub.Uninstaller.exe")).Path
           $installerOutput = Join-Path $env:RUNNER_TEMP "PlugHubInstaller"
           $installerExe = "PlugHub-Setup-${{ github.ref_name }}.exe"
           if (Test-Path $installerOutput) {
@@ -78,7 +95,7 @@ jobs:
           }
 
           New-Item -ItemType Directory -Force -Path $installerOutput | Out-Null
-          dotnet build src\PlugHub.Installer\PlugHub.Installer.csproj -c Release -t:Rebuild /p:InstallerPayloadZip="$payloadZip" /p:OutDir="$installerOutput\"
+          dotnet build src\PlugHub.Installer\PlugHub.Installer.csproj -c Release -t:Rebuild /p:InstallerPayloadZip="$payloadZip" /p:InstallerUninstallerExe="$uninstallerExe" /p:OutDir="$installerOutput\"
           $builtInstaller = Join-Path $installerOutput "PlugHub.Installer.exe"
           if (!(Test-Path $builtInstaller)) {
             throw "Installer build finished but $builtInstaller was not found."

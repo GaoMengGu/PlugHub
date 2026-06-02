@@ -66,6 +66,16 @@ Revit API 引用通过 NuGet 仅用于 CI 编译。release workflow 使用 `.\sc
 
 cosign 签名是发布校验签名，不是 Windows Authenticode 内嵌签名。它不能消除 Windows 或 Revit 的“未知发布者”提示；如果目标是消除该提示，仍需 Authenticode 代码签名证书。
 
+## Gitee Go Release
+
+仓库包含 `.gitee/workflows/release.yml`，用于 Gitee Go 在推送 `V*` tag 时打包并发布 Gitee Release。该 workflow 会构建 Revit 2020 zip、构建 `PlugHub.Uninstaller`、构建嵌入 zip payload 和 `PlugHub-Uninstall.exe` 的安装器，并上传：
+
+- `PlugHub-Revit2020-<tag>.zip`
+- `PlugHub-Setup-<tag>.exe`
+- `PlugHub-SHA256-<tag>.txt`
+
+Gitee Go 发布依赖 `GITEE_TOKEN`，通过 Gitee API 写入 `GaoMengGu/PlugHub` release。当前 Gitee Go workflow 不做 GitHub OIDC keyless cosign；需要签名 bundle 时以 GitHub Release workflow 的 `.sigstore.json` 产物为准。
+
 ## 约束
 
 - 不要把 PFX、私钥、密码或 token 提交到仓库。

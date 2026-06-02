@@ -44,7 +44,11 @@ if ($null -eq $assemblyNode) { throw "Missing Assembly node in $Addin." }
 $assemblyNode.InnerText = $Dll
 $xml.Save($Addin)
 
-$AddinsDir = Join-Path $env:APPDATA "Autodesk\Revit\Addins\2020"
+if ([string]::IsNullOrWhiteSpace($env:ProgramData)) {
+    throw "ProgramData is not set; cannot resolve the machine-wide Revit 2020 addins directory."
+}
+
+$AddinsDir = Join-Path $env:ProgramData "Autodesk\Revit\Addins\2020"
 New-Item -ItemType Directory -Force -Path $AddinsDir | Out-Null
 $TargetAddin = Join-Path $AddinsDir "PlugHub.addin"
 $Backup = Backup-ExistingAddin $TargetAddin

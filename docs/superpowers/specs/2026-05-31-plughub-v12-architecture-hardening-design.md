@@ -76,7 +76,7 @@ V1.2 不做以下内容：
 
 `install-addin.ps1` 和 `build-revit2020.ps1 -InstallAddin` 应支持基本回滚：
 
-- 覆盖 `%APPDATA%\Autodesk\Revit\Addins\2020\PlugHub.addin` 前备份旧文件。
+- 覆盖 `C:\ProgramData\Autodesk\Revit\Addins\2020\PlugHub.addin` 前备份旧文件。
 - 复制失败时恢复备份。
 - 输出目标路径、备份路径和失败原因。
 

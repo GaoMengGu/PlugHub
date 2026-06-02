@@ -63,7 +63,7 @@ CI 发布构建使用 `NuGet` 引用模式，只把 Revit API 当作编译引用
 安装位置：
 
 ```text
-%APPDATA%\Autodesk\Revit\Addins\2020\PlugHub.addin
+C:\ProgramData\Autodesk\Revit\Addins\2020\PlugHub.addin
 ```
 
 如果复制到 `dist\Revit2020` 失败，优先检查 Revit 是否正在占用 DLL。
@@ -77,7 +77,8 @@ CI 发布构建使用 `NuGet` 引用模式，只把 Revit API 当作编译引用
 - 默认安装目录为 `D:\Program Files\PlugHub`，用户可以手动选择其他目录。
 - 解压并复制 PlugHub 文件到安装目录。
 - 自动把安装目录中的 `PlugHub.addin` 的 `<Assembly>` 写成 `PlugHub.Revit2020.dll` 的绝对路径。
-- 复制 addin 到当前用户 `%APPDATA%\Autodesk\Revit\Addins\2020\PlugHub.addin`；如果已有文件，会先写 `.bak` 备份。
+- 复制 addin 到机器级 `C:\ProgramData\Autodesk\Revit\Addins\2020\PlugHub.addin`；如果已有文件，会先写 `.bak` 备份。
+- 在安装目录写入 `PlugHub-Uninstall.exe`。卸载器会删除机器级 addin manifest 和安装目录；如果 Revit 正在占用 DLL，需要关闭 Revit 后重试。
 - 安装程序只注册 Revit 2020 addin，不声明 Revit 实机验收通过。
 
 ### 跳过 dist staging
@@ -146,6 +147,8 @@ Revit 2025+ ALC 需要单独的 net8 适配层、.NET SDK 8、Revit 2025 API 引
 发布 `V*` tag 时，GitHub Actions 会运行 release workflow，使用 NuGet 编译引用构建 Revit 2020 包，并用 cosign 为 DLL 和 zip 产物生成 Sigstore 签名 bundle。
 
 `main` 分支更新时，GitHub Actions 会运行 Gitee 同步 workflow，将当前 `main` 推送到 `https://gitee.com/GaoMengGu/PlugHub`。该 workflow 依赖仓库 secrets：`GITEE_PRIVATE_KEY`、`GITEE_TOKEN`、`GITEE_USER`。
+
+Gitee Go release 配置位于 `.gitee\workflows\release.yml`。推送 `V*` tag 到 Gitee 后，该 workflow 会运行静态验证、构建 Revit 2020 zip、构建并嵌入 `PlugHub-Uninstall.exe`、生成 `PlugHub-Setup-<tag>.exe`，并使用 `GITEE_TOKEN` 调用 Gitee API 发布 release 附件。
 
 版本预留在 `build\Directory.Build.props` 中维护：`RevitVersion` 控制输出路径和 addin 目录，`RevitApiReferenceMode` 控制 `Installed` / `NuGet` 引用模式，`RevitApiNuGetVersion` 控制 CI 编译引用包版本。后续增加 2018、2022、2024 适配时，应复用这些属性。
 

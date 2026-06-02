@@ -29,7 +29,7 @@
     <RevitInstallDir Condition="'$(RevitInstallDir)' == '' and '$(RevitVersion)' == '2022'">$(Revit2022InstallDir)</RevitInstallDir>
     <RevitInstallDir Condition="'$(RevitInstallDir)' == '' and '$(RevitVersion)' == '2024'">$(Revit2024InstallDir)</RevitInstallDir>
     <RevitApiDir Condition="'$(RevitApiDir)' == ''">$(RevitInstallDir)</RevitApiDir>
-    <RevitAddinsDir Condition="'$(RevitAddinsDir)' == ''">$(APPDATA)\Autodesk\Revit\Addins\$(RevitVersion)</RevitAddinsDir>
+    <RevitAddinsDir Condition="'$(RevitAddinsDir)' == ''">$(ProgramData)\Autodesk\Revit\Addins\$(RevitVersion)</RevitAddinsDir>
     <PlugHubOutputDir Condition="'$(PlugHubOutputDir)' == ''">$(MSBuildThisFileDirectory)..\dist\Revit$(RevitVersion)\</PlugHubOutputDir>
     <RevitApiNuGetVersion Condition="'$(RevitApiNuGetVersion)' == '' and '$(RevitVersion)' == '2018'">2018.2.0.2001</RevitApiNuGetVersion>
     <RevitApiNuGetVersion Condition="'$(RevitApiNuGetVersion)' == '' and '$(RevitVersion)' == '2020'">2020.2.1.2001</RevitApiNuGetVersion>

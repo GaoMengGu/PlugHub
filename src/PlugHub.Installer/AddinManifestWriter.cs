@@ -28,13 +28,13 @@ namespace PlugHub.Installer
 
             RewriteAssemblyPath(addinPath, dllPath);
 
-            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            if (string.IsNullOrWhiteSpace(appData))
+            var programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+            if (string.IsNullOrWhiteSpace(programData))
             {
-                throw new InvalidOperationException("APPDATA could not be resolved for the current Windows user.");
+                throw new InvalidOperationException("ProgramData could not be resolved for machine-wide Revit addin registration.");
             }
 
-            var addinsDirectory = Path.Combine(appData, "Autodesk", "Revit", "Addins", "2020");
+            var addinsDirectory = Path.Combine(programData, "Autodesk", "Revit", "Addins", "2020");
             Directory.CreateDirectory(addinsDirectory);
             var targetAddin = Path.Combine(addinsDirectory, "PlugHub.addin");
             var backup = BackupExistingAddin(targetAddin);
