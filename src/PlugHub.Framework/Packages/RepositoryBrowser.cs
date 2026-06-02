@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using PlugHub.Contracts.Modules;
@@ -13,6 +12,7 @@ namespace PlugHub.Framework.Packages
     {
         private readonly PackageManifestReader _manifestReader;
         private readonly RepositoryCredentialService _credentialService;
+        private readonly RepositoryArchiveSynchronizer _archiveSynchronizer;
         private readonly Func<string, string, string, string> _installedPackageVersion;
         private readonly Func<string, string, string, bool> _isModuleInstalled;
         private readonly Func<string, string, string, string> _pendingOperationFor;
@@ -26,6 +26,7 @@ namespace PlugHub.Framework.Packages
         {
             _manifestReader = manifestReader ?? throw new ArgumentNullException(nameof(manifestReader));
             _credentialService = credentialService ?? throw new ArgumentNullException(nameof(credentialService));
+            _archiveSynchronizer = new RepositoryArchiveSynchronizer(_credentialService);
             _installedPackageVersion = installedPackageVersion ?? throw new ArgumentNullException(nameof(installedPackageVersion));
             _isModuleInstalled = isModuleInstalled ?? throw new ArgumentNullException(nameof(isModuleInstalled));
             _pendingOperationFor = pendingOperationFor ?? throw new ArgumentNullException(nameof(pendingOperationFor));
@@ -109,29 +110,9 @@ namespace PlugHub.Framework.Packages
         public string RepositoryUrl(PackageRepositoryConfiguration repository, bool includeCredential)
         {
             var provider = string.Equals(repository.Provider, "gitee", StringComparison.OrdinalIgnoreCase) ? "gitee" : "github";
-            var url = StripUrlUserInfo(repository.Repository.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            return StripRepositorySuffix(StripUrlUserInfo(repository.Repository.StartsWith("http", StringComparison.OrdinalIgnoreCase)
                 ? repository.Repository.Trim()
-                : RepositoryHost(provider) + repository.Repository.Trim().TrimEnd('/') + ".git");
-            var apiKey = _credentialService.ResolveApiKey(repository);
-
-            if (!includeCredential
-                || !string.Equals(repository.Visibility, "private", StringComparison.OrdinalIgnoreCase)
-                || string.IsNullOrWhiteSpace(apiKey))
-            {
-                return url;
-            }
-
-            if (provider == "gitee" && url.StartsWith("https://gitee.com/", StringComparison.OrdinalIgnoreCase))
-            {
-                return "https://oauth2:" + Uri.EscapeDataString(apiKey.Trim()) + "@" + url.Substring("https://".Length);
-            }
-
-            if (provider == "github" && url.StartsWith("https://github.com/", StringComparison.OrdinalIgnoreCase))
-            {
-                return "https://x-access-token:" + Uri.EscapeDataString(apiKey.Trim()) + "@" + url.Substring("https://".Length);
-            }
-
-            return url;
+                : RepositoryHost(provider) + repository.Repository.Trim().TrimEnd('/')));
         }
 
         private bool SyncRepositoryCache(PackageRepositoryConfiguration repository, string cacheDirectory, ICollection<DiagnosticMessage> diagnostics)
@@ -149,137 +130,7 @@ namespace PlugHub.Framework.Packages
             }
 
             Directory.CreateDirectory(Path.GetDirectoryName(cacheDirectory) ?? cacheDirectory);
-
-            var publicUrl = RepositoryUrl(repository, false);
-            var authenticatedUrl = RepositoryUrl(repository, true);
-            var gitRef = string.IsNullOrWhiteSpace(repository.Ref) ? "main" : repository.Ref.Trim();
-            var fetchRef = "refs/plughub/fetch";
-
-            if (!Directory.Exists(Path.Combine(cacheDirectory, ".git")))
-            {
-                Directory.CreateDirectory(cacheDirectory);
-                if (!RunGit("init --quiet " + Quote(cacheDirectory), repository.Id, diagnostics)
-                    || !RunGit("-C " + Quote(cacheDirectory) + " remote add origin " + Quote(publicUrl), repository.Id, diagnostics))
-                {
-                    return false;
-                }
-            }
-            else if (!RunGit("-C " + Quote(cacheDirectory) + " remote set-url origin " + Quote(publicUrl), repository.Id, diagnostics))
-            {
-                return false;
-            }
-
-            if (!DeleteStaleFetchHead(cacheDirectory, repository.Id, diagnostics))
-            {
-                return false;
-            }
-
-            if (!ConfigureSparseCheckout(cacheDirectory, repository.Id, diagnostics))
-            {
-                return false;
-            }
-
-            if (!RunGit("-C " + Quote(cacheDirectory) + " fetch --quiet --no-write-fetch-head --filter=blob:none --depth 1 " + Quote(authenticatedUrl) + " " + Quote(gitRef + ":" + fetchRef), repository.Id, diagnostics))
-            {
-                return false;
-            }
-
-            return RunGit("-C " + Quote(cacheDirectory) + " checkout --quiet " + Quote(fetchRef), repository.Id, diagnostics)
-                && ConfigureSparseCheckout(cacheDirectory, repository.Id, diagnostics);
-        }
-
-        private static bool ConfigureSparseCheckout(string cacheDirectory, string repositoryId, ICollection<DiagnosticMessage> diagnostics)
-        {
-            return RunGit("-C " + Quote(cacheDirectory) + " sparse-checkout set --no-cone " + string.Join(" ", SparseCheckoutPatterns().Select(Quote)), repositoryId, diagnostics);
-        }
-
-        private static bool DeleteStaleFetchHead(string cacheDirectory, string repositoryId, ICollection<DiagnosticMessage> diagnostics)
-        {
-            var fetchHeadPath = Path.Combine(cacheDirectory, ".git", "FETCH_HEAD");
-            if (!File.Exists(fetchHeadPath))
-            {
-                return true;
-            }
-
-            try
-            {
-                File.Delete(fetchHeadPath);
-                return true;
-            }
-            catch (IOException ex)
-            {
-                AddDiagnostic(diagnostics, repositoryId, "PH-REPOSITORY-FETCHHEAD", "Could not delete stale FETCH_HEAD: " + fetchHeadPath + " " + ex.Message);
-                return false;
-            }
-            catch (UnauthorizedAccessException ex)
-            {
-                AddDiagnostic(diagnostics, repositoryId, "PH-REPOSITORY-FETCHHEAD", "Could not delete stale FETCH_HEAD: " + fetchHeadPath + " " + ex.Message);
-                return false;
-            }
-        }
-
-        private static IEnumerable<string> SparseCheckoutPatterns()
-        {
-            return new[]
-            {
-                "package.json",
-                "*.package.json",
-                "**/package.json",
-                "**/*.package.json",
-                "**/*.dll",
-                "**/*.png",
-                "**/*.jpg",
-                "**/*.jpeg",
-                "**/*.ico",
-                "**/*.bmp",
-                "**/*.webp"
-            };
-        }
-
-        private static bool RunGit(string arguments, string repositoryId, ICollection<DiagnosticMessage> diagnostics, bool reportFailure = true)
-        {
-            try
-            {
-                var startInfo = new ProcessStartInfo
-                {
-                    FileName = "git",
-                    Arguments = arguments,
-                    CreateNoWindow = true,
-                    UseShellExecute = false,
-                    RedirectStandardError = true,
-                    RedirectStandardOutput = true
-                };
-
-                using (var process = Process.Start(startInfo))
-                {
-                    if (process == null)
-                    {
-                        if (reportFailure) AddDiagnostic(diagnostics, repositoryId, "PH-REPOSITORY-GIT", "Could not start git process.");
-                        return false;
-                    }
-
-                    if (!process.WaitForExit(30000))
-                    {
-                        try { process.Kill(); } catch (Exception) { }
-                        if (reportFailure) AddDiagnostic(diagnostics, repositoryId, "PH-REPOSITORY-GIT", "Git operation timed out.");
-                        return false;
-                    }
-
-                    var error = process.StandardError.ReadToEnd();
-                    if (process.ExitCode != 0)
-                    {
-                        if (reportFailure) AddDiagnostic(diagnostics, repositoryId, "PH-REPOSITORY-GIT", string.IsNullOrWhiteSpace(error) ? "Git operation failed." : error.Trim());
-                        return false;
-                    }
-
-                    return true;
-                }
-            }
-            catch (Exception ex)
-            {
-                if (reportFailure) AddDiagnostic(diagnostics, repositoryId, "PH-REPOSITORY-GIT", ex.Message);
-                return false;
-            }
+            return _archiveSynchronizer.Sync(repository, cacheDirectory, diagnostics);
         }
 
         private static string RepositoryCacheDirectory(string baseDirectory, PackageRepositoryConfiguration repository)
@@ -302,6 +153,14 @@ namespace PlugHub.Framework.Packages
             return builder.Uri.AbsoluteUri;
         }
 
+        private static string StripRepositorySuffix(string value)
+        {
+            var suffix = "." + "git";
+            return value.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)
+                ? value.Substring(0, value.Length - suffix.Length)
+                : value;
+        }
+
         private static bool IsSupportedRepositoryProvider(string provider)
         {
             return string.Equals(provider, "github", StringComparison.OrdinalIgnoreCase)
@@ -313,11 +172,6 @@ namespace PlugHub.Framework.Packages
             return string.Equals(provider, "gitee", StringComparison.OrdinalIgnoreCase)
                 ? "https://gitee.com/"
                 : "https://github.com/";
-        }
-
-        private static string Quote(string value)
-        {
-            return "\"" + (value ?? string.Empty).Replace("\"", "\\\"") + "\"";
         }
 
         private static string SafePathSegment(string value)

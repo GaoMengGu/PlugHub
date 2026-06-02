@@ -11,6 +11,7 @@ namespace PlugHub.Framework.Diagnostics
             var redacted = Regex.Replace(value, "(https?://)([^\\s/@:]+):([^\\s/@]+)@", "$1$2:***@", RegexOptions.IgnoreCase);
             redacted = Regex.Replace(redacted, "(https?://oauth2:)[^@]+@", "$1***@", RegexOptions.IgnoreCase);
             redacted = Regex.Replace(redacted, "(https?://x-access-token:)[^@]+@", "$1***@", RegexOptions.IgnoreCase);
+            redacted = Regex.Replace(redacted, "([?&]access_token=)[^\\s&]+", "$1***", RegexOptions.IgnoreCase);
             redacted = Regex.Replace(redacted, "(apiKey\"?\\s*[:=]\\s*\"?)[^\"\\s,]+", "$1***", RegexOptions.IgnoreCase);
             return redacted;
         }

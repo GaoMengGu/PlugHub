@@ -123,7 +123,7 @@ Revit 2025+ ALC 需要单独的 net8 适配层、.NET SDK 8、Revit 2025 API 引
 - 新增外部插件包时，安装或复制到 `packages`；Revit 启动只扫描 `packages`。
 - `moduleSources` 兼容保留但默认为空，不用于配置启动时仓库拉取。
 - 仓库配置写在 `repositories`。`provider` 支持 `github` 和 `gitee`；公开仓库使用 `visibility: "public"`；私有仓库使用 `visibility: "private"` 并提供 `apiKey`。
-- 默认公开仓库使用 Gitee，指向 `https://gitee.com/GaoMengGu/PlugHub_Packages`。仓库不会在 Revit 启动或打开设置页时拉取或加载；设置页只会先显示本地缓存，只有用户在仓库页选择“浏览仓库插件包”或“检查更新”时才访问远端。浏览使用 sparse checkout，只取包清单、DLL 和图标等包资产。
+- 默认公开仓库使用 Gitee，指向 `https://gitee.com/GaoMengGu/PlugHub_Packages`。仓库不会在 Revit 启动或打开设置页时拉取或加载；设置页只会先显示本地缓存，只有用户在仓库页选择“浏览仓库插件包”或“检查更新”时才访问远端。浏览通过 GitHub/Gitee 的 HTTP archive 下载 zip 并刷新本地 `repository-cache`，普通用户不需要安装 Git；缓存会递归扫描 `package.json` / `*.package.json`，安装时仍只复制选中插件的清单、DLL 和图标等包资产。
 - 仓库根 `package.json` 如果包含多个 module，设置页应展示为多个插件行；安装时 PlugHub 会按选中 module 拆成单插件本地包。
 - 仓库插件包列表必须面向大量插件保持可浏览：使用虚拟化插件列表，保留搜索、安装状态筛选、来源筛选、分类/标签筛选和行内安装/更新/卸载入口，避免把所有字段都挤到主表格。
 - 安装和更新会把选中插件的单模块清单及其引用的 DLL/资源复制到 `packages/<插件ID>`，不会复制整个仓库；卸载只删除 `packages` 下对应已安装目录。无锁更新成功后不写入待重启状态；如果本会话已经执行过旧业务 DLL，仍建议重启 Revit 后验收新版本。
