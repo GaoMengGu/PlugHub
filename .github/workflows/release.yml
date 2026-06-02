@@ -2,22 +2,120 @@ name: Release PlugHub
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "V*"
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Explicit release tag, for example V1.4.6. Leave empty to increment the latest patch version."
+        required: false
+        type: string
 
 permissions:
+  actions: write
   contents: write
   id-token: write
 
+concurrency:
+  group: release-plughub-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
+  resolve-release-tag:
+    name: Resolve release tag
+    runs-on: ubuntu-latest
+
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release tag
+        id: resolve
+        shell: pwsh
+        run: |
+          git fetch --tags origin
+          $eventName = "${{ github.event_name }}"
+          $refName = "${{ github.ref_name }}"
+          $explicitVersion = "${{ github.event.inputs.version }}".Trim()
+          $createTag = $true
+
+          if ($eventName -eq "push" -and $refName -like "V*") {
+            $tag = $refName
+            $createTag = $false
+          }
+          elseif (![string]::IsNullOrWhiteSpace($explicitVersion)) {
+            $tag = $explicitVersion
+          }
+          else {
+            $latest = git tag --list "V[0-9]*.[0-9]*.[0-9]*" --sort=-v:refname | Select-Object -First 1
+            if ([string]::IsNullOrWhiteSpace($latest)) {
+              $tag = "V1.0.0"
+            }
+            else {
+              $match = [regex]::Match($latest, "^V(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)$")
+              if (!$match.Success) {
+                throw "Latest release tag does not match Vx.y.z: $latest"
+              }
+
+              $major = [int]$match.Groups["major"].Value
+              $minor = [int]$match.Groups["minor"].Value
+              $patch = [int]$match.Groups["patch"].Value + 1
+              $tag = "V$major.$minor.$patch"
+            }
+          }
+
+          if ($tag -notmatch "^V\d+\.\d+\.\d+$") {
+            throw "Release tag must match Vx.y.z: $tag"
+          }
+
+          if ($createTag) {
+            $existingTag = git ls-remote --tags origin "refs/tags/$tag"
+            if (![string]::IsNullOrWhiteSpace($existingTag)) {
+              throw "Release tag already exists: $tag"
+            }
+          }
+
+          $createTagText = if ($createTag) { "true" } else { "false" }
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "create_tag=$createTagText" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "Resolved release tag: $tag"
+
+      - name: Create and push release tag
+        if: steps.resolve.outputs.create_tag == 'true'
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "${{ steps.resolve.outputs.tag }}" $env:GITHUB_SHA
+          git push origin "refs/tags/${{ steps.resolve.outputs.tag }}"
+
+      - name: Dispatch Gitee tag sync
+        if: steps.resolve.outputs.create_tag == 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method POST "repos/$env:GITHUB_REPOSITORY/actions/workflows/sync-gitee.yml/dispatches" -f ref="${{ steps.resolve.outputs.tag }}"
+
   build-sign-release:
     name: Build, sign, and publish
+    needs: resolve-release-tag
     runs-on: windows-latest
+    env:
+      PLUGHUB_RELEASE_TAG: ${{ needs.resolve-release-tag.outputs.tag }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-release-tag.outputs.tag }}
 
       - name: Build Revit 2020 package
         shell: pwsh
@@ -51,7 +149,7 @@ jobs:
       - name: Package release artifact
         shell: pwsh
         run: |
-          $tag = "${{ github.ref_name }}"
+          $tag = $env:PLUGHUB_RELEASE_TAG
           $zipPath = "PlugHub-Revit2020-$tag.zip"
           $sourceRoot = (Resolve-Path "dist\Revit2020").Path
           $artifactDir = Join-Path $env:RUNNER_TEMP "PlugHub-Revit2020-$tag"
@@ -95,12 +193,12 @@ jobs:
       - name: Build PlugHub installer
         shell: pwsh
         run: |
-          $tag = "${{ github.ref_name }}"
+          $tag = $env:PLUGHUB_RELEASE_TAG
           $zipPath = "PlugHub-Revit2020-$tag.zip"
           $payloadZip = (Resolve-Path $zipPath).Path
           $uninstallerExe = (Resolve-Path (Join-Path $env:RUNNER_TEMP "PlugHubUninstaller\PlugHub.Uninstaller.exe")).Path
           $installerOutput = Join-Path $env:RUNNER_TEMP "PlugHubInstaller"
-          $installerExe = "PlugHub-Setup-${{ github.ref_name }}.exe"
+          $installerExe = "PlugHub-Setup-$tag.exe"
           if (Test-Path $installerOutput) {
             Remove-Item -LiteralPath $installerOutput -Recurse -Force
           }
@@ -118,11 +216,11 @@ jobs:
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: PlugHub ${{ github.ref_name }}
+          tag_name: ${{ env.PLUGHUB_RELEASE_TAG }}
+          name: PlugHub ${{ env.PLUGHUB_RELEASE_TAG }}
           files: |
-            PlugHub-Setup-${{ github.ref_name }}.exe
-            PlugHub-Setup-${{ github.ref_name }}.exe.sigstore.json
-            PlugHub-Revit2020-${{ github.ref_name }}.zip
-            PlugHub-Revit2020-${{ github.ref_name }}.zip.sigstore.json
+            PlugHub-Setup-${{ env.PLUGHUB_RELEASE_TAG }}.exe
+            PlugHub-Setup-${{ env.PLUGHUB_RELEASE_TAG }}.exe.sigstore.json
+            PlugHub-Revit2020-${{ env.PLUGHUB_RELEASE_TAG }}.zip
+            PlugHub-Revit2020-${{ env.PLUGHUB_RELEASE_TAG }}.zip.sigstore.json
             dist/Revit2020/PlugHub*.dll.sigstore.json

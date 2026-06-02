@@ -75,7 +75,7 @@ namespace PlugHub.StaticValidation
                 ValidateMachineWideAddinRegistration();
                 ValidateUninstallerPackaging();
                 ValidateFrameworkAutoUpdateSpecification();
-                ValidateAutoVersionWorkflow();
+                ValidateReleaseVersioningWorkflow();
                 ValidateSigningGuidance();
                 ValidateRevitDeploymentConfiguration();
 
@@ -187,7 +187,6 @@ namespace PlugHub.StaticValidation
             {
                 "README.md",
                 "AGENTS.md",
-                ".github/workflows/auto-version.yml",
                 ".github/workflows/release.yml",
                 ".github/workflows/sync-gitee.yml",
                 ".gitee/workflows/release.yml",
@@ -2315,7 +2314,7 @@ namespace PlugHub.StaticValidation
             Require(installerPayload.Contains("GetManifestResourceStream") && installerPayload.Contains("ZipFile.ExtractToDirectory"), "installer payload must be embedded and extracted by the installer.");
             Require(addinWriter.Contains("Autodesk") && addinWriter.Contains("Revit") && addinWriter.Contains("Addins") && addinWriter.Contains("2020"), "installer must write the Revit 2020 addins manifest directory.");
             Require(addinWriter.Contains("PlugHub.Revit2020.dll") && addinWriter.Contains("Assembly") && addinWriter.Contains("Backup"), "installer must rewrite addin Assembly to the installed DLL path and backup existing manifests.");
-            Require(workflow.Contains("Build PlugHub installer") && workflow.Contains("-t:Rebuild") && workflow.Contains("InstallerPayloadZip") && workflow.Contains("PlugHub-Setup-${{ github.ref_name }}.exe"), "release workflow must rebuild and upload PlugHub installer EXE.");
+            Require(workflow.Contains("Build PlugHub installer") && workflow.Contains("-t:Rebuild") && workflow.Contains("InstallerPayloadZip") && workflow.Contains("PlugHub-Setup-$tag.exe"), "release workflow must rebuild and upload PlugHub installer EXE.");
             Require(readme.Contains("PlugHub-Setup") && readme.Contains(@"D:\Program Files\PlugHub"), "README must document the installer EXE and default install directory.");
             Require(readme.Contains("PlugHub-Setup") && readme.Contains("复制 addin") && readme.Contains("Revit 2020"), "README must document release installer behavior.");
         }
@@ -2455,23 +2454,23 @@ namespace PlugHub.StaticValidation
             }
         }
 
-        private static void ValidateAutoVersionWorkflow()
+        private static void ValidateReleaseVersioningWorkflow()
         {
-            var autoVersionWorkflow = ReadText(".github/workflows/auto-version.yml");
             var releaseWorkflow = ReadText(".github/workflows/release.yml");
             var syncWorkflow = ReadText(".github/workflows/sync-gitee.yml");
             var readme = ReadText("README.md");
 
-            Require(autoVersionWorkflow.Contains("push:") && autoVersionWorkflow.Contains("branches:") && autoVersionWorkflow.Contains("main"), "auto-version workflow must run for main pushes.");
-            Require(autoVersionWorkflow.Contains("workflow_dispatch") && autoVersionWorkflow.Contains("version:"), "auto-version workflow must support manual explicit version input.");
-            Require(autoVersionWorkflow.Contains("--sort=-v:refname") && autoVersionWorkflow.Contains("+ 1"), "auto-version workflow must increment the latest patch version by default.");
-            Require(autoVersionWorkflow.Contains("^V\\d+\\.\\d+\\.\\d+$") && autoVersionWorkflow.Contains("git ls-remote"), "auto-version workflow must validate Vx.y.z tags and reject existing remote tags.");
-            Require(autoVersionWorkflow.Contains("git tag") && autoVersionWorkflow.Contains("git push origin \"refs/tags/$env:PLUGHUB_RELEASE_TAG\""), "auto-version workflow must create and push the resolved release tag.");
-            Require(autoVersionWorkflow.Contains("actions: write") && autoVersionWorkflow.Contains("contents: write"), "auto-version workflow must have permissions to create tags and dispatch workflows.");
-            Require(autoVersionWorkflow.Contains("release.yml/dispatches") && autoVersionWorkflow.Contains("sync-gitee.yml/dispatches"), "auto-version workflow must dispatch GitHub release and Gitee sync workflows after creating a tag.");
-            Require(releaseWorkflow.Contains("workflow_dispatch"), "GitHub release workflow must support explicit dispatch from auto-version.");
-            Require(syncWorkflow.Contains("workflow_dispatch"), "Gitee sync workflow must support explicit dispatch from auto-version.");
-            Require(readme.Contains("auto-version.yml") && readme.Contains("每次 `main` 推送") && readme.Contains("version"), "README must document automatic patch versioning and manual explicit version override.");
+            Require(!File.Exists(FullPath(".github/workflows/auto-version.yml")), "release versioning must live in release.yml, not a separate auto-version workflow.");
+            Require(releaseWorkflow.Contains("branches:") && releaseWorkflow.Contains("main") && releaseWorkflow.Contains("tags:") && releaseWorkflow.Contains("\"V*\""), "release workflow must run for main pushes and V* tag pushes.");
+            Require(releaseWorkflow.Contains("workflow_dispatch") && releaseWorkflow.Contains("version:"), "release workflow must support manual explicit version input.");
+            Require(releaseWorkflow.Contains("Resolve release tag") && releaseWorkflow.Contains("--sort=-v:refname") && releaseWorkflow.Contains("+ 1"), "release workflow must increment the latest patch version by default.");
+            Require(releaseWorkflow.Contains("^V\\d+\\.\\d+\\.\\d+$") && releaseWorkflow.Contains("git ls-remote"), "release workflow must validate Vx.y.z tags and reject existing remote tags.");
+            Require(releaseWorkflow.Contains("git tag") && releaseWorkflow.Contains("git push origin \"refs/tags/${{ steps.resolve.outputs.tag }}\""), "release workflow must create and push the resolved release tag.");
+            Require(releaseWorkflow.Contains("actions: write") && releaseWorkflow.Contains("contents: write"), "release workflow must have permissions to create tags and dispatch workflows.");
+            Require(releaseWorkflow.Contains("PLUGHUB_RELEASE_TAG") && releaseWorkflow.Contains("needs.resolve-release-tag.outputs.tag"), "release workflow must use the resolved release tag for packaging and publishing.");
+            Require(releaseWorkflow.Contains("sync-gitee.yml/dispatches"), "release workflow must dispatch Gitee sync after creating a tag.");
+            Require(syncWorkflow.Contains("workflow_dispatch"), "Gitee sync workflow must support explicit dispatch from release.yml.");
+            Require(readme.Contains("release.yml") && readme.Contains("每次 `main` 推送") && readme.Contains("version"), "README must document release.yml automatic patch versioning and manual explicit version override.");
         }
 
         private static void ValidateSigningGuidance()

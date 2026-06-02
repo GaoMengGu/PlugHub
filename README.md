@@ -74,7 +74,7 @@ Ribbon 结构、图标和按钮大小变更后需要重启 Revit。布局页是�
 C:\ProgramData\Autodesk\Revit\Addins\2020\PlugHub.addin
 ```
 
-发布 workflow 使用 NuGet 编译引用，不需要把 `RevitAPI.dll` 或 `RevitAPIUI.dll` 放入仓库。GitHub 使用 `.github\workflows\auto-version.yml` 在每次 `main` 推送后自动创建下一个 patch 版本 tag，例如 `V1.4.5` 后创建 `V1.4.6`；只有需要指定版本号时，才手动触发该 workflow 并填写 `version`。`.github\workflows\release.yml` 负责 GitHub release，可由 `V*` tag push 或 auto-version dispatch 触发；`.github\workflows\sync-gitee.yml` 会把 `main` 和 `V*` tag 同步到 Gitee；Gitee Go 使用 `.gitee\workflows\release.yml` 打包并通过 Gitee API 发布 release。正常发布只需要本地推送 GitHub，不需要从本机直推 Gitee tag。
+发布 workflow 使用 NuGet 编译引用，不需要把 `RevitAPI.dll` 或 `RevitAPIUI.dll` 放入仓库。GitHub 使用 `.github\workflows\release.yml` 作为唯一 GitHub 发布入口：每次 `main` 推送后自动创建下一个 patch 版本 tag，例如 `V1.4.6` 后创建 `V1.4.7`；只有需要指定版本号时，才手动触发该 workflow 并填写 `version`。本地直接推送 `V*` tag 时，release workflow 按该 tag 发布。`.github\workflows\sync-gitee.yml` 会把 `main` 和 `V*` tag 同步到 Gitee；Gitee Go 使用 `.gitee\workflows\release.yml` 打包并通过 Gitee API 发布 release。正常发布只需要本地推送 GitHub，不需要从本机直推 Gitee tag。
 
 Revit API 引用通过 NuGet 仅用于 CI 编译；本地和实机验收仍以真实 Revit 安装目录为准。签名脚本支持 self-signed、signtool、Thumbprint、SHA256 时间戳签名；公开分发前可评估 SignPath Foundation 或其他可信签名方案。Release workflow 使用 cosign keyless blob signing。
 
