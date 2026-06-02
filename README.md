@@ -31,6 +31,8 @@ dotnet run --project src\PlugHub.StaticValidation\PlugHub.StaticValidation.cspro
 
 静态验证不能替代 Windows + Revit 2020 实机测试。
 
+仓库中的 `docs/` 目录作为本地协作资料目录处理，后续提交默认忽略其中内容；公开使用说明和静态验证约束以本 README、源码、配置、脚本和 workflow 为准。
+
 ## Revit 2020 构建
 
 本地构建默认引用本机 Revit 安装目录中的 API DLL：
@@ -51,6 +53,14 @@ dist\Revit2020
 .\scripts\build-revit2020.ps1 -RevitApiDir "D:\Program Files\Autodesk\Revit 2020" -InstallAddin
 ```
 
+只需要验证编译、不需要刷新 `dist\Revit2020` 时，可以关闭 staging：
+
+```powershell
+dotnet build src\PlugHub.Revit2020\PlugHub.Revit2020.csproj /p:RevitApiReferenceMode=NuGet /p:StagePlugHubOutput=false
+```
+
+Ribbon 结构、图标和按钮大小变更后需要重启 Revit。布局页是唯一的 Ribbon 布局入口，布局画布会阻止同一个 featureId 重复添加。Ribbon 容器规则固定为：Panel 可放 PushButton、PulldownButton、SplitButton 和 Stack；Stack 不能嵌套 Stack，且只能放 2-3 个 PushButton、PulldownButton 或 SplitButton；PulldownButton 和 SplitButton 只能包含 PushButton。
+
 ## 安装包
 
 发布 `V*` tag 后，GitHub Release 会同时生成：
@@ -66,6 +76,8 @@ C:\ProgramData\Autodesk\Revit\Addins\2020\PlugHub.addin
 
 发布 workflow 使用 NuGet 编译引用，不需要把 `RevitAPI.dll` 或 `RevitAPIUI.dll` 放入仓库。GitHub 使用 `.github\workflows\release.yml` 发布；`.github\workflows\sync-gitee.yml` 会把 `main` 和 `V*` tag 同步到 Gitee；Gitee Go 使用 `.gitee\workflows\release.yml` 打包并通过 Gitee API 发布 release。正常发布只需要本地推送 GitHub，不需要从本机直推 Gitee tag。
 
+Revit API 引用通过 NuGet 仅用于 CI 编译；本地和实机验收仍以真实 Revit 安装目录为准。签名脚本支持 self-signed、signtool、Thumbprint、SHA256 时间戳签名；公开分发前可评估 SignPath Foundation 或其他可信签名方案。Release workflow 使用 cosign keyless blob signing。
+
 ## 框架更新
 
 设置窗口的「关于」页签提供 `检查更新` 和 `更新框架` 两个按钮。
@@ -75,9 +87,15 @@ C:\ProgramData\Autodesk\Revit\Addins\2020\PlugHub.addin
 
 框架更新只覆盖框架 DLL，不覆盖 `PlugHub.addin`、`packages`、`config`、缓存和日志。当前 Revit 会话不会热替换已加载 DLL；关闭并重新打开 Revit 后，新框架 DLL 才会生效。
 
-## 文档
+## 插件开发要点
 
-内部设计、进度、架构和协作规则见 [docs/README.md](docs/README.md)。
+插件包使用 `package.json` 描述模块和功能；功能命令实现 Revit `IExternalCommand`，框架层只负责发现、路由和状态提示，不实现具体业务操作。
+
+运行时硬性要求包括：插件包必须声明可识别的模块、功能、命令类型和目标 DLL；推荐字段包括 `description`、`category`、`tags`、`revitVersions`、`frameworkVersionRange`、`sha256` 和 `signature`。不再建议把用户 Ribbon 布局写进插件包清单；插件包清单只声明功能，用户布局由设置页保存。
+
+仓库凭据使用 DPAPI 保护。PlugHub.Contracts 当前多目标到 `net48;netstandard2.1`，为未来适配层共享契约；PlugHub.Framework 仍保持 net48，因为配置、仓库和设置写回边界仍依赖 `System.Web.Script.Serialization`。V1.2 之后的架构硬化以配置、仓库、路由和静态验证为边界。
+
+Revit 2025+ ALC 需要单独 net8 适配层、.NET SDK 8、Revit 2025 API 引用和 `AlcLoadRules` 共享程序集边界；当前仓库不声明 Revit 2025 实机支持，也不能声明 Revit 实机测试成功。
 
 ## 许可
 

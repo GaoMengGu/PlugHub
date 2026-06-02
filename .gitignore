@@ -5,7 +5,7 @@ build/validation-report.*
 .vs/
 .superpowers/
 .worktrees/
-docs/superpowers/
+docs/
 TestResults/
 .pytest_cache/
 __pycache__/
