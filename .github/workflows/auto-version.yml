@@ -60,8 +60,8 @@ jobs:
             throw "Release tag must match Vx.y.z: $tag"
           }
 
-          git ls-remote --exit-code --tags origin "refs/tags/$tag" 2>$null
-          if ($LASTEXITCODE -eq 0) {
+          $existingTag = git ls-remote --tags origin "refs/tags/$tag"
+          if (![string]::IsNullOrWhiteSpace($existingTag)) {
             throw "Release tag already exists: $tag"
           }
 
