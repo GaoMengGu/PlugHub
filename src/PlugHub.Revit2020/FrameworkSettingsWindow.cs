@@ -36,13 +36,22 @@ namespace PlugHub.Revit2020
         private const string RibbonDesignerClearIconAction = "__clear_icon__";
         private const double RepositorySettingsDefaultWidth = 1140.0;
         private const double RepositorySettingsDefaultHeight = 600.0;
-        private const double RepositorySourceCardWidth = 244.0;
-        private const double RepositorySourceCardSlotWidth = 256.0;
-        private const double RepositoryVisibleSourceCards = 4.0;
+        private const double SettingsWindowOuterMargin = 12.0;
+        private const double SettingsWindowOuterMarginWidth = SettingsWindowOuterMargin * 2.0;
+        private const double RepositoryCardRowChromeReserve = 60.0;
+        private const double RepositoryCardRowWidth = RepositorySettingsDefaultWidth - SettingsWindowOuterMarginWidth - RepositoryCardRowChromeReserve;
+        private const double RepositorySourceColumns = 4.0;
         private const double RepositoryPackageColumns = 3.0;
-        private const double RepositoryPackageGridChromeReserve = 60.0;
-        private const double RepositoryPackageCardSlotWidth = (RepositorySettingsDefaultWidth - RepositoryPackageGridChromeReserve) / RepositoryPackageColumns;
-        private const double RepositoryPackageCardWidth = RepositoryPackageCardSlotWidth - 16.0;
+        private const double RepositoryPackageCardVerticalMargin = 4.0;
+        private const double RepositorySourceCardBottomMargin = RepositoryPackageCardVerticalMargin * 2.0;
+        private const double RepositoryCardHorizontalMargin = RepositoryPackageCardVerticalMargin;
+        private const double RepositoryCardHorizontalMarginWidth = RepositoryCardHorizontalMargin * 2.0;
+        private const double RepositorySourceScrollbarSafetyReserve = 16.0;
+        private const double RepositorySourceCardRowWidth = RepositoryCardRowWidth - RepositorySourceScrollbarSafetyReserve;
+        private const double RepositorySourceCardSlotWidth = RepositorySourceCardRowWidth / RepositorySourceColumns;
+        private const double RepositorySourceCardWidth = RepositorySourceCardSlotWidth - RepositoryCardHorizontalMarginWidth;
+        private const double RepositoryPackageCardSlotWidth = RepositoryCardRowWidth / RepositoryPackageColumns;
+        private const double RepositoryPackageCardWidth = RepositoryPackageCardSlotWidth - RepositoryCardHorizontalMarginWidth;
         private const double RepositoryPackageActionWidth = 72.0;
         private const double RepositoryPackageActionHeight = 26.0;
         private static readonly string[] SameNameIconExtensions = { ".png", ".ico", ".jpg", ".jpeg", ".bmp" };
@@ -100,7 +109,7 @@ namespace PlugHub.Revit2020
             MinWidth = 1000;
             MinHeight = 560;
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
-            Background = new SolidColorBrush(Color.FromRgb(247, 249, 252));
+            RevitUiTheme.Apply(this);
 
             Content = BuildLayout();
             LoadRows();
@@ -108,29 +117,28 @@ namespace PlugHub.Revit2020
 
         private UIElement BuildLayout()
         {
-            var root = new Grid { Margin = new Thickness(16) };
+            var theme = RevitUiTheme.Current;
+            var root = new Grid
+            {
+                Margin = new Thickness(SettingsWindowOuterMargin),
+                Background = theme.WindowBackground
+            };
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-            var header = new StackPanel { Margin = new Thickness(0, 0, 0, 12) };
-            header.Children.Add(new TextBlock
-            {
-                Text = "PlugHub 设置",
-                FontSize = 20,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = new SolidColorBrush(Color.FromRgb(24, 34, 48))
-            });
+            var header = BuildHeader();
             Grid.SetRow(header, 0);
             root.Children.Add(header);
 
             var tabs = new TabControl
             {
                 Background = Brushes.Transparent,
-                BorderBrush = new SolidColorBrush(Color.FromRgb(220, 226, 234))
+                BorderBrush = theme.BorderBrush
             };
             tabs.Items.Add(BuildRibbonLayoutTab());
             tabs.Items.Add(BuildRepositoriesTab());
+            tabs.Items.Add(BuildAboutTab());
             Grid.SetRow(tabs, 1);
             root.Children.Add(tabs);
 
@@ -141,6 +149,66 @@ namespace PlugHub.Revit2020
             return root;
         }
 
+        private UIElement BuildHeader()
+        {
+            var theme = RevitUiTheme.Current;
+            var header = new Grid { Margin = new Thickness(0, 0, 0, 10) };
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var titleStack = new StackPanel { Orientation = Orientation.Vertical };
+            titleStack.Children.Add(new TextBlock
+            {
+                Text = "PlugHub 设置",
+                FontSize = 18,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = theme.TextBrush
+            });
+            titleStack.Children.Add(new TextBlock
+            {
+                Text = "Revit 2020 模块化插件框架",
+                Margin = new Thickness(0, 3, 0, 0),
+                Foreground = theme.MutedTextBrush
+            });
+            Grid.SetColumn(titleStack, 0);
+            header.Children.Add(titleStack);
+
+            var metrics = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Bottom
+            };
+            metrics.Children.Add(BuildHeaderMetric("模块", ConfiguredModuleCount().ToString(CultureInfo.InvariantCulture)));
+            metrics.Children.Add(BuildHeaderMetric("功能", ConfiguredFeatureCount().ToString(CultureInfo.InvariantCulture)));
+            metrics.Children.Add(BuildHeaderMetric("仓库", ConfiguredRepositoryCount().ToString(CultureInfo.InvariantCulture)));
+            Grid.SetColumn(metrics, 1);
+            header.Children.Add(metrics);
+
+            return header;
+        }
+
+        private static UIElement BuildHeaderMetric(string label, string value)
+        {
+            var theme = RevitUiTheme.Current;
+            var text = new TextBlock
+            {
+                Text = label + " " + value,
+                Foreground = theme.MutedTextBrush,
+                FontSize = 11
+            };
+
+            return new Border
+            {
+                Margin = new Thickness(6, 0, 0, 0),
+                Padding = new Thickness(7, 3, 7, 3),
+                Background = theme.SurfaceBackground,
+                BorderBrush = theme.BorderBrush,
+                BorderThickness = new Thickness(1),
+                Child = text
+            };
+        }
+
         private UIElement BuildFooter()
         {
             var footer = new Grid { Margin = new Thickness(0, 12, 0, 0) };
@@ -149,7 +217,7 @@ namespace PlugHub.Revit2020
 
             _statusText.VerticalAlignment = VerticalAlignment.Center;
             _statusText.TextWrapping = TextWrapping.Wrap;
-            _statusText.Foreground = new SolidColorBrush(Color.FromRgb(72, 84, 101));
+            _statusText.Foreground = RevitUiTheme.Current.MutedTextBrush;
             Grid.SetColumn(_statusText, 0);
             footer.Children.Add(_statusText);
 
@@ -201,7 +269,7 @@ namespace PlugHub.Revit2020
             {
                 Text = text,
                 VerticalAlignment = VerticalAlignment.Center,
-                Foreground = new SolidColorBrush(Color.FromRgb(72, 84, 101))
+                Foreground = RevitUiTheme.Current.MutedTextBrush
             };
         }
 
@@ -356,6 +424,161 @@ namespace PlugHub.Revit2020
             return BuildTab("仓库", layout);
         }
 
+        private TabItem BuildAboutTab()
+        {
+            var theme = RevitUiTheme.Current;
+            var root = new Grid { Margin = new Thickness(14) };
+            root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.2, GridUnitType.Star) });
+            root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            var summary = new StackPanel { Margin = new Thickness(0, 0, 14, 0) };
+            summary.Children.Add(new TextBlock
+            {
+                Text = "PlugHub",
+                FontSize = 22,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = theme.TextBrush
+            });
+            summary.Children.Add(new TextBlock
+            {
+                Text = "面向 Revit 2020 的模块化插件框架。",
+                Margin = new Thickness(0, 6, 0, 0),
+                Foreground = theme.MutedTextBrush,
+                TextWrapping = TextWrapping.Wrap,
+                LineHeight = 20
+            });
+            summary.Children.Add(new TextBlock
+            {
+                Text = "框架层负责模块契约、发现、启用/禁用、排序组合、诊断和 Revit 2020 入口适配；具体业务命令由外部插件包提供。",
+                Margin = new Thickness(0, 10, 0, 0),
+                Foreground = theme.MutedTextBrush,
+                TextWrapping = TextWrapping.Wrap,
+                LineHeight = 20
+            });
+
+            var metrics = new UniformGrid
+            {
+                Columns = 2,
+                Margin = new Thickness(0, 18, 0, 0)
+            };
+            metrics.Children.Add(BuildAboutMetric("模块数", ConfiguredModuleCount().ToString(CultureInfo.InvariantCulture)));
+            metrics.Children.Add(BuildAboutMetric("功能数", ConfiguredFeatureCount().ToString(CultureInfo.InvariantCulture)));
+            metrics.Children.Add(BuildAboutMetric("仓库数", ConfiguredRepositoryCount().ToString(CultureInfo.InvariantCulture)));
+            metrics.Children.Add(BuildAboutMetric("目标版本", "Revit 2020"));
+            summary.Children.Add(metrics);
+            Grid.SetColumn(summary, 0);
+            root.Children.Add(summary);
+
+            var details = new StackPanel();
+            details.Children.Add(BuildAboutSection(
+                "运行环境",
+                BuildAboutInfoRow("版本", AssemblyVersionText()),
+                BuildAboutInfoRow("主题", RevitUiTheme.Current.IsDark ? "深色" : "浅色"),
+                BuildAboutInfoRow("适配层", "PlugHub.Revit2020 / .NET Framework 4.8")));
+            details.Children.Add(BuildAboutSection(
+                "路径",
+                BuildAboutInfoRow("根目录", BaseDirectory()),
+                BuildAboutInfoRow("配置", FrameworkRuntimeState.ConfigDirectory ?? string.Empty),
+                BuildAboutInfoRow("日志", PlugHubLogger.LogsDirectory(BaseDirectory()))));
+            details.Children.Add(BuildAboutSection(
+                "诊断",
+                BuildAboutInfoRow("日志消息", (FrameworkRuntimeState.Current?.Diagnostics.Count ?? 0).ToString(CultureInfo.InvariantCulture)),
+                BuildAboutInfoRow("待重启操作", _packageRepositoryService.ListPendingOperations(BaseDirectory()).Count.ToString(CultureInfo.InvariantCulture)),
+                BuildAboutInfoRow("静态验证", "dotnet run --project src/PlugHub.StaticValidation/PlugHub.StaticValidation.csproj")));
+            Grid.SetColumn(details, 1);
+            root.Children.Add(details);
+
+            return BuildTab("关于", new ScrollViewer
+            {
+                Content = root,
+                Background = theme.PanelBackground,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
+            });
+        }
+
+        private static UIElement BuildAboutMetric(string label, string value)
+        {
+            var theme = RevitUiTheme.Current;
+            var panel = new StackPanel();
+            panel.Children.Add(new TextBlock
+            {
+                Text = value,
+                FontSize = 18,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = theme.TextBrush
+            });
+            panel.Children.Add(new TextBlock
+            {
+                Text = label,
+                Margin = new Thickness(0, 3, 0, 0),
+                Foreground = theme.MutedTextBrush
+            });
+
+            return new Border
+            {
+                Margin = new Thickness(0, 0, 8, 8),
+                Padding = new Thickness(10, 8, 10, 8),
+                Background = theme.SurfaceBackground,
+                BorderBrush = theme.BorderBrush,
+                BorderThickness = new Thickness(1),
+                Child = panel
+            };
+        }
+
+        private static UIElement BuildAboutSection(string title, params UIElement[] rows)
+        {
+            var theme = RevitUiTheme.Current;
+            var panel = new StackPanel();
+            panel.Children.Add(new TextBlock
+            {
+                Text = title,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = theme.TextBrush,
+                Margin = new Thickness(0, 0, 0, 8)
+            });
+            foreach (var row in rows)
+            {
+                panel.Children.Add(row);
+            }
+
+            return new Border
+            {
+                Margin = new Thickness(0, 0, 0, 10),
+                Padding = new Thickness(10),
+                Background = theme.SurfaceBackground,
+                BorderBrush = theme.BorderBrush,
+                BorderThickness = new Thickness(1),
+                Child = panel
+            };
+        }
+
+        private static UIElement BuildAboutInfoRow(string label, string value)
+        {
+            var theme = RevitUiTheme.Current;
+            var row = new Grid { Margin = new Thickness(0, 0, 0, 6) };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(78) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            var labelBlock = new TextBlock
+            {
+                Text = label,
+                Foreground = theme.SubtleTextBrush
+            };
+            Grid.SetColumn(labelBlock, 0);
+            row.Children.Add(labelBlock);
+
+            var valueBlock = new TextBlock
+            {
+                Text = value ?? string.Empty,
+                Foreground = theme.MutedTextBrush,
+                TextWrapping = TextWrapping.Wrap
+            };
+            Grid.SetColumn(valueBlock, 1);
+            row.Children.Add(valueBlock);
+            return row;
+        }
+
         private UIElement BuildRepositorySourceCards()
         {
             _repositorySourcesList.BorderThickness = new Thickness(0);
@@ -392,12 +615,13 @@ namespace PlugHub.Revit2020
 
         private DataTemplate BuildRepositorySourceCardTemplate()
         {
+            var theme = RevitUiTheme.Current;
             var border = new FrameworkElementFactory(typeof(Border));
             border.SetValue(Border.WidthProperty, RepositorySourceCardWidth);
-            border.SetValue(Border.MarginProperty, new Thickness(8, 4, 4, 8));
+            border.SetValue(Border.MarginProperty, new Thickness(RepositoryCardHorizontalMargin, RepositoryPackageCardVerticalMargin, RepositoryCardHorizontalMargin, RepositorySourceCardBottomMargin));
             border.SetValue(Border.PaddingProperty, new Thickness(10, 8, 10, 8));
-            border.SetValue(Border.BackgroundProperty, Brushes.White);
-            border.SetValue(Border.BorderBrushProperty, new SolidColorBrush(Color.FromRgb(214, 222, 233)));
+            border.SetValue(Border.BackgroundProperty, theme.PanelBackground);
+            border.SetValue(Border.BorderBrushProperty, theme.BorderBrush);
             border.SetValue(Border.BorderThicknessProperty, new Thickness(1));
             border.SetValue(FrameworkElement.CursorProperty, Cursors.Hand);
             border.AddHandler(UIElement.MouseLeftButtonUpEvent, new MouseButtonEventHandler(BrowseRepositorySourceCacheFromCard));
@@ -431,7 +655,7 @@ namespace PlugHub.Revit2020
             var title = new FrameworkElementFactory(typeof(TextBlock));
             title.SetBinding(TextBlock.TextProperty, new Binding(nameof(RepositoryRow.DisplayName)));
             title.SetValue(TextBlock.FontWeightProperty, FontWeights.SemiBold);
-            title.SetValue(TextBlock.ForegroundProperty, new SolidColorBrush(Color.FromRgb(24, 34, 48)));
+            title.SetValue(TextBlock.ForegroundProperty, theme.TextBrush);
             title.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
             title.SetBinding(FrameworkElement.ToolTipProperty, new Binding(nameof(RepositoryRow.DisplayName)));
             text.AppendChild(title);
@@ -439,7 +663,7 @@ namespace PlugHub.Revit2020
             var meta = new FrameworkElementFactory(typeof(TextBlock));
             meta.SetBinding(TextBlock.TextProperty, new Binding(".") { Converter = new RepositoryMetaLabelConverter() });
             meta.SetValue(TextBlock.MarginProperty, new Thickness(0, 4, 0, 0));
-            meta.SetValue(TextBlock.ForegroundProperty, new SolidColorBrush(Color.FromRgb(72, 84, 101)));
+            meta.SetValue(TextBlock.ForegroundProperty, theme.MutedTextBrush);
             text.AppendChild(meta);
 
             return new DataTemplate { VisualTree = border };
@@ -447,6 +671,7 @@ namespace PlugHub.Revit2020
 
         private FrameworkElementFactory BuildRepositorySourceMoreGlyph()
         {
+            var theme = RevitUiTheme.Current;
             var button = new FrameworkElementFactory(typeof(TextBlock));
             button.SetValue(TextBlock.TextProperty, "...");
             button.SetValue(TextBlock.FontSizeProperty, 18.0);
@@ -454,7 +679,7 @@ namespace PlugHub.Revit2020
             button.SetValue(TextBlock.TextAlignmentProperty, TextAlignment.Center);
             button.SetValue(TextBlock.LineStackingStrategyProperty, LineStackingStrategy.BlockLineHeight);
             button.SetValue(TextBlock.LineHeightProperty, 14.0);
-            button.SetValue(TextBlock.ForegroundProperty, new SolidColorBrush(Color.FromRgb(72, 84, 101)));
+            button.SetValue(TextBlock.ForegroundProperty, theme.MutedTextBrush);
             button.SetValue(FrameworkElement.WidthProperty, 22.0);
             button.SetValue(FrameworkElement.HeightProperty, 16.0);
             button.SetValue(FrameworkElement.MarginProperty, new Thickness(2, -5, 0, 0));
@@ -516,7 +741,7 @@ namespace PlugHub.Revit2020
         private UIElement BuildRepositoryPackageList()
         {
             _warehousePackageList.BorderThickness = new Thickness(0);
-            _warehousePackageList.Background = Brushes.White;
+            _warehousePackageList.Background = RevitUiTheme.Current.PanelBackground;
             _warehousePackageList.ContextMenu = BuildRepositoryPackageMenu();
             _warehousePackageList.ItemTemplate = BuildRepositoryPackageTemplate();
             _warehousePackageList.ItemsPanel = BuildRepositoryPackageItemsPanel();
@@ -533,42 +758,51 @@ namespace PlugHub.Revit2020
         {
             var panelFactory = new FrameworkElementFactory(typeof(WrapPanel));
             panelFactory.SetValue(WrapPanel.OrientationProperty, Orientation.Horizontal);
-            panelFactory.SetValue(WrapPanel.ItemWidthProperty, RepositoryPackageCardSlotWidth);
             panelFactory.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
             return new ItemsPanelTemplate(panelFactory);
         }
 
         private DataTemplate BuildRepositoryPackageTemplate()
         {
+            var theme = RevitUiTheme.Current;
             var border = new FrameworkElementFactory(typeof(Border));
             border.SetValue(Border.WidthProperty, RepositoryPackageCardWidth);
-            border.SetValue(Border.MarginProperty, new Thickness(8, 4, 8, 4));
+            border.SetValue(Border.MarginProperty, new Thickness(RepositoryCardHorizontalMargin, RepositoryPackageCardVerticalMargin, RepositoryCardHorizontalMargin, RepositoryPackageCardVerticalMargin));
             border.SetValue(Border.PaddingProperty, new Thickness(10, 8, 10, 8));
-            border.SetValue(Border.BackgroundProperty, Brushes.White);
-            border.SetValue(Border.BorderBrushProperty, new SolidColorBrush(Color.FromRgb(226, 232, 240)));
+            border.SetValue(Border.BackgroundProperty, theme.PanelBackground);
+            border.SetValue(Border.BorderBrushProperty, theme.BorderBrush);
             border.SetValue(Border.BorderThicknessProperty, new Thickness(1));
             border.SetValue(Border.MinHeightProperty, 78.0);
+            border.SetValue(UIElement.SnapsToDevicePixelsProperty, true);
+            border.SetValue(FrameworkElement.UseLayoutRoundingProperty, true);
 
             var row = new FrameworkElementFactory(typeof(DockPanel));
             row.SetValue(FrameworkElement.MinHeightProperty, 58.0);
+            row.SetValue(DockPanel.LastChildFillProperty, true);
             border.AppendChild(row);
 
+            var actionRail = new FrameworkElementFactory(typeof(Border));
+            actionRail.SetValue(DockPanel.DockProperty, Dock.Right);
+            actionRail.SetValue(FrameworkElement.WidthProperty, RepositoryPackageActionWidth);
+            actionRail.SetValue(FrameworkElement.MarginProperty, new Thickness(8, 0, 0, 0));
+            row.AppendChild(actionRail);
+
             var actions = new FrameworkElementFactory(typeof(StackPanel));
-            actions.SetValue(DockPanel.DockProperty, Dock.Right);
             actions.SetValue(StackPanel.OrientationProperty, Orientation.Vertical);
+            actions.SetValue(FrameworkElement.WidthProperty, RepositoryPackageActionWidth);
             actions.SetValue(StackPanel.HorizontalAlignmentProperty, HorizontalAlignment.Right);
             actions.SetValue(StackPanel.VerticalAlignmentProperty, VerticalAlignment.Center);
-            row.AppendChild(actions);
+            actionRail.AppendChild(actions);
 
             var body = new FrameworkElementFactory(typeof(StackPanel));
             body.SetValue(StackPanel.OrientationProperty, Orientation.Vertical);
-            body.SetValue(StackPanel.MarginProperty, new Thickness(0, 0, 6, 0));
+            body.SetValue(StackPanel.MarginProperty, new Thickness(0, 0, 10, 0));
             row.AppendChild(body);
 
             var title = new FrameworkElementFactory(typeof(TextBlock));
             title.SetBinding(TextBlock.TextProperty, new Binding(nameof(RepositoryPackageRow.DisplayName)));
             title.SetValue(TextBlock.FontWeightProperty, FontWeights.SemiBold);
-            title.SetValue(TextBlock.ForegroundProperty, new SolidColorBrush(Color.FromRgb(24, 34, 48)));
+            title.SetValue(TextBlock.ForegroundProperty, theme.TextBrush);
             title.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
             body.AppendChild(title);
 
@@ -576,7 +810,7 @@ namespace PlugHub.Revit2020
             packageId.SetBinding(TextBlock.TextProperty, new Binding(nameof(RepositoryPackageRow.PackageId)));
             packageId.SetValue(TextBlock.MarginProperty, new Thickness(0, 3, 0, 0));
             packageId.SetValue(TextBlock.FontSizeProperty, 11.0);
-            packageId.SetValue(TextBlock.ForegroundProperty, new SolidColorBrush(Color.FromRgb(107, 114, 128)));
+            packageId.SetValue(TextBlock.ForegroundProperty, theme.SubtleTextBrush);
             packageId.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
             body.AppendChild(packageId);
 
@@ -584,7 +818,7 @@ namespace PlugHub.Revit2020
             meta.SetBinding(TextBlock.TextProperty, new Binding(".") { Converter = new RepositoryPackageMetaLabelConverter() });
             meta.SetValue(TextBlock.MarginProperty, new Thickness(0, 2, 0, 0));
             meta.SetValue(TextBlock.FontSizeProperty, 11.0);
-            meta.SetValue(TextBlock.ForegroundProperty, new SolidColorBrush(Color.FromRgb(96, 110, 128)));
+            meta.SetValue(TextBlock.ForegroundProperty, theme.MutedTextBrush);
             meta.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
             body.AppendChild(meta);
 
@@ -599,7 +833,9 @@ namespace PlugHub.Revit2020
         private FrameworkElementFactory BuildRepositoryPackagePrimaryActionButton()
         {
             var action = new FrameworkElementFactory(typeof(Button));
+            action.SetValue(Button.StyleProperty, RepositoryPackageActionButtonStyle());
             action.SetBinding(ContentControl.ContentProperty, new Binding(nameof(RepositoryPackageRow.PrimaryActionLabel)));
+            action.SetValue(FrameworkElement.WidthProperty, RepositoryPackageActionWidth);
             action.SetValue(Button.MinWidthProperty, RepositoryPackageActionWidth);
             action.SetValue(Button.HeightProperty, RepositoryPackageActionHeight);
             action.SetValue(FrameworkElement.MarginProperty, new Thickness(0, 0, 0, 6));
@@ -614,17 +850,61 @@ namespace PlugHub.Revit2020
         private FrameworkElementFactory BuildRepositoryPackageUninstallButton()
         {
             var action = new FrameworkElementFactory(typeof(Button));
+            action.SetValue(Button.StyleProperty, RepositoryPackageUninstallButtonStyle());
             action.SetValue(ContentControl.ContentProperty, "卸载");
+            action.SetValue(FrameworkElement.WidthProperty, RepositoryPackageActionWidth);
             action.SetValue(Button.MinWidthProperty, RepositoryPackageActionWidth);
             action.SetValue(Button.HeightProperty, RepositoryPackageActionHeight);
-            action.SetValue(Button.BorderThicknessProperty, new Thickness(1));
-            action.SetValue(Button.BackgroundProperty, RepositoryPackageUninstallBackground());
-            action.SetValue(Button.ForegroundProperty, RepositoryPackageUninstallForeground());
-            action.SetValue(Button.BorderBrushProperty, RepositoryPackageUninstallBorder());
-            action.AddHandler(Button.MouseEnterEvent, new MouseEventHandler(RepositoryPackageUninstallHoverEnter));
-            action.AddHandler(Button.MouseLeaveEvent, new MouseEventHandler(RepositoryPackageUninstallHoverLeave));
             action.AddHandler(Button.ClickEvent, new RoutedEventHandler(RunRepositoryPackageUninstallAction));
             return action;
+        }
+
+        private static Style RepositoryPackageActionButtonStyle()
+        {
+            var style = new Style(typeof(Button));
+            style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(6, 2, 6, 2)));
+            style.Setters.Add(new Setter(Control.HorizontalContentAlignmentProperty, HorizontalAlignment.Center));
+            style.Setters.Add(new Setter(Control.VerticalContentAlignmentProperty, VerticalAlignment.Center));
+            style.Setters.Add(new Setter(Control.TemplateProperty, RepositoryPackageButtonTemplate()));
+
+            var disabled = new Trigger { Property = UIElement.IsEnabledProperty, Value = false };
+            disabled.Setters.Add(new Setter(UIElement.OpacityProperty, 0.65));
+            style.Triggers.Add(disabled);
+            return style;
+        }
+
+        private static Style RepositoryPackageUninstallButtonStyle()
+        {
+            var style = RepositoryPackageActionButtonStyle();
+            style.Setters.Add(new Setter(Control.BackgroundProperty, RepositoryPackageUninstallBackground()));
+            style.Setters.Add(new Setter(Control.ForegroundProperty, RepositoryPackageUninstallForeground()));
+            style.Setters.Add(new Setter(Control.BorderBrushProperty, RepositoryPackageUninstallBorder()));
+            style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1)));
+
+            var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+            hover.Setters.Add(new Setter(Control.BackgroundProperty, RevitUiTheme.Current.DangerBrush));
+            hover.Setters.Add(new Setter(Control.ForegroundProperty, RevitUiTheme.Current.AccentForegroundBrush));
+            hover.Setters.Add(new Setter(Control.BorderBrushProperty, RevitUiTheme.Current.DangerBrush));
+            style.Triggers.Add(hover);
+            return style;
+        }
+
+        private static ControlTemplate RepositoryPackageButtonTemplate()
+        {
+            var chrome = new FrameworkElementFactory(typeof(Border));
+            chrome.Name = "Chrome";
+            chrome.SetValue(Border.BackgroundProperty, new TemplateBindingExtension(Control.BackgroundProperty));
+            chrome.SetValue(Border.BorderBrushProperty, new TemplateBindingExtension(Control.BorderBrushProperty));
+            chrome.SetValue(Border.BorderThicknessProperty, new TemplateBindingExtension(Control.BorderThicknessProperty));
+            chrome.SetValue(UIElement.SnapsToDevicePixelsProperty, true);
+
+            var content = new FrameworkElementFactory(typeof(ContentPresenter));
+            content.SetValue(ContentPresenter.RecognizesAccessKeyProperty, true);
+            content.SetValue(FrameworkElement.MarginProperty, new TemplateBindingExtension(Control.PaddingProperty));
+            content.SetValue(FrameworkElement.HorizontalAlignmentProperty, new TemplateBindingExtension(Control.HorizontalContentAlignmentProperty));
+            content.SetValue(FrameworkElement.VerticalAlignmentProperty, new TemplateBindingExtension(Control.VerticalContentAlignmentProperty));
+            chrome.AppendChild(content);
+            return new ControlTemplate(typeof(Button)) { VisualTree = chrome };
         }
 
         private static FrameworkElementFactory BuildRepositoryPackageTagsControl()
@@ -642,9 +922,10 @@ namespace PlugHub.Revit2020
 
         private static DataTemplate BuildRepositoryTagChipTemplate()
         {
+            var theme = RevitUiTheme.Current;
             var chip = new FrameworkElementFactory(typeof(Border));
-            chip.SetValue(Border.BackgroundProperty, new SolidColorBrush(Color.FromRgb(243, 244, 246)));
-            chip.SetValue(Border.BorderBrushProperty, new SolidColorBrush(Color.FromRgb(229, 231, 235)));
+            chip.SetValue(Border.BackgroundProperty, theme.ChipBackground);
+            chip.SetValue(Border.BorderBrushProperty, theme.BorderBrush);
             chip.SetValue(Border.BorderThicknessProperty, new Thickness(1));
             chip.SetValue(Border.CornerRadiusProperty, new CornerRadius(4));
             chip.SetValue(Border.PaddingProperty, new Thickness(4, 2, 4, 2));
@@ -653,7 +934,7 @@ namespace PlugHub.Revit2020
             var label = new FrameworkElementFactory(typeof(TextBlock));
             label.SetBinding(TextBlock.TextProperty, new Binding("."));
             label.SetValue(TextBlock.FontSizeProperty, 10.0);
-            label.SetValue(TextBlock.ForegroundProperty, new SolidColorBrush(Color.FromRgb(75, 85, 99)));
+            label.SetValue(TextBlock.ForegroundProperty, theme.MutedTextBrush);
             chip.AppendChild(label);
 
             return new DataTemplate { VisualTree = chip };
@@ -672,14 +953,15 @@ namespace PlugHub.Revit2020
 
         private static TabItem BuildTab(string title, UIElement content)
         {
+            var theme = RevitUiTheme.Current;
             return new TabItem
             {
                 Header = title,
                 Padding = new Thickness(12, 6, 12, 6),
                 Content = new Border
                 {
-                    Background = Brushes.White,
-                    BorderBrush = new SolidColorBrush(Color.FromRgb(220, 226, 234)),
+                    Background = theme.PanelBackground,
+                    BorderBrush = theme.BorderBrush,
                     BorderThickness = new Thickness(1),
                     Padding = new Thickness(1),
                     Child = content
@@ -691,13 +973,59 @@ namespace PlugHub.Revit2020
         {
             var button = new Button
             {
-                Content = text,
+                Content = BuildButtonContent(text),
                 MinWidth = 92,
                 Height = 30,
                 Margin = new Thickness(8, 0, 0, 0)
             };
             button.Click += handler;
             return button;
+        }
+
+        private static object BuildButtonContent(string text)
+        {
+            var iconKey = IconKeyForButtonText(text);
+            if (string.IsNullOrWhiteSpace(iconKey))
+            {
+                return text;
+            }
+
+            var panel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            panel.Children.Add(new Image
+            {
+                Source = DefaultRibbonIconProvider.CreateSmallIcon(iconKey),
+                Width = 14,
+                Height = 14,
+                Margin = new Thickness(0, 0, 5, 0),
+                Stretch = Stretch.Uniform
+            });
+            panel.Children.Add(new TextBlock
+            {
+                Text = text,
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = RevitUiTheme.Current.TextBrush
+            });
+            return panel;
+        }
+
+        private static string IconKeyForButtonText(string text)
+        {
+            var value = text ?? string.Empty;
+            if (value.IndexOf("诊断", StringComparison.OrdinalIgnoreCase) >= 0) return "diagnostics";
+            if (value.IndexOf("重新", StringComparison.OrdinalIgnoreCase) >= 0) return "refresh";
+            if (value.IndexOf("同步", StringComparison.OrdinalIgnoreCase) >= 0) return "refresh";
+            if (value.IndexOf("保存", StringComparison.OrdinalIgnoreCase) >= 0) return "save";
+            if (value.IndexOf("关闭", StringComparison.OrdinalIgnoreCase) >= 0) return "close";
+            if (value.IndexOf("取消", StringComparison.OrdinalIgnoreCase) >= 0) return "close";
+            if (value.IndexOf("仓库", StringComparison.OrdinalIgnoreCase) >= 0) return "repository";
+            if (value.IndexOf("安装", StringComparison.OrdinalIgnoreCase) >= 0) return "install";
+            if (value.IndexOf("更新", StringComparison.OrdinalIgnoreCase) >= 0) return "update";
+            if (value.IndexOf("卸载", StringComparison.OrdinalIgnoreCase) >= 0) return "uninstall";
+            return string.Empty;
         }
 
         private static TextBlock SectionHeader(string text)
@@ -707,12 +1035,13 @@ namespace PlugHub.Revit2020
                 Text = text,
                 FontWeight = FontWeights.SemiBold,
                 Margin = new Thickness(8, 8, 8, 6),
-                Foreground = new SolidColorBrush(Color.FromRgb(45, 56, 72))
+                Foreground = RevitUiTheme.Current.TextBrush
             };
         }
 
         private static DataGrid CreateGrid()
         {
+            var theme = RevitUiTheme.Current;
             return new DataGrid
             {
                 AutoGenerateColumns = false,
@@ -722,10 +1051,12 @@ namespace PlugHub.Revit2020
                 GridLinesVisibility = DataGridGridLinesVisibility.Horizontal,
                 SelectionMode = DataGridSelectionMode.Single,
                 SelectionUnit = DataGridSelectionUnit.FullRow,
-                Background = Brushes.White,
+                Background = theme.PanelBackground,
+                Foreground = theme.TextBrush,
+                BorderBrush = theme.BorderBrush,
                 BorderThickness = new Thickness(0),
                 RowHeight = 30,
-                AlternatingRowBackground = new SolidColorBrush(Color.FromRgb(250, 252, 255))
+                AlternatingRowBackground = theme.AlternatingRowBrush
             };
         }
 
@@ -1101,6 +1432,7 @@ namespace PlugHub.Revit2020
 
         private UIElement BuildRibbonDesignerPanelPreview(RibbonDesignerNodeRow panel)
         {
+            var theme = RevitUiTheme.Current;
             var body = new Grid { MinHeight = 118 };
             body.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star), MinHeight = 76 });
             body.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -1114,17 +1446,20 @@ namespace PlugHub.Revit2020
                 Text = DisplayName(panel.Text, panel.Id, "面板"),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(0, 4, 0, 0)
+                Margin = new Thickness(0, 4, 0, 0),
+                Foreground = theme.MutedTextBrush
             };
             Grid.SetRow(title, 1);
             body.Children.Add(title);
 
-            return BuildRibbonDesignerDropBorder(panel, body, new Thickness(0, 0, 10, 10), new Thickness(8), Brushes.White);
+            return BuildRibbonDesignerDropBorder(panel, body, new Thickness(0, 0, 10, 10), new Thickness(8), theme.PanelBackground);
         }
 
         private UIElement BuildRibbonDesignerPanelDropSurface(RibbonDesignerNodeRow panel)
         {
+            var theme = RevitUiTheme.Current;
             var items = new WrapPanel { Orientation = Orientation.Horizontal, MinHeight = 72 };
+            items.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
             foreach (var child in panel.Children)
             {
                 items.Children.Add(BuildRibbonDesignerItemPreview(child));
@@ -1134,8 +1469,8 @@ namespace PlugHub.Revit2020
             {
                 Tag = panel,
                 MinHeight = 76,
-                Background = panel.Children.Count == 0 ? new SolidColorBrush(Color.FromRgb(250, 252, 255)) : Brushes.Transparent,
-                BorderBrush = panel.Children.Count == 0 ? new SolidColorBrush(Color.FromRgb(226, 232, 240)) : Brushes.Transparent,
+                Background = panel.Children.Count == 0 ? theme.SurfaceBackground : Brushes.Transparent,
+                BorderBrush = panel.Children.Count == 0 ? theme.BorderBrush : Brushes.Transparent,
                 BorderThickness = new Thickness(panel.Children.Count == 0 ? 1 : 0),
                 Child = items,
                 AllowDrop = true
@@ -1174,6 +1509,7 @@ namespace PlugHub.Revit2020
 
         private UIElement BuildRibbonDesignerContainerPreview(RibbonDesignerNodeRow row)
         {
+            var theme = RevitUiTheme.Current;
             var parent = FindRibbonDesignerParent(row);
             if (parent != null && RibbonDesignerMapper.IsType(parent, RibbonDesignerNodeRow.Stack))
             {
@@ -1193,11 +1529,12 @@ namespace PlugHub.Revit2020
                 body.Children.Add(BuildRibbonDesignerContainerMenuPreview(row, new Thickness(0, -4, 8, 8)));
             }
 
-            return BuildRibbonDesignerDropBorder(row, body, new Thickness(0, 0, 8, 8), new Thickness(4), new SolidColorBrush(Color.FromRgb(247, 249, 252)));
+            return BuildRibbonDesignerDropBorder(row, body, new Thickness(0, 0, 8, 8), new Thickness(4), theme.SurfaceBackground);
         }
 
         private UIElement BuildRibbonDesignerStackPreview(RibbonDesignerNodeRow row)
         {
+            var theme = RevitUiTheme.Current;
             var body = new StackPanel
             {
                 Width = 148,
@@ -1218,16 +1555,17 @@ namespace PlugHub.Revit2020
                 {
                     Text = "拖入 2-3 个控件",
                     Margin = new Thickness(4, 0, 4, 4),
-                    Foreground = new SolidColorBrush(Color.FromRgb(100, 116, 139)),
+                    Foreground = theme.SubtleTextBrush,
                     TextAlignment = TextAlignment.Center
                 });
             }
 
-            return BuildRibbonDesignerDropBorder(row, body, new Thickness(0, 0, 8, 8), new Thickness(4), new SolidColorBrush(Color.FromRgb(247, 249, 252)));
+            return BuildRibbonDesignerDropBorder(row, body, new Thickness(0, 0, 8, 8), new Thickness(4), theme.SurfaceBackground);
         }
 
         private UIElement BuildRibbonDesignerContainerMenuPreview(RibbonDesignerNodeRow row, Thickness margin)
         {
+            var theme = RevitUiTheme.Current;
             var menuItems = new StackPanel();
             foreach (var child in row.Children)
             {
@@ -1238,8 +1576,8 @@ namespace PlugHub.Revit2020
             {
                 Margin = margin,
                 Padding = new Thickness(4),
-                Background = Brushes.White,
-                BorderBrush = new SolidColorBrush(Color.FromRgb(210, 218, 229)),
+                Background = theme.PanelBackground,
+                BorderBrush = theme.BorderBrush,
                 BorderThickness = new Thickness(1),
                 Child = menuItems
             };
@@ -1306,13 +1644,14 @@ namespace PlugHub.Revit2020
 
         private FrameworkElement BuildRibbonDesignerIconPreview(RibbonDesignerNodeRow row, double size)
         {
+            var theme = RevitUiTheme.Current;
             return new Border
             {
                 Width = size,
                 Height = size,
                 CornerRadius = new CornerRadius(2),
-                Background = new SolidColorBrush(Color.FromRgb(232, 238, 247)),
-                BorderBrush = new SolidColorBrush(Color.FromRgb(190, 203, 221)),
+                Background = theme.AccentSoftBrush,
+                BorderBrush = theme.BorderBrush,
                 BorderThickness = new Thickness(1),
                 Child = new Image
                 {
@@ -1406,7 +1745,7 @@ namespace PlugHub.Revit2020
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 FontSize = 11,
                 LineHeight = 14,
-                Foreground = new SolidColorBrush(Color.FromRgb(24, 34, 48)),
+                Foreground = RevitUiTheme.Current.TextBrush,
                 HorizontalAlignment = HorizontalAlignment.Stretch
             };
         }
@@ -1425,7 +1764,7 @@ namespace PlugHub.Revit2020
                     ? (IsRibbonDesignerContainerExpanded(row) ? "| ^" : "| v")
                     : (IsRibbonDesignerContainerExpanded(row) ? "^" : "v"),
                 FontSize = 10,
-                Foreground = new SolidColorBrush(Color.FromRgb(72, 84, 101)),
+                Foreground = RevitUiTheme.Current.MutedTextBrush,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 TextAlignment = TextAlignment.Center
             };
@@ -1493,15 +1832,16 @@ namespace PlugHub.Revit2020
 
         private Border BuildRibbonDesignerDropBorder(RibbonDesignerNodeRow row, UIElement child, Thickness margin, Thickness padding, Brush background)
         {
+            var theme = RevitUiTheme.Current;
             var selected = ReferenceEquals(row, _viewModel.SelectedRibbonDesignerNode);
             var border = new Border
             {
                 Tag = row,
-                MinWidth = RibbonDesignerMapper.IsType(row, RibbonDesignerNodeRow.Panel) ? 180 : 0,
+                MinWidth = RibbonDesignerPanelPreviewMinWidth(row),
                 Margin = margin,
                 Padding = padding,
                 Background = background,
-                BorderBrush = selected ? new SolidColorBrush(Color.FromRgb(25, 118, 210)) : new SolidColorBrush(Color.FromRgb(210, 218, 229)),
+                BorderBrush = selected ? theme.AccentBrush : theme.BorderBrush,
                 BorderThickness = new Thickness(selected ? 2 : 1),
                 Child = child,
                 AllowDrop = true
@@ -1513,8 +1853,22 @@ namespace PlugHub.Revit2020
             return border;
         }
 
+        private static double RibbonDesignerPanelPreviewMinWidth(RibbonDesignerNodeRow row)
+        {
+            if (!RibbonDesignerMapper.IsType(row, RibbonDesignerNodeRow.Panel)) return 0;
+            return IsSinglePushButtonRibbonDesignerPanel(row) ? 112 : 180;
+        }
+
+        private static bool IsSinglePushButtonRibbonDesignerPanel(RibbonDesignerNodeRow row)
+        {
+            return row != null
+                && row.Children.Count == 1
+                && RibbonDesignerMapper.IsType(row.Children[0], RibbonDesignerNodeRow.PushButton);
+        }
+
         private Button BuildRibbonDesignerPreviewButton(RibbonDesignerNodeRow row, object content, double width, double height)
         {
+            var theme = RevitUiTheme.Current;
             var selected = ReferenceEquals(row, _viewModel.SelectedRibbonDesignerNode);
             var button = new Button
             {
@@ -1524,8 +1878,8 @@ namespace PlugHub.Revit2020
                 Height = height,
                 Margin = new Thickness(0, 0, 8, 8),
                 Padding = new Thickness(6, 2, 6, 2),
-                Background = selected ? new SolidColorBrush(Color.FromRgb(227, 242, 253)) : Brushes.White,
-                BorderBrush = selected ? new SolidColorBrush(Color.FromRgb(25, 118, 210)) : new SolidColorBrush(Color.FromRgb(198, 210, 225)),
+                Background = selected ? theme.SelectionBrush : theme.PanelBackground,
+                BorderBrush = selected ? theme.AccentBrush : theme.BorderBrush,
                 BorderThickness = new Thickness(selected ? 2 : 1),
                 HorizontalContentAlignment = HorizontalAlignment.Stretch,
                 VerticalContentAlignment = VerticalAlignment.Stretch,
@@ -3441,7 +3795,7 @@ namespace PlugHub.Revit2020
             menu.Items.Add(MenuItem("同步仓库插件包", (sender, args) => BrowseSelectedRepository()));
             menu.Items.Add(new Separator());
             var delete = MenuItem("删除仓库", (sender, args) => RemoveSelectedRepository());
-            delete.Foreground = Brushes.DarkRed;
+            delete.Foreground = RevitUiTheme.Current.DangerBrush;
             menu.Items.Add(delete);
             return menu;
         }
@@ -3674,9 +4028,9 @@ namespace PlugHub.Revit2020
                 Height = 430,
                 MinWidth = 480,
                 MinHeight = 390,
-                WindowStartupLocation = WindowStartupLocation.CenterOwner,
-                Background = new SolidColorBrush(Color.FromRgb(247, 249, 252))
+                WindowStartupLocation = WindowStartupLocation.CenterOwner
             };
+            RevitUiTheme.Apply(dialog);
 
             var root = new Grid { Margin = new Thickness(16) };
             root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
@@ -4027,7 +4381,7 @@ namespace PlugHub.Revit2020
 
         private static List<IconOption> BuiltinIconOptions()
         {
-            return DefaultRibbonIconProvider.BuiltinIconKeys
+            return DefaultRibbonIconProvider.FeatureIconKeys
                 .Select(key => new IconOption
                 {
                     Value = DefaultRibbonIconProvider.ToIconPath(key),
@@ -4700,6 +5054,27 @@ namespace PlugHub.Revit2020
             return _configurationStore.BaseDirectory();
         }
 
+        private int ConfiguredModuleCount()
+        {
+            return EditableModules().Count();
+        }
+
+        private int ConfiguredFeatureCount()
+        {
+            return EditableModules().Sum(module => (module.Features ?? new List<FeatureConfiguration>()).Count);
+        }
+
+        private int ConfiguredRepositoryCount()
+        {
+            return (_configuration.Modules.Repositories ?? new List<PackageRepositoryConfiguration>()).Count;
+        }
+
+        private static string AssemblyVersionText()
+        {
+            var version = typeof(FrameworkSettingsWindow).Assembly.GetName().Version;
+            return version == null ? "开发构建" : version.ToString();
+        }
+
         private static T? FindAncestor<T>(DependencyObject? current) where T : DependencyObject
         {
             while (current != null)
@@ -4811,56 +5186,59 @@ namespace PlugHub.Revit2020
 
         private static Brush RepositoryPackageActionBackground(string action)
         {
-            if (string.Equals(action, RepositoryPackageAction.Install.ToString(), StringComparison.OrdinalIgnoreCase)) return new SolidColorBrush(Color.FromRgb(22, 163, 74));
-            if (string.Equals(action, RepositoryPackageAction.Update.ToString(), StringComparison.OrdinalIgnoreCase)) return new SolidColorBrush(Color.FromRgb(37, 99, 235));
-            if (string.Equals(action, RepositoryPackageAction.Uninstall.ToString(), StringComparison.OrdinalIgnoreCase)) return new SolidColorBrush(Color.FromRgb(22, 163, 74));
-            return new SolidColorBrush(Color.FromRgb(243, 244, 246));
+            var theme = RevitUiTheme.Current;
+            if (string.Equals(action, RepositoryPackageAction.Install.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.SuccessBrush;
+            if (string.Equals(action, RepositoryPackageAction.Update.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.UpdateBrush;
+            if (string.Equals(action, RepositoryPackageAction.Uninstall.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.ControlBackground;
+            return theme.SurfaceBackground;
         }
 
         private static Brush RepositoryPackageActionForeground(string action)
         {
-            if (string.Equals(action, RepositoryPackageAction.Install.ToString(), StringComparison.OrdinalIgnoreCase)) return Brushes.White;
-            if (string.Equals(action, RepositoryPackageAction.Update.ToString(), StringComparison.OrdinalIgnoreCase)) return Brushes.White;
-            if (string.Equals(action, RepositoryPackageAction.Uninstall.ToString(), StringComparison.OrdinalIgnoreCase)) return Brushes.White;
-            return new SolidColorBrush(Color.FromRgb(75, 85, 99));
+            var theme = RevitUiTheme.Current;
+            if (string.Equals(action, RepositoryPackageAction.Install.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.AccentForegroundBrush;
+            if (string.Equals(action, RepositoryPackageAction.Update.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.AccentForegroundBrush;
+            if (string.Equals(action, RepositoryPackageAction.Uninstall.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.TextBrush;
+            return theme.MutedTextBrush;
         }
 
         private static Brush RepositoryPackageActionBorder(string action)
         {
-            if (string.Equals(action, RepositoryPackageAction.Install.ToString(), StringComparison.OrdinalIgnoreCase)) return new SolidColorBrush(Color.FromRgb(22, 163, 74));
-            if (string.Equals(action, RepositoryPackageAction.Update.ToString(), StringComparison.OrdinalIgnoreCase)) return new SolidColorBrush(Color.FromRgb(37, 99, 235));
-            if (string.Equals(action, RepositoryPackageAction.Uninstall.ToString(), StringComparison.OrdinalIgnoreCase)) return new SolidColorBrush(Color.FromRgb(22, 163, 74));
-            return new SolidColorBrush(Color.FromRgb(229, 231, 235));
+            var theme = RevitUiTheme.Current;
+            if (string.Equals(action, RepositoryPackageAction.Install.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.SuccessBrush;
+            if (string.Equals(action, RepositoryPackageAction.Update.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.UpdateBrush;
+            if (string.Equals(action, RepositoryPackageAction.Uninstall.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.BorderBrush;
+            return theme.BorderBrush;
         }
 
         private static Brush RepositoryPackageUninstallBackground()
         {
-            return new SolidColorBrush(Color.FromRgb(243, 244, 246));
+            return RevitUiTheme.Current.SurfaceBackground;
         }
 
         private static Brush RepositoryPackageUninstallForeground()
         {
-            return new SolidColorBrush(Color.FromRgb(75, 85, 99));
+            return RevitUiTheme.Current.MutedTextBrush;
         }
 
         private static Brush RepositoryPackageUninstallBorder()
         {
-            return new SolidColorBrush(Color.FromRgb(229, 231, 235));
+            return RevitUiTheme.Current.BorderBrush;
         }
 
         private static Brush RepositoryPackageUninstallHoverBackground()
         {
-            return new SolidColorBrush(Color.FromRgb(254, 226, 226));
+            return RevitUiTheme.Current.DangerBrush;
         }
 
         private static Brush RepositoryPackageUninstallHoverForeground()
         {
-            return new SolidColorBrush(Color.FromRgb(153, 27, 27));
+            return RevitUiTheme.Current.AccentForegroundBrush;
         }
 
         private static Brush RepositoryPackageUninstallHoverBorder()
         {
-            return new SolidColorBrush(Color.FromRgb(252, 165, 165));
+            return RevitUiTheme.Current.DangerBrush;
         }
 
         private sealed class RepositoryMetaLabelConverter : IValueConverter

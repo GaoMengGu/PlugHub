@@ -9,16 +9,60 @@ namespace PlugHub.Revit2020
     {
         private const string BuiltinPrefix = "builtin:";
 
-        public static readonly IReadOnlyList<string> BuiltinIconKeys = new[]
+        public static readonly IReadOnlyList<string> FeatureIconKeys = new[]
         {
             "default",
-            "settings",
             "tool",
             "duct",
             "family",
             "batch",
             "document",
             "warning"
+        };
+
+        public static readonly IReadOnlyList<string> UiIconKeys = new[]
+        {
+            "settings",
+            "layout",
+            "repository",
+            "module",
+            "feature",
+            "group",
+            "package",
+            "diagnostics",
+            "about",
+            "refresh",
+            "save",
+            "install",
+            "update",
+            "uninstall",
+            "close"
+        };
+
+        public static readonly IReadOnlyList<string> BuiltinIconKeys = new[]
+        {
+            "default",
+            "tool",
+            "duct",
+            "family",
+            "batch",
+            "document",
+            "warning",
+            "settings",
+            "layout",
+            "repository",
+            "module",
+            "feature",
+            "group",
+            "package",
+            "diagnostics",
+            "about",
+            "refresh",
+            "save",
+            "install",
+            "update",
+            "uninstall",
+            "close"
         };
 
         public static ImageSource CreateSmallIcon()
@@ -91,6 +135,75 @@ namespace PlugHub.Revit2020
                 return;
             }
 
+            if (string.Equals(key, "layout", StringComparison.OrdinalIgnoreCase))
+            {
+                DrawLayout(context, size, foreground, accent);
+                return;
+            }
+
+            if (string.Equals(key, "repository", StringComparison.OrdinalIgnoreCase))
+            {
+                DrawRepository(context, size, foreground, accent);
+                return;
+            }
+
+            if (string.Equals(key, "module", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(key, "package", StringComparison.OrdinalIgnoreCase))
+            {
+                DrawPackage(context, size, foreground, accent);
+                return;
+            }
+
+            if (string.Equals(key, "feature", StringComparison.OrdinalIgnoreCase))
+            {
+                DrawFeature(context, size, foreground, accent);
+                return;
+            }
+
+            if (string.Equals(key, "group", StringComparison.OrdinalIgnoreCase))
+            {
+                DrawGroup(context, size, foreground, accent);
+                return;
+            }
+
+            if (string.Equals(key, "diagnostics", StringComparison.OrdinalIgnoreCase))
+            {
+                DrawDiagnostics(context, size, foreground, accent);
+                return;
+            }
+
+            if (string.Equals(key, "about", StringComparison.OrdinalIgnoreCase))
+            {
+                DrawAbout(context, size, foreground, accent);
+                return;
+            }
+
+            if (string.Equals(key, "refresh", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(key, "update", StringComparison.OrdinalIgnoreCase))
+            {
+                DrawRefresh(context, size, foreground, accent);
+                return;
+            }
+
+            if (string.Equals(key, "save", StringComparison.OrdinalIgnoreCase))
+            {
+                DrawSave(context, size, foreground, accent);
+                return;
+            }
+
+            if (string.Equals(key, "install", StringComparison.OrdinalIgnoreCase))
+            {
+                DrawInstall(context, size, foreground, accent);
+                return;
+            }
+
+            if (string.Equals(key, "uninstall", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(key, "close", StringComparison.OrdinalIgnoreCase))
+            {
+                DrawClose(context, size, foreground, accent);
+                return;
+            }
+
             if (string.Equals(key, "tool", StringComparison.OrdinalIgnoreCase))
             {
                 DrawTool(context, size, foreground, accent);
@@ -147,6 +260,124 @@ namespace PlugHub.Revit2020
             context.DrawEllipse(accent, null, top, hubRadius * 0.9, hubRadius * 0.9);
             context.DrawEllipse(accent, null, left, hubRadius * 0.9, hubRadius * 0.9);
             context.DrawEllipse(accent, null, right, hubRadius * 0.9, hubRadius * 0.9);
+        }
+
+        private static void DrawLayout(DrawingContext context, double size, Brush foreground, Brush accent)
+        {
+            context.DrawRectangle(foreground, null, new Rect(size * 0.24, size * 0.28, size * 0.52, size * 0.12));
+            context.DrawRoundedRectangle(accent, null, new Rect(size * 0.25, size * 0.47, size * 0.2, size * 0.24), size * 0.03, size * 0.03);
+            context.DrawRoundedRectangle(accent, null, new Rect(size * 0.52, size * 0.47, size * 0.23, size * 0.24), size * 0.03, size * 0.03);
+        }
+
+        private static void DrawRepository(DrawingContext context, double size, Brush foreground, Brush accent)
+        {
+            var pen = new Pen(foreground, size * 0.06);
+            pen.Freeze();
+            var top = new Point(size * 0.5, size * 0.32);
+            context.DrawEllipse(foreground, null, top, size * 0.24, size * 0.08);
+            context.DrawRoundedRectangle(foreground, null, new Rect(size * 0.26, size * 0.32, size * 0.48, size * 0.38), size * 0.04, size * 0.04);
+            context.DrawEllipse(accent, null, new Point(size * 0.5, size * 0.7), size * 0.24, size * 0.08);
+            context.DrawLine(pen, new Point(size * 0.34, size * 0.45), new Point(size * 0.66, size * 0.45));
+            context.DrawLine(pen, new Point(size * 0.34, size * 0.56), new Point(size * 0.66, size * 0.56));
+        }
+
+        private static void DrawPackage(DrawingContext context, double size, Brush foreground, Brush accent)
+        {
+            context.DrawRoundedRectangle(foreground, null, new Rect(size * 0.27, size * 0.34, size * 0.46, size * 0.42), size * 0.04, size * 0.04);
+            context.DrawRectangle(accent, null, new Rect(size * 0.32, size * 0.27, size * 0.36, size * 0.14));
+            context.DrawRectangle(accent, null, new Rect(size * 0.47, size * 0.34, size * 0.06, size * 0.18));
+        }
+
+        private static void DrawFeature(DrawingContext context, double size, Brush foreground, Brush accent)
+        {
+            var geometry = new StreamGeometry();
+            using (var geometryContext = geometry.Open())
+            {
+                geometryContext.BeginFigure(new Point(size * 0.56, size * 0.22), true, true);
+                geometryContext.LineTo(new Point(size * 0.32, size * 0.54), true, false);
+                geometryContext.LineTo(new Point(size * 0.5, size * 0.54), true, false);
+                geometryContext.LineTo(new Point(size * 0.43, size * 0.78), true, false);
+                geometryContext.LineTo(new Point(size * 0.7, size * 0.44), true, false);
+                geometryContext.LineTo(new Point(size * 0.52, size * 0.44), true, false);
+            }
+
+            geometry.Freeze();
+            context.DrawGeometry(foreground, null, geometry);
+            context.DrawEllipse(accent, null, new Point(size * 0.66, size * 0.28), size * 0.05, size * 0.05);
+        }
+
+        private static void DrawGroup(DrawingContext context, double size, Brush foreground, Brush accent)
+        {
+            var pen = new Pen(foreground, size * 0.05);
+            pen.Freeze();
+            context.DrawLine(pen, new Point(size * 0.5, size * 0.36), new Point(size * 0.34, size * 0.58));
+            context.DrawLine(pen, new Point(size * 0.5, size * 0.36), new Point(size * 0.66, size * 0.58));
+            context.DrawRoundedRectangle(foreground, null, new Rect(size * 0.39, size * 0.22, size * 0.22, size * 0.18), size * 0.03, size * 0.03);
+            context.DrawRoundedRectangle(accent, null, new Rect(size * 0.22, size * 0.58, size * 0.22, size * 0.18), size * 0.03, size * 0.03);
+            context.DrawRoundedRectangle(accent, null, new Rect(size * 0.56, size * 0.58, size * 0.22, size * 0.18), size * 0.03, size * 0.03);
+        }
+
+        private static void DrawDiagnostics(DrawingContext context, double size, Brush foreground, Brush accent)
+        {
+            var pen = new Pen(foreground, size * 0.06);
+            pen.Freeze();
+            context.DrawLine(pen, new Point(size * 0.26, size * 0.61), new Point(size * 0.39, size * 0.61));
+            context.DrawLine(pen, new Point(size * 0.39, size * 0.61), new Point(size * 0.47, size * 0.42));
+            context.DrawLine(pen, new Point(size * 0.47, size * 0.42), new Point(size * 0.57, size * 0.68));
+            context.DrawLine(pen, new Point(size * 0.57, size * 0.68), new Point(size * 0.68, size * 0.5));
+            context.DrawLine(pen, new Point(size * 0.68, size * 0.5), new Point(size * 0.76, size * 0.5));
+            context.DrawEllipse(accent, null, new Point(size * 0.36, size * 0.32), size * 0.06, size * 0.06);
+            context.DrawEllipse(accent, null, new Point(size * 0.68, size * 0.32), size * 0.06, size * 0.06);
+        }
+
+        private static void DrawAbout(DrawingContext context, double size, Brush foreground, Brush accent)
+        {
+            var pen = new Pen(foreground, size * 0.07);
+            pen.Freeze();
+            context.DrawEllipse(null, pen, new Point(size * 0.5, size * 0.5), size * 0.27, size * 0.27);
+            context.DrawEllipse(accent, null, new Point(size * 0.5, size * 0.35), size * 0.045, size * 0.045);
+            context.DrawRoundedRectangle(foreground, null, new Rect(size * 0.47, size * 0.45, size * 0.06, size * 0.22), size * 0.02, size * 0.02);
+        }
+
+        private static void DrawRefresh(DrawingContext context, double size, Brush foreground, Brush accent)
+        {
+            var pen = new Pen(foreground, size * 0.07);
+            pen.Freeze();
+            context.DrawLine(pen, new Point(size * 0.31, size * 0.5), new Point(size * 0.31, size * 0.36));
+            context.DrawLine(pen, new Point(size * 0.31, size * 0.36), new Point(size * 0.54, size * 0.36));
+            context.DrawLine(pen, new Point(size * 0.54, size * 0.36), new Point(size * 0.46, size * 0.28));
+            context.DrawLine(pen, new Point(size * 0.54, size * 0.36), new Point(size * 0.46, size * 0.44));
+            context.DrawLine(pen, new Point(size * 0.69, size * 0.5), new Point(size * 0.69, size * 0.64));
+            context.DrawLine(pen, new Point(size * 0.69, size * 0.64), new Point(size * 0.46, size * 0.64));
+            context.DrawLine(pen, new Point(size * 0.46, size * 0.64), new Point(size * 0.54, size * 0.56));
+            context.DrawLine(pen, new Point(size * 0.46, size * 0.64), new Point(size * 0.54, size * 0.72));
+            context.DrawEllipse(accent, null, new Point(size * 0.5, size * 0.5), size * 0.05, size * 0.05);
+        }
+
+        private static void DrawSave(DrawingContext context, double size, Brush foreground, Brush accent)
+        {
+            context.DrawRoundedRectangle(foreground, null, new Rect(size * 0.26, size * 0.24, size * 0.48, size * 0.52), size * 0.04, size * 0.04);
+            context.DrawRectangle(accent, null, new Rect(size * 0.35, size * 0.29, size * 0.26, size * 0.14));
+            context.DrawRectangle(accent, null, new Rect(size * 0.34, size * 0.58, size * 0.32, size * 0.14));
+        }
+
+        private static void DrawInstall(DrawingContext context, double size, Brush foreground, Brush accent)
+        {
+            var pen = new Pen(foreground, size * 0.08);
+            pen.Freeze();
+            context.DrawLine(pen, new Point(size * 0.5, size * 0.24), new Point(size * 0.5, size * 0.56));
+            context.DrawLine(pen, new Point(size * 0.38, size * 0.46), new Point(size * 0.5, size * 0.58));
+            context.DrawLine(pen, new Point(size * 0.62, size * 0.46), new Point(size * 0.5, size * 0.58));
+            context.DrawRoundedRectangle(accent, null, new Rect(size * 0.29, size * 0.66, size * 0.42, size * 0.1), size * 0.03, size * 0.03);
+        }
+
+        private static void DrawClose(DrawingContext context, double size, Brush foreground, Brush accent)
+        {
+            var pen = new Pen(foreground, size * 0.09);
+            pen.Freeze();
+            context.DrawLine(pen, new Point(size * 0.34, size * 0.34), new Point(size * 0.66, size * 0.66));
+            context.DrawLine(pen, new Point(size * 0.66, size * 0.34), new Point(size * 0.34, size * 0.66));
+            context.DrawEllipse(accent, null, new Point(size * 0.5, size * 0.5), size * 0.05, size * 0.05);
         }
 
         private static void DrawSettings(DrawingContext context, double size, Brush foreground, Brush accent)
@@ -225,6 +456,20 @@ namespace PlugHub.Revit2020
         private static Color BackgroundFor(string key)
         {
             if (string.Equals(key, "settings", StringComparison.OrdinalIgnoreCase)) return Color.FromRgb(69, 86, 110);
+            if (string.Equals(key, "layout", StringComparison.OrdinalIgnoreCase)) return Color.FromRgb(70, 84, 102);
+            if (string.Equals(key, "repository", StringComparison.OrdinalIgnoreCase)) return Color.FromRgb(71, 94, 122);
+            if (string.Equals(key, "module", StringComparison.OrdinalIgnoreCase)) return Color.FromRgb(79, 109, 143);
+            if (string.Equals(key, "package", StringComparison.OrdinalIgnoreCase)) return Color.FromRgb(79, 109, 143);
+            if (string.Equals(key, "feature", StringComparison.OrdinalIgnoreCase)) return Color.FromRgb(32, 125, 110);
+            if (string.Equals(key, "group", StringComparison.OrdinalIgnoreCase)) return Color.FromRgb(82, 111, 150);
+            if (string.Equals(key, "diagnostics", StringComparison.OrdinalIgnoreCase)) return Color.FromRgb(101, 92, 150);
+            if (string.Equals(key, "about", StringComparison.OrdinalIgnoreCase)) return Color.FromRgb(69, 86, 110);
+            if (string.Equals(key, "refresh", StringComparison.OrdinalIgnoreCase)) return Color.FromRgb(26, 115, 232);
+            if (string.Equals(key, "save", StringComparison.OrdinalIgnoreCase)) return Color.FromRgb(26, 115, 232);
+            if (string.Equals(key, "install", StringComparison.OrdinalIgnoreCase)) return Color.FromRgb(36, 121, 94);
+            if (string.Equals(key, "update", StringComparison.OrdinalIgnoreCase)) return Color.FromRgb(26, 115, 232);
+            if (string.Equals(key, "uninstall", StringComparison.OrdinalIgnoreCase)) return Color.FromRgb(176, 63, 55);
+            if (string.Equals(key, "close", StringComparison.OrdinalIgnoreCase)) return Color.FromRgb(89, 96, 108);
             if (string.Equals(key, "tool", StringComparison.OrdinalIgnoreCase)) return Color.FromRgb(36, 121, 94);
             if (string.Equals(key, "duct", StringComparison.OrdinalIgnoreCase)) return Color.FromRgb(20, 128, 168);
             if (string.Equals(key, "family", StringComparison.OrdinalIgnoreCase)) return Color.FromRgb(108, 84, 162);

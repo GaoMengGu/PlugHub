@@ -20,7 +20,8 @@ namespace PlugHub.Revit2020
             MinWidth = 620;
             MinHeight = showLogs ? 420 : 260;
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
-            Background = new SolidColorBrush(Color.FromRgb(247, 249, 252));
+            RevitUiTheme.Apply(this);
+            var theme = RevitUiTheme.Current;
 
             var root = new Grid { Margin = new Thickness(16) };
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -37,14 +38,14 @@ namespace PlugHub.Revit2020
                 Text = Title,
                 FontSize = 18,
                 FontWeight = FontWeights.SemiBold,
-                Foreground = new SolidColorBrush(Color.FromRgb(24, 34, 48))
+                Foreground = theme.TextBrush
             });
             header.Children.Add(new TextBlock
             {
                 Text = summary ?? string.Empty,
                 Margin = new Thickness(0, 8, 0, 0),
                 TextWrapping = TextWrapping.Wrap,
-                Foreground = new SolidColorBrush(Color.FromRgb(71, 83, 101)),
+                Foreground = theme.MutedTextBrush,
                 LineHeight = 20
             });
             Grid.SetRow(header, 0);
@@ -61,10 +62,11 @@ namespace PlugHub.Revit2020
                     IsReadOnly = true,
                     HeadersVisibility = DataGridHeadersVisibility.Column,
                     GridLinesVisibility = DataGridGridLinesVisibility.Horizontal,
-                    Background = Brushes.White,
-                    BorderBrush = new SolidColorBrush(Color.FromRgb(220, 226, 234)),
+                    Background = theme.PanelBackground,
+                    Foreground = theme.TextBrush,
+                    BorderBrush = theme.BorderBrush,
                     RowHeight = 30,
-                    AlternatingRowBackground = new SolidColorBrush(Color.FromRgb(250, 252, 255)),
+                    AlternatingRowBackground = theme.AlternatingRowBrush,
                     ItemsSource = BuildDiagnosticRows(diagnostics)
                 };
                 diagnosticsGrid.Columns.Add(TextColumn(nameof(DiagnosticRow.Severity), "级别", 90));

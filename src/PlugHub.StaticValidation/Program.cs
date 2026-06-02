@@ -60,6 +60,7 @@ namespace PlugHub.StaticValidation
                 ValidateSettingsCreationAndSortingSpecification();
                 ValidateSettingsGroupFeatureEditingBehavior();
                 ValidateDefaultIconSpecification();
+                ValidateRevitWpfUiDesignSpecification();
                 ValidatePackageSourceAndReleaseBehavior();
                 ValidatePendingPackageOperationStoreBehavior();
                 ValidateRepositoryInstallFlowBehavior();
@@ -1122,6 +1123,8 @@ namespace PlugHub.StaticValidation
             Require(settingsWindow.Contains("FindRibbonDesignerParent"), "visual designer must know parent containers when resolving drag targets.");
             Require(settingsWindow.Contains("BuildRibbonDesignerPanelDropSurface"), "visual designer panels must expose a stable drop surface above the bottom title.");
             Require(settingsWindow.Contains("Grid.SetRow(title, 1)"), "visual designer panel title must stay at the bottom, including empty panels.");
+            Require(settingsWindow.Contains("RibbonDesignerPanelPreviewMinWidth") && settingsWindow.Contains("IsSinglePushButtonRibbonDesignerPanel"), "visual designer panels with one regular button must shrink instead of keeping the multi-button panel width.");
+            Require(settingsWindow.Contains("items.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center)"), "visual designer panel contents must center when a panel has a single regular button.");
             Require(settingsWindow.Contains("BuildRibbonDesignerCanvasMenu") && settingsWindow.Contains("重新生成默认布局"), "visual designer layout operations must move to the canvas context menu.");
             Require(settingsWindow.Contains("CommitSelectedRibbonDesignerPropertiesFromEditor") && settingsWindow.Contains("SelectedRibbonDesignerTextLostFocus"), "visual designer properties must auto-apply editor changes without an apply button.");
             Require(settingsWindow.Contains("BuildFooter") && settingsWindow.Contains("Grid.SetColumn(_statusText, 0)"), "settings status text must be shown at the bottom left.");
@@ -1326,9 +1329,39 @@ namespace PlugHub.StaticValidation
             Require(ribbonBuilder.Contains("AddSingleStackChildFallback"), "Ribbon builder must render a single-item stack as its child instead of dropping the feature.");
             Require(ribbonBuilder.Contains("CreateContainerButtonData") && ribbonBuilder.Contains("ApplyRibbonItemIcon"), "Ribbon builder must apply configured icons to container ribbon buttons.");
             Require(iconProvider.Contains("CreateSmallIcon") && iconProvider.Contains("CreateLargeIcon"), "default icon provider must expose small and large icon factories.");
-            Require(iconProvider.Contains("BuiltinIconKeys") && iconProvider.Contains("settings") && iconProvider.Contains("duct") && iconProvider.Contains("family"), "default icon provider must expose a small built-in icon suite.");
+            Require(iconProvider.Contains("BuiltinIconKeys") && iconProvider.Contains("FeatureIconKeys") && iconProvider.Contains("UiIconKeys"), "default icon provider must split feature icon choices from UI button icons.");
+            Require(iconProvider.Contains("settings") && iconProvider.Contains("duct") && iconProvider.Contains("family"), "default icon provider must expose UI and feature icon suites.");
             Require(settingsWindow.Contains("BuildBuiltinIconMenu") && settingsWindow.Contains("SetSelectedFeatureBuiltinIcon"), "settings must let users choose built-in feature icons.");
+            var featureIconOptions = MethodBody(settingsWindow, "BuiltinIconOptions");
+            Require(featureIconOptions.Contains("DefaultRibbonIconProvider.FeatureIconKeys") && !featureIconOptions.Contains("DefaultRibbonIconProvider.BuiltinIconKeys"), "feature icon menus must not include UI-only icons such as settings/save/install/about.");
             Require(!modulesText.Contains("commandAssembly"), "framework config must not ship command-backed feature entries.");
+        }
+
+        private static void ValidateRevitWpfUiDesignSpecification()
+        {
+            var theme = ReadText("src/PlugHub.Revit2020/RevitUiTheme.cs");
+            var settingsWindow = ReadText("src/PlugHub.Revit2020/FrameworkSettingsWindow.cs");
+            var statusWindow = ReadText("src/PlugHub.Revit2020/FrameworkStatusWindow.cs");
+            var iconProvider = ReadText("src/PlugHub.Revit2020/DefaultRibbonIconProvider.cs");
+            var revitProject = ReadText("src/PlugHub.Revit2020/PlugHub.Revit2020.csproj");
+
+            Require(theme.Contains("class RevitUiPalette") && theme.Contains("class RevitUiTheme"), "Revit WPF UI must centralize theme tokens in RevitUiTheme.");
+            Require(theme.Contains("UIThemeManager") && theme.Contains("AppsUseLightTheme"), "Revit WPF UI theme detection must prefer Revit host theme and fall back to Windows app theme.");
+            Require(theme.Contains("ButtonStyle") && theme.Contains("TabItem") && theme.Contains("DataGridRow"), "Revit WPF UI theme must provide shared styles for buttons, tabs, and grids.");
+            Require(theme.Contains("MenuItemTemplate") && theme.Contains("PART_Popup") && theme.Contains("SubmenuArrow"), "context menus must use a compact MenuItem template without the default icon slot.");
+            Require(settingsWindow.Contains("RevitUiTheme.Apply(this)") && statusWindow.Contains("RevitUiTheme.Apply(this)"), "settings and status windows must share the Revit WPF theme.");
+            Require(settingsWindow.Contains("BuildAboutTab") && settingsWindow.Contains("tabs.Items.Add(BuildAboutTab())"), "settings window must include an About tab.");
+            Require(settingsWindow.Contains("BuildAboutMetric") && settingsWindow.Contains("BuildAboutInfoRow") && settingsWindow.Contains("Revit 2020"), "About tab must show concise project/runtime metadata.");
+            Require(settingsWindow.Contains("BuildButtonContent") && settingsWindow.Contains("IconKeyForButtonText"), "settings window buttons must use consistent vector icon content where appropriate.");
+            Require(iconProvider.Contains("\"about\"") && iconProvider.Contains("\"repository\"") && iconProvider.Contains("\"layout\""), "built-in icon suite must include common settings/about/repository/layout icons.");
+            Require(revitProject.Contains("Resources\\Icons\\*.svg") && revitProject.Contains("CopyToOutputDirectory"), "common SVG icons must be copied to the Revit adapter output.");
+            Require(revitProject.Contains("PlugHubSvgIcon") && revitProject.Contains("$(PlugHubOutputDir)\\Resources\\Icons\\"), "staged Revit output must include common SVG icons.");
+
+            foreach (var icon in new[] { "about", "batch", "diagnostics", "document", "duct", "family", "feature", "group", "install", "layout", "module", "package", "refresh", "repository", "save", "settings", "tool", "uninstall", "update", "warning" })
+            {
+                var path = "src/PlugHub.Revit2020/Resources/Icons/" + icon + ".svg";
+                Require(File.Exists(FullPath(path)) && ReadText(path).Contains("<svg"), "missing common SVG icon asset: " + path);
+            }
         }
 
         private static void ValidateSettingsGroupFeatureEditingBehavior()
@@ -1403,8 +1436,15 @@ namespace PlugHub.StaticValidation
 
             Require(settingsWindow.Contains("RepositorySettingsDefaultWidth = 1140.0") && settingsWindow.Contains("Width = RepositorySettingsDefaultWidth"), "settings window must default to the requested 1140 width.");
             Require(settingsWindow.Contains("RepositorySettingsDefaultHeight = 600.0") && settingsWindow.Contains("Height = RepositorySettingsDefaultHeight"), "settings window must default to the requested 600 height.");
-            Require(settingsWindow.Contains("RepositorySourceCardWidth = 244.0") && settingsWindow.Contains("RepositorySourceCardSlotWidth = 256.0"), "repository source cards must be sized to the current longest default repository name without forcing startup scrolling.");
-            Require(settingsWindow.Contains("RepositoryPackageGridChromeReserve = 60.0") && settingsWindow.Contains("RepositoryPackageCardSlotWidth = (RepositorySettingsDefaultWidth - RepositoryPackageGridChromeReserve) / RepositoryPackageColumns"), "repository package card width must be derived from the current settings window width.");
+            Require(settingsWindow.Contains("SettingsWindowOuterMargin = 12.0") && settingsWindow.Contains("Margin = new Thickness(SettingsWindowOuterMargin)"), "settings window outer margin must be a shared constant used by layout width calculations.");
+            Require(settingsWindow.Contains("SettingsWindowOuterMarginWidth = SettingsWindowOuterMargin * 2.0") && settingsWindow.Contains("RepositoryCardRowChromeReserve = 60.0"), "repository card row width must reserve root margins and tab chrome at the default window width.");
+            Require(settingsWindow.Contains("RepositoryCardRowWidth = RepositorySettingsDefaultWidth - SettingsWindowOuterMarginWidth - RepositoryCardRowChromeReserve"), "repository card row width must fit within the default settings content area so four source cards do not trigger the horizontal scrollbar.");
+            Require(settingsWindow.Contains("RepositorySourceColumns = 4.0") && settingsWindow.Contains("RepositoryPackageColumns = 3.0"), "repository layout must target four source cards and three package cards per row.");
+            Require(settingsWindow.Contains("RepositoryPackageCardVerticalMargin = 4.0") && settingsWindow.Contains("RepositoryCardHorizontalMargin = RepositoryPackageCardVerticalMargin"), "repository card horizontal half-gap must match the package card vertical half-gap.");
+            Require(settingsWindow.Contains("RepositoryCardHorizontalMarginWidth = RepositoryCardHorizontalMargin * 2.0"), "repository card horizontal margins must be shared across source and package cards.");
+            Require(settingsWindow.Contains("RepositorySourceScrollbarSafetyReserve = 16.0") && settingsWindow.Contains("RepositorySourceCardRowWidth = RepositoryCardRowWidth - RepositorySourceScrollbarSafetyReserve"), "repository source cards must keep a small safety reserve so four default cards do not trigger the horizontal scrollbar.");
+            Require(settingsWindow.Contains("RepositorySourceCardSlotWidth = RepositorySourceCardRowWidth / RepositorySourceColumns") && settingsWindow.Contains("RepositoryPackageCardSlotWidth = RepositoryCardRowWidth / RepositoryPackageColumns"), "repository source cards must use the safety-reserved row width while package cards keep the full repository row width.");
+            Require(settingsWindow.Contains("RepositorySourceCardWidth = RepositorySourceCardSlotWidth - RepositoryCardHorizontalMarginWidth") && settingsWindow.Contains("RepositoryPackageCardWidth = RepositoryPackageCardSlotWidth - RepositoryCardHorizontalMarginWidth"), "repository source and package card widths must subtract the same horizontal margins.");
             Require(settingsWindow.Contains("BuildRepositorySourceScrollViewer") && settingsWindow.Contains("ScrollViewer.CanContentScrollProperty, false"), "repository source cards must be hosted in an explicit horizontal ScrollViewer so overflow can be scrolled.");
             Require(settingsWindow.Contains("BuildRepositorySourceMoreGlyph") && settingsWindow.Contains("ToolTip") && settingsWindow.Contains("CheckBox"), "repository source cards must use compact glyph actions and a checkbox enabled state.");
             Require(settingsWindow.Contains("AddRepositoryEditorRow(form, 6, \"Token\", apiKey)") && !settingsWindow.Contains("AddRepositoryEditorRow(form, 6, \"ApiKey\", apiKey)"), "repository source editor must label the credential field as Token for users.");
@@ -1417,12 +1457,25 @@ namespace PlugHub.StaticValidation
             Require(settingsWindow.Contains("BuildRepositorySourceMoreGlyph") && settingsWindow.Contains("OpenRepositorySourceMenuFromCard"), "repository source cards must use a shared ellipsis menu for secondary actions.");
             Require(settingsWindow.Contains("BrowseRepositorySourceCacheFromCard") && settingsWindow.Contains("_packageRepositoryService.BrowseCached(BaseDirectory(), row.ToConfiguration()"), "clicking a repository source card must browse its local cached packages without remote sync.");
             Require(settingsWindow.Contains("同步仓库插件包") && settingsWindow.Contains("编辑仓库源") && settingsWindow.Contains("删除仓库"), "repository source menu must expose edit, sync, and delete actions.");
-            Require(settingsWindow.Contains("Brushes.DarkRed"), "repository source delete menu item must be visually highlighted as destructive.");
+            Require(settingsWindow.Contains("RevitUiTheme.Current.DangerBrush"), "repository source delete menu item must be visually highlighted as destructive.");
             Require(settingsWindow.Contains("一键同步") && !settingsWindow.Contains("浏览所选") && !settingsWindow.Contains("检查更新"), "repository toolbar must expose manual sync-all and remove redundant repository actions.");
             Require(!settingsWindow.Contains("LoadCachedRepositoryPackages();"), "settings must not auto-populate repository packages before the user manually syncs repositories.");
-            Require(settingsWindow.Contains("BuildRepositoryPackageItemsPanel") && settingsWindow.Contains("WrapPanel.ItemWidthProperty"), "repository package list must render as a responsive multi-column card grid.");
+            var sourceTemplate = MethodBody(settingsWindow, "BuildRepositorySourceCardTemplate");
+            Require(sourceTemplate.Contains("border.SetValue(Border.WidthProperty, RepositorySourceCardWidth)") && sourceTemplate.Contains("border.SetValue(Border.MarginProperty, new Thickness(RepositoryCardHorizontalMargin, RepositoryPackageCardVerticalMargin, RepositoryCardHorizontalMargin, RepositorySourceCardBottomMargin))"), "repository source card horizontal gaps must match package card vertical gaps while preserving source-row bottom spacing.");
+            var packageItemsPanel = MethodBody(settingsWindow, "BuildRepositoryPackageItemsPanel");
+            Require(packageItemsPanel.Contains("new FrameworkElementFactory(typeof(WrapPanel))") && !packageItemsPanel.Contains("WrapPanel.ItemWidthProperty"), "repository package list must let WrapPanel auto-measure each card like repository source cards instead of clipping cards into a fixed item width.");
             Require(settingsWindow.Contains("_warehousePackageList.HorizontalContentAlignment = HorizontalAlignment.Center") && settingsWindow.Contains("FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center"), "repository package card grid must keep three columns centered with equal left/right spacing.");
-            Require(settingsWindow.Contains("RepositoryPackageActionWidth = 72.0") && settingsWindow.Contains("RepositoryPackageActionHeight = 26.0"), "repository package card action buttons must stay compact enough for four tag chips on one line.");
+            Require(settingsWindow.Contains("RepositoryPackageActionWidth = 72.0") && settingsWindow.Contains("RepositoryPackageActionHeight = 26.0"), "repository package card action buttons must stay compact with fixed dimensions.");
+            var packageTemplate = MethodBody(settingsWindow, "BuildRepositoryPackageTemplate");
+            Require(packageTemplate.Contains("var border = new FrameworkElementFactory(typeof(Border))") && packageTemplate.Contains("border.SetValue(Border.WidthProperty, RepositoryPackageCardWidth)") && packageTemplate.Contains("border.SetValue(Border.MarginProperty, new Thickness(RepositoryCardHorizontalMargin, RepositoryPackageCardVerticalMargin, RepositoryCardHorizontalMargin, RepositoryPackageCardVerticalMargin))"), "repository package card horizontal gaps must match package card vertical gaps.");
+            Require(packageTemplate.Contains("border.SetValue(Border.PaddingProperty, new Thickness(10, 8, 10, 8))") && packageTemplate.Contains("border.SetValue(Border.BorderThicknessProperty, new Thickness(1))"), "repository package cards must draw their own border with the same card padding as repository source cards.");
+            Require(!packageTemplate.Contains("var slot = new FrameworkElementFactory(typeof(Border))") && packageTemplate.Contains("return new DataTemplate { VisualTree = border }"), "repository package cards must not wrap the real card in a fixed-width slot.");
+            Require(!packageTemplate.Contains("rightEdge") && !packageTemplate.Contains("Panel.ZIndexProperty"), "repository package cards must not use overlay edge workarounds.");
+            Require(packageTemplate.Contains("var row = new FrameworkElementFactory(typeof(DockPanel))") && packageTemplate.Contains("var actionRail = new FrameworkElementFactory(typeof(Border))"), "repository package cards must use a valid WPF action rail instead of fake Grid column definitions.");
+            Require(packageTemplate.Contains("actionRail.SetValue(DockPanel.DockProperty, Dock.Right)") && packageTemplate.Contains("actionRail.SetValue(FrameworkElement.WidthProperty, RepositoryPackageActionWidth)") && packageTemplate.Contains("actionRail.SetValue(FrameworkElement.MarginProperty, new Thickness(8, 0, 0, 0))"), "repository package card actions must sit inside the outer card padding so they cannot hide the right border.");
+            Require(!packageTemplate.Contains("new FrameworkElementFactory(typeof(ColumnDefinition))"), "repository package data templates must not append ColumnDefinition through FrameworkElementFactory.");
+            Require(packageTemplate.Contains("body.SetValue(StackPanel.MarginProperty, new Thickness(0, 0, 10, 0))"), "repository package card body must keep spacing away from the action rail inside the padded card.");
+            Require(settingsWindow.Contains("action.SetValue(FrameworkElement.WidthProperty, RepositoryPackageActionWidth)"), "repository package action buttons must use fixed width so they cannot cover the card border.");
             Require(!settingsWindow.Contains("Color.FromRgb(51, 122, 183)") && !settingsWindow.Contains("icon.SetValue(DockPanel.DockProperty, Dock.Left)"), "repository package cards must not spend width on a leading decorative icon.");
             Require(settingsWindow.Contains("BuildRepositoryPackageTagsControl") && settingsWindow.Contains("BuildRepositoryTagChipTemplate") && settingsWindow.Contains("WrapPanel"), "repository package tags must render as compact chips instead of slash-separated text.");
             Require(!settingsWindow.Contains("RepositoryPackageTagLabelConverter"), "repository package tags must not be rendered as one long slash-separated text line.");
@@ -1430,9 +1483,17 @@ namespace PlugHub.StaticValidation
             Require(!settingsWindow.Contains("state.SetBinding(TextBlock.TextProperty, new Binding(nameof(RepositoryPackageRow.InstallState)))"), "repository package cards must not render install state as a separate label beside action buttons.");
             Require(!settingsWindow.Contains("\"，已装 \"") && !settingsWindow.Contains("InstalledVersion) ? string.Empty"), "repository package card meta line above tag chips must not append install status.");
             Require(settingsWindow.Contains("\"本 \" + localVersion + \" · 仓 \" + repositoryVersion") && !settingsWindow.Contains("return row.RepositoryDisplayName + \"，\" + version"), "repository package card meta line must use compact local/repository versions without repository source text.");
-            Require(settingsWindow.Contains("RepositoryPackageUninstallHoverEnter") && settingsWindow.Contains("RepositoryPackageUninstallHoverLeave"), "repository package uninstall action must be visually de-emphasized until hover.");
+            Require(settingsWindow.Contains("RepositoryPackageActionButtonStyle") && settingsWindow.Contains("RepositoryPackageUninstallButtonStyle") && settingsWindow.Contains("RepositoryPackageButtonTemplate"), "repository package action buttons must use an explicit WPF template so button chrome honors the requested colors.");
+            Require(!settingsWindow.Contains("Button.MouseEnterEvent, new MouseEventHandler(RepositoryPackageUninstallHoverEnter)") && !settingsWindow.Contains("Button.MouseLeaveEvent, new MouseEventHandler(RepositoryPackageUninstallHoverLeave)"), "repository package uninstall hover must be style-driven instead of event-driven.");
             Require(settingsWindow.Contains("RepositoryPackageActionBrushConverter") && settingsWindow.Contains("RepositoryPackageActionForegroundConverter"), "repository package primary actions must have state-specific visual weight.");
-            Require(settingsWindow.Contains("Color.FromRgb(22, 163, 74)") && settingsWindow.Contains("Color.FromRgb(37, 99, 235)") && settingsWindow.Contains("RepositoryPackageUninstallBackground"), "repository package action buttons must use green install/installed, blue update, and gray/red uninstall styling.");
+            var primaryActionBackground = MethodBody(settingsWindow, "RepositoryPackageActionBackground");
+            var primaryActionForeground = MethodBody(settingsWindow, "RepositoryPackageActionForeground");
+            var primaryActionBorder = MethodBody(settingsWindow, "RepositoryPackageActionBorder");
+            Require(primaryActionBackground.Contains("RepositoryPackageAction.Install.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.SuccessBrush") && primaryActionForeground.Contains("RepositoryPackageAction.Install.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.AccentForegroundBrush"), "uninstalled repository packages must show install as white text on green.");
+            Require(primaryActionBackground.Contains("RepositoryPackageAction.Update.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.UpdateBrush") && primaryActionForeground.Contains("RepositoryPackageAction.Update.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.AccentForegroundBrush"), "updatable repository packages must show update as white text on blue.");
+            Require(primaryActionBackground.Contains("RepositoryPackageAction.Uninstall.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.ControlBackground") && primaryActionForeground.Contains("RepositoryPackageAction.Uninstall.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.TextBrush") && primaryActionBorder.Contains("RepositoryPackageAction.Uninstall.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.BorderBrush"), "installed repository packages must show the primary status as dark text on a white/themed background.");
+            var uninstallButtonStyle = MethodBody(settingsWindow, "RepositoryPackageUninstallButtonStyle");
+            Require(uninstallButtonStyle.Contains("UIElement.IsMouseOverProperty") && uninstallButtonStyle.Contains("Control.BackgroundProperty, RevitUiTheme.Current.DangerBrush") && uninstallButtonStyle.Contains("Control.ForegroundProperty, RevitUiTheme.Current.AccentForegroundBrush"), "repository package uninstall hover must switch to red background with white text.");
             Require(repositoryPackageRow.Contains("Take(3)") && repositoryPackageRow.Contains("TagBadges"), "repository package row must expose at most three key chip-ready tag badges when four cannot fit.");
             Require(repositorySettingsController.Contains("return \"已安装\";"), "installed repository packages must default to a passive installed label instead of a visible uninstall label.");
             Require(repositorySettingsController.Contains("return \"有更新\";"), "updatable repository packages must show a distinct update label.");
@@ -2436,6 +2497,33 @@ namespace PlugHub.StaticValidation
         private static string ReadText(string relativePath)
         {
             return File.ReadAllText(FullPath(relativePath));
+        }
+
+        private static string MethodBody(string source, string methodName)
+        {
+            var token = methodName + "(";
+            var start = -1;
+            var search = 0;
+            while (search < source.Length)
+            {
+                var candidate = source.IndexOf(token, search, StringComparison.Ordinal);
+                if (candidate < 0) break;
+
+                var lineStart = source.LastIndexOf('\n', candidate);
+                var line = source.Substring(lineStart + 1, candidate - lineStart - 1);
+                if (line.Contains("private ") && !line.Contains("="))
+                {
+                    start = lineStart + 1;
+                    break;
+                }
+
+                search = candidate + token.Length;
+            }
+
+            Require(start >= 0, "missing method: " + methodName);
+
+            var next = source.IndexOf("\n        private ", start + methodName.Length, StringComparison.Ordinal);
+            return next >= 0 ? source.Substring(start, next - start) : source.Substring(start);
         }
 
         private static string ReadAllCSharp(string relativeDirectory)
