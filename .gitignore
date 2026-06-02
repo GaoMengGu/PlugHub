@@ -4,6 +4,7 @@ dist/
 build/validation-report.*
 .vs/
 .superpowers/
+.worktrees/
 docs/superpowers/
 TestResults/
 .pytest_cache/
