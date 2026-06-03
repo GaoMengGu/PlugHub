@@ -6,200 +6,24 @@ triggers:
   trigger: auto
   push:
     branches:
-      include:
+      precise:
         - main
     tags:
-      include:
-        - V*
+      prefix:
+        - V
+
+commitMessage: ''
 
 stages:
-  - name: release
-    displayName: Build and publish release
-    steps:
-      - step: shell@agent
-        name: build_publish_release
-        displayName: Build and publish Gitee release
-        hostGroupID: ${PLUGHUB_WINDOWS_HOST_GROUP_ID}
-        inputs:
-          shell: powershell
-          goals: |
-            $ErrorActionPreference = "Stop"
-
-            function Write-ReleaseEnv($tag, $skip) {
-              @(
-                "PLUGHUB_RELEASE_TAG=$tag",
-                "PLUGHUB_SKIP_RELEASE=$skip"
-              ) | Set-Content -LiteralPath .plughub-release.env -Encoding utf8
-            }
-
-            git fetch --tags --force origin
-
-            $refName = $env:CI_COMMIT_TAG
-            if ([string]::IsNullOrWhiteSpace($refName)) {
-              $refName = $env:GITEE_REF_NAME
-            }
-            if ([string]::IsNullOrWhiteSpace($refName) -and $env:GITEE_REF -like "refs/*/*") {
-              $refName = Split-Path $env:GITEE_REF -Leaf
-            }
-            if ([string]::IsNullOrWhiteSpace($refName) -and $env:GIT_BRANCH) {
-              $refName = Split-Path $env:GIT_BRANCH -Leaf
-            }
-
-            if (![string]::IsNullOrWhiteSpace($refName) -and $refName -like "V*") {
-              $tag = $refName
-            }
-            else {
-              $tag = $null
-              for ($attempt = 1; $attempt -le 24; $attempt++) {
-                git fetch --tags --force origin
-                $tag = git tag --points-at HEAD --list "V[0-9]*.[0-9]*.[0-9]*" --sort=-v:refname | Select-Object -First 1
-                if (![string]::IsNullOrWhiteSpace($tag)) {
-                  break
-                }
-
-                Write-Host "No V* release tag points at HEAD yet. Waiting for tag sync ($attempt/24)."
-                Start-Sleep -Seconds 10
-              }
-            }
-
-            if ([string]::IsNullOrWhiteSpace($tag)) {
-              Write-ReleaseEnv "" "true"
-              Write-Host "No release tag points at the current commit. Skipping Gitee release build."
-              exit 0
-            }
-            if ($tag -notmatch "^V\d+\.\d+\.\d+$") {
-              throw "Release tag must match Vx.y.z: $tag"
-            }
-
-            Write-ReleaseEnv $tag "false"
-
-            dotnet run --project src\PlugHub.StaticValidation\PlugHub.StaticValidation.csproj
-
-            $notesPath = "PlugHub-ReleaseNotes-$tag.md"
-            $previous = git tag --list "V[0-9]*.[0-9]*.[0-9]*" --sort=-v:refname |
-              Where-Object { $_ -ne $tag } |
-              Select-Object -First 1
-
-            if ([string]::IsNullOrWhiteSpace($previous)) {
-              $commits = git log -1 $tag --pretty=format:"- %s"
-            }
-            else {
-              $commits = git log "$previous..$tag" --no-merges --pretty=format:"- %s"
-            }
-
-            if ($null -eq $commits -or $commits.Count -eq 0) {
-              $commits = @("- 框架构建与发布产物更新。")
-            }
-
-            @(
-              "## 更新信息",
-              "",
-              $commits
-            ) | Set-Content -LiteralPath $notesPath -Encoding utf8
-
-            .\scripts\build-revit2020.ps1 -UseRevitApiNuGet -UseRelativeAddinAssembly
-
-            $updaterOutput = (Resolve-Path "dist\Revit2020").Path
-            dotnet build src\PlugHub.Updater\PlugHub.Updater.csproj -c Release -t:Rebuild /p:OutDir="$updaterOutput\"
-            $builtUpdater = Join-Path $updaterOutput "PlugHub.Updater.exe"
-            if (!(Test-Path $builtUpdater)) {
-              throw "Updater build finished but $builtUpdater was not found."
-            }
-
-            $zipPath = "PlugHub-Revit2020-$tag.zip"
-            $sourceRoot = (Resolve-Path "dist\Revit2020").Path
-            $artifactDir = Join-Path $env:TEMP "PlugHub-Revit2020-$tag"
-            if (Test-Path $zipPath) {
-              Remove-Item -LiteralPath $zipPath -Force
-            }
-            if (Test-Path $artifactDir) {
-              Remove-Item -LiteralPath $artifactDir -Recurse -Force
-            }
-
-            New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
-            Get-ChildItem -LiteralPath $sourceRoot -Recurse -File |
-              Where-Object { $_.Name -notlike "*.sigstore.json" -and $_.Name -notlike "*.pdb" } |
-              ForEach-Object {
-                $relativePath = $_.FullName.Substring($sourceRoot.Length).TrimStart("\", "/")
-                $targetPath = Join-Path $artifactDir $relativePath
-                New-Item -ItemType Directory -Force -Path (Split-Path $targetPath -Parent) | Out-Null
-                Copy-Item -LiteralPath $_.FullName -Destination $targetPath -Force
-              }
-            Compress-Archive -Path "$artifactDir\*" -DestinationPath $zipPath -Force
-
-            $uninstallerOutput = Join-Path $env:TEMP "PlugHubUninstaller"
-            if (Test-Path $uninstallerOutput) {
-              Remove-Item -LiteralPath $uninstallerOutput -Recurse -Force
-            }
-
-            New-Item -ItemType Directory -Force -Path $uninstallerOutput | Out-Null
-            dotnet build src\PlugHub.Uninstaller\PlugHub.Uninstaller.csproj -c Release -t:Rebuild /p:OutDir="$uninstallerOutput\"
-            $builtUninstaller = Join-Path $uninstallerOutput "PlugHub.Uninstaller.exe"
-            if (!(Test-Path $builtUninstaller)) {
-              throw "Uninstaller build finished but $builtUninstaller was not found."
-            }
-            Copy-Item -LiteralPath $builtUninstaller -Destination (Join-Path $uninstallerOutput "PlugHub-Uninstall.exe") -Force
-
-            $payloadZip = (Resolve-Path $zipPath).Path
-            $uninstallerExe = (Resolve-Path (Join-Path $uninstallerOutput "PlugHub.Uninstaller.exe")).Path
-            $installerOutput = Join-Path $env:TEMP "PlugHubInstaller"
-            $installerExe = "PlugHub-Setup-$tag.exe"
-            if (Test-Path $installerOutput) {
-              Remove-Item -LiteralPath $installerOutput -Recurse -Force
-            }
-
-            New-Item -ItemType Directory -Force -Path $installerOutput | Out-Null
-            dotnet build src\PlugHub.Installer\PlugHub.Installer.csproj -c Release -t:Rebuild /p:InstallerPayloadZip="$payloadZip" /p:InstallerUninstallerExe="$uninstallerExe" /p:OutDir="$installerOutput\"
-            $builtInstaller = Join-Path $installerOutput "PlugHub.Installer.exe"
-            if (!(Test-Path $builtInstaller)) {
-              throw "Installer build finished but $builtInstaller was not found."
-            }
-            Copy-Item -LiteralPath $builtInstaller -Destination $installerExe -Force
-
-            $checksumPath = "PlugHub-SHA256-$tag.txt"
-            $assets = @(
-              "PlugHub-Revit2020-$tag.zip",
-              "PlugHub-Setup-$tag.exe"
-            )
-            $lines = foreach ($asset in $assets) {
-              $hash = Get-FileHash -Algorithm SHA256 -LiteralPath $asset
-              "$($hash.Hash.ToLowerInvariant())  $asset"
-            }
-            $lines | Set-Content -LiteralPath $checksumPath -Encoding ascii
-
-            if ([string]::IsNullOrWhiteSpace($env:GITEE_TOKEN)) {
-              throw "GITEE_TOKEN is required to publish the Gitee release."
-            }
-
-            $releaseBody = Get-Content -LiteralPath $notesPath -Raw
-            $releaseBaseUri = "https://gitee.com/api/v5/repos/GaoMengGu/PlugHub/releases"
-            $escapedToken = [Uri]::EscapeDataString($env:GITEE_TOKEN)
-            $escapedTag = [Uri]::EscapeDataString($tag)
-            $release = $null
-
-            try {
-              $release = Invoke-RestMethod -Method Post -Uri $releaseBaseUri -Body @{
-                access_token = $env:GITEE_TOKEN
-                tag_name = $tag
-                target_commitish = "main"
-                name = "PlugHub $tag"
-                body = $releaseBody
-                prerelease = "false"
-              }
-            }
-            catch {
-              $release = Invoke-RestMethod -Method Get -Uri "$releaseBaseUri/tags/$escapedTag?access_token=$escapedToken"
-            }
-
-            if ($null -eq $release -or [string]::IsNullOrWhiteSpace([string]$release.id)) {
-              throw "Gitee release was not created or resolved for tag $tag."
-            }
-
-            $assets += "PlugHub-SHA256-$tag.txt"
-            foreach ($asset in $assets) {
-              $fullPath = (Resolve-Path $asset).Path
-              & curl.exe -sS -X POST -F "access_token=$($env:GITEE_TOKEN)" -F "file=@$fullPath" "$releaseBaseUri/$($release.id)/attach_files"
-              if ($LASTEXITCODE -ne 0) {
-                throw "Failed to upload Gitee release attachment: $asset"
-              }
-            }
+  - stage:
+      name: release
+      displayName: Build and publish release
+      strategy: naturally
+      trigger: auto
+      steps:
+        - step: shell@agent
+          name: build_publish_release
+          displayName: Build and publish Gitee release
+          hostGroupID: ${PLUGHUB_WINDOWS_HOST_GROUP_ID}
+          script: |
+            powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\.workflow\scripts\gitee-release.ps1

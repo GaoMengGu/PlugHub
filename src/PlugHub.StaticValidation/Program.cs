@@ -191,6 +191,7 @@ namespace PlugHub.StaticValidation
                 ".github/workflows/release.yml",
                 ".github/workflows/sync-gitee.yml",
                 ".workflow/PlugHubRelease.yml",
+                ".workflow/scripts/gitee-release.ps1",
                 "PlugHub.sln",
                 "PlugHub.slnx",
                 "src/PlugHub.Contracts/PlugHub.Contracts.csproj",
@@ -2325,24 +2326,33 @@ namespace PlugHub.StaticValidation
         private static void ValidateGiteeGoReleasePackaging()
         {
             var giteeWorkflowPath = ".workflow/PlugHubRelease.yml";
+            var giteeScriptPath = ".workflow/scripts/gitee-release.ps1";
             Require(File.Exists(FullPath(giteeWorkflowPath)), "Gitee Go release workflow must live under .workflow instead of GitHub Actions directories.");
+            Require(File.Exists(FullPath(giteeScriptPath)), "Gitee Go release workflow must call a repository script instead of embedding a long inline publisher.");
             Require(!File.Exists(FullPath(".gitee/workflows/release.yml")), "Gitee Go release workflow must not use a copied GitHub Actions .gitee/workflows file.");
 
             var giteeWorkflow = ReadText(giteeWorkflowPath);
+            var giteeScript = ReadText(giteeScriptPath);
             Require(giteeWorkflow.Contains("version:") && giteeWorkflow.Contains("displayName:") && giteeWorkflow.Contains("triggers:") && giteeWorkflow.Contains("stages:"), "Gitee Go release workflow must use Gitee Go top-level structure.");
-            Require(giteeWorkflow.Contains("trigger: auto") && giteeWorkflow.Contains("push:") && giteeWorkflow.Contains("branches:") && giteeWorkflow.Contains("main") && giteeWorkflow.Contains("tags:") && giteeWorkflow.Contains("V*"), "Gitee Go release workflow must trigger from mirrored main and V* tags.");
-            Require(giteeWorkflow.Contains("shell@agent") && giteeWorkflow.Contains("hostGroupID"), "Gitee Go release workflow must run on a configured Windows agent instead of GitHub runs-on.");
+            Require(giteeWorkflow.Contains("trigger: auto") && giteeWorkflow.Contains("push:") && giteeWorkflow.Contains("branches:") && giteeWorkflow.Contains("precise:") && giteeWorkflow.Contains("main"), "Gitee Go release workflow must trigger from mirrored main pushes using precise branch matching.");
+            Require(giteeWorkflow.Contains("tags:") && giteeWorkflow.Contains("prefix:") && giteeWorkflow.Contains("- V"), "Gitee Go release workflow must trigger from mirrored V* tags using tag prefix matching.");
+            Require(giteeWorkflow.Contains("- stage:") && giteeWorkflow.Contains("strategy: naturally") && giteeWorkflow.Contains("steps:"), "Gitee Go release workflow must use the documented stage object shape.");
+            Require(giteeWorkflow.Contains("shell@agent") && giteeWorkflow.Contains("hostGroupID") && giteeWorkflow.Contains("script: |"), "Gitee Go release workflow must run a shell@agent script on the configured Windows host group.");
+            Require(giteeWorkflow.Contains(".\\.workflow\\scripts\\gitee-release.ps1"), "Gitee Go release workflow must call the checked-in Gitee release script.");
             Require(!giteeWorkflow.Contains("runs-on:") && !giteeWorkflow.Contains("uses: actions/checkout") && !giteeWorkflow.Contains("${{"), "Gitee Go release workflow must not contain GitHub Actions syntax.");
-            Require(giteeWorkflow.Contains("git fetch --tags") && giteeWorkflow.Contains("--points-at HEAD"), "Gitee Go release workflow must resolve the GitHub-created V* tag for the current commit.");
-            Require(giteeWorkflow.Contains("PLUGHUB_SKIP_RELEASE") && giteeWorkflow.Contains("Set-Content -LiteralPath .plughub-release.env"), "Gitee Go release workflow must skip branch events until a release tag exists.");
-            Require(giteeWorkflow.Contains("PlugHub.StaticValidation") && giteeWorkflow.Contains("build-revit2020.ps1"), "Gitee Go release workflow must run validation and build the Revit 2020 package.");
-            Require(giteeWorkflow.Contains("-UseRevitApiNuGet") && giteeWorkflow.Contains("-UseRelativeAddinAssembly"), "Gitee Go release workflow must use NuGet Revit API references and relative addin assembly paths.");
-            Require(giteeWorkflow.Contains("PlugHub.Uninstaller.csproj") && giteeWorkflow.Contains("PlugHub-Uninstall.exe"), "Gitee Go release workflow must build the uninstaller artifact for the installer.");
-            Require(giteeWorkflow.Contains("PlugHub.Installer.csproj") && giteeWorkflow.Contains("InstallerPayloadZip") && giteeWorkflow.Contains("InstallerUninstallerExe"), "Gitee Go release workflow must build the installer with embedded payload and uninstaller.");
-            Require(giteeWorkflow.Contains("PlugHub-Revit2020-") && giteeWorkflow.Contains("PlugHub-Setup-"), "Gitee Go release workflow must package the same zip and setup exe names as GitHub releases.");
-            Require(giteeWorkflow.Contains("PlugHub-ReleaseNotes-$tag.md") && giteeWorkflow.Contains("$releaseBody"), "Gitee Go release workflow must publish concise release notes.");
-            Require(giteeWorkflow.Contains("GITEE_TOKEN") && giteeWorkflow.Contains("api/v5/repos/GaoMengGu/PlugHub/releases"), "Gitee Go release workflow must publish to GaoMengGu/PlugHub releases through the Gitee API token.");
-            Require(giteeWorkflow.Contains("attach_files") || giteeWorkflow.Contains("attach"), "Gitee Go release workflow must upload release attachments.");
+            Require(!giteeWorkflow.Contains("inputs:") && !giteeWorkflow.Contains("goals:"), "Gitee Go shell@agent step must use script instead of the old inputs/goals shape.");
+            Require(giteeScript.Contains("git fetch --tags") && giteeScript.Contains("--points-at HEAD"), "Gitee Go release script must resolve the GitHub-created V* tag for the current commit.");
+            Require(giteeScript.Contains("PLUGHUB_SKIP_RELEASE") && giteeScript.Contains("Set-Content -LiteralPath \".plughub-release.env\""), "Gitee Go release script must skip branch events until a release tag exists.");
+            Require(giteeScript.Contains("PlugHub.StaticValidation") && giteeScript.Contains("build-revit2020.ps1"), "Gitee Go release script must run validation and build the Revit 2020 package.");
+            Require(giteeScript.Contains("-UseRevitApiNuGet") && giteeScript.Contains("-UseRelativeAddinAssembly"), "Gitee Go release script must use NuGet Revit API references and relative addin assembly paths.");
+            Require(giteeScript.Contains("PlugHub.Uninstaller.csproj") && giteeScript.Contains("PlugHub-Uninstall.exe"), "Gitee Go release script must build the uninstaller artifact for the installer.");
+            Require(giteeScript.Contains("PlugHub.Installer.csproj") && giteeScript.Contains("InstallerPayloadZip") && giteeScript.Contains("InstallerUninstallerExe"), "Gitee Go release script must build the installer with embedded payload and uninstaller.");
+            Require(giteeScript.Contains("PlugHub-Revit2020-") && giteeScript.Contains("PlugHub-Setup-"), "Gitee Go release script must package the same zip and setup exe names as GitHub releases.");
+            Require(giteeScript.Contains("PlugHub-ReleaseNotes-$Tag.md") && giteeScript.Contains("$releaseBody"), "Gitee Go release script must publish concise release notes.");
+            Require(giteeScript.Contains("GITEE_TOKEN") && giteeScript.Contains("api/v5/repos/GaoMengGu/PlugHub/releases"), "Gitee Go release script must publish to GaoMengGu/PlugHub releases through the Gitee API token.");
+            Require(giteeScript.Contains("attach_files") || giteeScript.Contains("attach"), "Gitee Go release script must upload release attachments.");
+            Require(!giteeScript.Contains("GITHUB_") && !giteeScript.Contains("CI_COMMIT_TAG") && !giteeScript.Contains("GITEE_REF") && !giteeScript.Contains("GIT_BRANCH"), "Gitee Go release script must not depend on unverified GitHub or ref environment variables.");
+            Require(giteeScript.All(ch => ch <= 127), "Gitee Go release script must stay ASCII so Windows PowerShell 5 can parse it without UTF-8 BOM issues.");
         }
 
         private static void ValidateFeatureButtonTooltipBehavior()
@@ -2420,6 +2430,7 @@ namespace PlugHub.StaticValidation
             var updaterRunner = ReadText("src/PlugHub.Updater/FrameworkDllUpdater.cs");
             var githubWorkflow = ReadText(".github/workflows/release.yml");
             var giteeWorkflow = ReadText(".workflow/PlugHubRelease.yml");
+            var giteeScript = ReadText(".workflow/scripts/gitee-release.ps1");
             var buildScript = ReadText("scripts/build-revit2020.ps1");
             var readme = ReadText("README.md");
 
@@ -2450,7 +2461,7 @@ namespace PlugHub.StaticValidation
             Require(updaterRunner.Contains("WaitForExit") && updaterRunner.Contains("CopyFrameworkDllsOnly"), "updater must wait for Revit exit before copying DLLs.");
             Require(updaterRunner.Contains("PlugHub.addin") && updaterRunner.Contains("SkipNonDllEntry") && !updaterRunner.Contains("Directory.Delete(installDirectory"), "updater must avoid addin/config/packages replacement and install directory deletion.");
             Require(githubWorkflow.Contains("Build PlugHub updater") && githubWorkflow.Contains("PlugHub.Updater.csproj"), "GitHub release workflow must build the updater before packaging the release zip.");
-            Require(giteeWorkflow.Contains("PlugHub.Updater.csproj") && giteeWorkflow.Contains("PlugHub.Updater.exe"), "Gitee release workflow must build the updater before packaging the release zip.");
+            Require(giteeWorkflow.Contains(".\\.workflow\\scripts\\gitee-release.ps1") && giteeScript.Contains("PlugHub.Updater.csproj") && giteeScript.Contains("PlugHub.Updater.exe"), "Gitee release workflow must build the updater before packaging the release zip.");
             Require(buildScript.Contains("PlugHub.Updater.csproj") && buildScript.Contains("PlugHub.Updater.exe"), "local Revit 2020 build script must stage PlugHub.Updater.exe.");
             Require(readme.Contains("检查更新") && readme.Contains("升级框架") && readme.Contains("只覆盖框架 DLL"), "README must document framework auto-update behavior.");
             Require(readme.Contains("检查更新") && readme.Contains("升级框架") && readme.Contains("不能声明 Revit 实机测试成功"), "README must document updater verification boundaries.");
