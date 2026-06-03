@@ -188,6 +188,7 @@ namespace PlugHub.StaticValidation
             {
                 "README.md",
                 "AGENTS.md",
+                "build/Directory.Build.props",
                 ".github/workflows/release.yml",
                 ".github/workflows/sync-gitee.yml",
                 "PlugHub.sln",
@@ -2413,6 +2414,7 @@ namespace PlugHub.StaticValidation
         {
             var solution = ReadText("PlugHub.sln");
             var solutionX = ReadText("PlugHub.slnx");
+            var buildProps = ReadText("build/Directory.Build.props");
             var settingsWindow = ReadText("src/PlugHub.Revit2020/FrameworkSettingsWindow.cs");
             var frameworkProject = ReadText("src/PlugHub.Framework/PlugHub.Framework.csproj");
             var service = ReadText("src/PlugHub.Framework/Updates/FrameworkUpdateService.cs");
@@ -2431,6 +2433,8 @@ namespace PlugHub.StaticValidation
             Require(solution.Contains("src\\PlugHub.Updater\\PlugHub.Updater.csproj"), "updater project must be included in PlugHub.sln.");
             Require(solutionX.Contains("src/PlugHub.Updater/PlugHub.Updater.csproj"), "updater project must be included in PlugHub.slnx.");
             Require(updaterProject.Contains("<TargetFramework>net48</TargetFramework>") && updaterProject.Contains("<OutputType>WinExe</OutputType>"), "updater must build as a silent net48 Windows EXE.");
+            Require(buildProps.Contains("PlugHubVersion") && buildProps.Contains("PlugHubReleaseTag") && buildProps.Contains("<InformationalVersion>$(PlugHubReleaseTag)</InformationalVersion>"), "shared build props must stamp release tags into assembly informational version.");
+            Require(settingsWindow.Contains("AssemblyInformationalVersionAttribute") && settingsWindow.Contains("InformationalVersion") && settingsWindow.Contains("Split('+')"), "About tab and update checks must read the release tag from assembly informational version.");
             Require(settingsWindow.Contains("BuildAboutHeader") && settingsWindow.Contains("AssemblyVersionText()"), "About tab header must show PlugHub followed by the current framework version.");
             Require(settingsWindow.Contains("CreateIconButton(\"refresh\"") && settingsWindow.Contains("CheckFrameworkUpdate"), "About tab must use a compact check-update icon beside the framework version.");
             Require(settingsWindow.Contains("CreateIconButton(\"upgrade\"") && settingsWindow.Contains("ConfirmFrameworkUpdate"), "About tab must use a compact upgrade icon beside the framework version.");
@@ -2453,9 +2457,10 @@ namespace PlugHub.StaticValidation
             Require(updaterProgram.Contains("FrameworkDllUpdater") && !updaterProgram.Contains("Application.Run"), "updater must run silently without a WinForms window.");
             Require(updaterRunner.Contains("WaitForExit") && updaterRunner.Contains("CopyFrameworkDllsOnly"), "updater must wait for Revit exit before copying DLLs.");
             Require(updaterRunner.Contains("PlugHub.addin") && updaterRunner.Contains("SkipNonDllEntry") && !updaterRunner.Contains("Directory.Delete(installDirectory"), "updater must avoid addin/config/packages replacement and install directory deletion.");
-            Require(githubWorkflow.Contains("Build PlugHub updater") && githubWorkflow.Contains("PlugHub.Updater.csproj"), "GitHub release workflow must build the updater before packaging the release zip.");
+            Require(githubWorkflow.Contains("Build PlugHub updater") && githubWorkflow.Contains("PlugHub.Updater.csproj") && githubWorkflow.Contains("/p:PlugHubReleaseTag=\"$env:PLUGHUB_RELEASE_TAG\""), "GitHub release workflow must build the updater with the resolved release tag version.");
             Require(githubWorkflow.Contains("Publish Gitee release") && githubWorkflow.Contains("PlugHub-Revit2020-$tag.zip"), "GitHub release workflow must mirror the built updater package to Gitee release assets.");
             Require(buildScript.Contains("PlugHub.Updater.csproj") && buildScript.Contains("PlugHub.Updater.exe"), "local Revit 2020 build script must stage PlugHub.Updater.exe.");
+            Require(buildScript.Contains("Resolve-PlugHubReleaseVersion") && buildScript.Contains("/p:PlugHubVersion=$($PlugHubReleaseVersion.Version)") && buildScript.Contains("/p:PlugHubReleaseTag=$($PlugHubReleaseVersion.ReleaseTag)"), "local and release builds must stamp PlugHub DLLs with the release tag version.");
             Require(readme.Contains("检查更新") && readme.Contains("升级框架") && readme.Contains("只覆盖框架 DLL"), "README must document framework auto-update behavior.");
             Require(readme.Contains("检查更新") && readme.Contains("升级框架") && readme.Contains("不能声明 Revit 实机测试成功"), "README must document updater verification boundaries.");
 

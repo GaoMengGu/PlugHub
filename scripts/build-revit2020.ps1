@@ -4,6 +4,7 @@ param(
     [switch]$UseRevitApiNuGet,
     [string]$RevitApiNuGetVersion = "",
     [string]$OutputDir = "$PSScriptRoot\..\dist\Revit2020",
+    [string]$PlugHubReleaseTag = "",
     [switch]$UseRelativeAddinAssembly,
     [switch]$InstallAddin,
     [switch]$NoStage,
@@ -71,6 +72,25 @@ function Test-RevitApiDir {
         -and (Test-Path (Join-Path $Path "RevitAPIUI.dll"))
 }
 
+function Resolve-PlugHubReleaseVersion {
+    param([string]$Tag)
+
+    if ([string]::IsNullOrWhiteSpace($Tag)) {
+        $Tag = $env:PLUGHUB_RELEASE_TAG
+    }
+
+    if ([string]::IsNullOrWhiteSpace($Tag)) {
+        return @{ Version = "0.0.0"; ReleaseTag = "dev" }
+    }
+
+    $match = [regex]::Match($Tag.Trim(), "^V(?<version>\d+\.\d+\.\d+)$")
+    if (!$match.Success) {
+        throw "PlugHub release tag must match Vx.y.z: $Tag"
+    }
+
+    return @{ Version = $match.Groups["version"].Value; ReleaseTag = $Tag.Trim() }
+}
+
 $candidateApiDirs = @(
     $RevitApiDir,
     "D:\Program Files\Autodesk\Revit 2020",
@@ -109,6 +129,7 @@ if (!$UseRevitApiNuGet) {
 Assert-PathInsideRoot $OutputDir
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 $OutputDir = (Resolve-Path $OutputDir).Path
+$PlugHubReleaseVersion = Resolve-PlugHubReleaseVersion $PlugHubReleaseTag
 
 $RemovedModuleName = "PlugHub." + "Sample" + "Module"
 $StaleOutputPaths = @(
@@ -134,7 +155,9 @@ $buildArguments = @(
     "-c",
     $Configuration,
     "/p:RevitVersion=2020",
-    "/p:PlugHubOutputDir=$OutputDir"
+    "/p:PlugHubOutputDir=$OutputDir",
+    "/p:PlugHubVersion=$($PlugHubReleaseVersion.Version)",
+    "/p:PlugHubReleaseTag=$($PlugHubReleaseVersion.ReleaseTag)"
 )
 
 if ($UseRevitApiNuGet) {
@@ -166,7 +189,7 @@ if ($NoStage) {
     return
 }
 
-& dotnet build $UpdaterProject -c $Configuration -t:Rebuild "/p:OutDir=$OutputDir\"
+& dotnet build $UpdaterProject -c $Configuration -t:Rebuild "/p:OutDir=$OutputDir\" "/p:PlugHubVersion=$($PlugHubReleaseVersion.Version)" "/p:PlugHubReleaseTag=$($PlugHubReleaseVersion.ReleaseTag)"
 if ($LASTEXITCODE -ne 0) {
     throw "dotnet build PlugHub.Updater failed with exit code $LASTEXITCODE."
 }

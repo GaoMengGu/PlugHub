@@ -155,8 +155,9 @@ jobs:
       - name: Build PlugHub updater
         shell: pwsh
         run: |
+          $version = $env:PLUGHUB_RELEASE_TAG.TrimStart("V")
           $updaterOutput = (Resolve-Path "dist\Revit2020").Path
-          dotnet build src\PlugHub.Updater\PlugHub.Updater.csproj -c Release -t:Rebuild /p:OutDir="$updaterOutput\"
+          dotnet build src\PlugHub.Updater\PlugHub.Updater.csproj -c Release -t:Rebuild /p:OutDir="$updaterOutput\" /p:PlugHubVersion="$version" /p:PlugHubReleaseTag="$env:PLUGHUB_RELEASE_TAG"
           $builtUpdater = Join-Path $updaterOutput "PlugHub.Updater.exe"
           if (!(Test-Path $builtUpdater)) {
             throw "Updater build finished but $builtUpdater was not found."
@@ -193,13 +194,14 @@ jobs:
       - name: Build PlugHub uninstaller
         shell: pwsh
         run: |
+          $version = $env:PLUGHUB_RELEASE_TAG.TrimStart("V")
           $uninstallerOutput = Join-Path $env:RUNNER_TEMP "PlugHubUninstaller"
           if (Test-Path $uninstallerOutput) {
             Remove-Item -LiteralPath $uninstallerOutput -Recurse -Force
           }
 
           New-Item -ItemType Directory -Force -Path $uninstallerOutput | Out-Null
-          dotnet build src\PlugHub.Uninstaller\PlugHub.Uninstaller.csproj -c Release -t:Rebuild /p:OutDir="$uninstallerOutput\"
+          dotnet build src\PlugHub.Uninstaller\PlugHub.Uninstaller.csproj -c Release -t:Rebuild /p:OutDir="$uninstallerOutput\" /p:PlugHubVersion="$version" /p:PlugHubReleaseTag="$env:PLUGHUB_RELEASE_TAG"
           $builtUninstaller = Join-Path $uninstallerOutput "PlugHub.Uninstaller.exe"
           if (!(Test-Path $builtUninstaller)) {
             throw "Uninstaller build finished but $builtUninstaller was not found."
@@ -210,6 +212,7 @@ jobs:
         shell: pwsh
         run: |
           $tag = $env:PLUGHUB_RELEASE_TAG
+          $version = $tag.TrimStart("V")
           $zipPath = "PlugHub-Revit2020-$tag.zip"
           $payloadZip = (Resolve-Path $zipPath).Path
           $uninstallerExe = (Resolve-Path (Join-Path $env:RUNNER_TEMP "PlugHubUninstaller\PlugHub.Uninstaller.exe")).Path
@@ -220,7 +223,7 @@ jobs:
           }
 
           New-Item -ItemType Directory -Force -Path $installerOutput | Out-Null
-          dotnet build src\PlugHub.Installer\PlugHub.Installer.csproj -c Release -t:Rebuild /p:InstallerPayloadZip="$payloadZip" /p:InstallerUninstallerExe="$uninstallerExe" /p:OutDir="$installerOutput\"
+          dotnet build src\PlugHub.Installer\PlugHub.Installer.csproj -c Release -t:Rebuild /p:InstallerPayloadZip="$payloadZip" /p:InstallerUninstallerExe="$uninstallerExe" /p:OutDir="$installerOutput\" /p:PlugHubVersion="$version" /p:PlugHubReleaseTag="$tag"
           $builtInstaller = Join-Path $installerOutput "PlugHub.Installer.exe"
           if (!(Test-Path $builtInstaller)) {
             throw "Installer build finished but $builtInstaller was not found."

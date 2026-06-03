@@ -7,6 +7,12 @@
     <Product>PlugHub</Product>
     <Authors>GAOMENGGU</Authors>
     <Configurations>Debug;Release</Configurations>
+    <PlugHubVersion Condition="'$(PlugHubVersion)' == ''">0.0.0</PlugHubVersion>
+    <PlugHubReleaseTag Condition="'$(PlugHubReleaseTag)' == ''">dev</PlugHubReleaseTag>
+    <Version>$(PlugHubVersion)</Version>
+    <AssemblyVersion>$(PlugHubVersion).0</AssemblyVersion>
+    <FileVersion>$(PlugHubVersion).0</FileVersion>
+    <InformationalVersion>$(PlugHubReleaseTag)</InformationalVersion>
   </PropertyGroup>
 
   <!--

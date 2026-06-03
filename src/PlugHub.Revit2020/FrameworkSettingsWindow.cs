@@ -5327,8 +5327,21 @@ namespace PlugHub.Revit2020
 
         private static string AssemblyVersionText()
         {
-            var version = typeof(FrameworkSettingsWindow).Assembly.GetName().Version;
-            return version == null ? "开发构建" : version.ToString();
+            var assembly = typeof(FrameworkSettingsWindow).Assembly;
+            var informationalVersion = ((System.Reflection.AssemblyInformationalVersionAttribute?)Attribute.GetCustomAttribute(
+                assembly,
+                typeof(System.Reflection.AssemblyInformationalVersionAttribute)))?.InformationalVersion;
+            if (!string.IsNullOrWhiteSpace(informationalVersion))
+            {
+                var text = informationalVersion!.Split('+')[0].Trim();
+                if (!string.Equals(text, "dev", StringComparison.OrdinalIgnoreCase))
+                {
+                    return text;
+                }
+            }
+
+            var version = assembly.GetName().Version;
+            return version == null || version.Major == 0 ? "开发构建" : version.ToString();
         }
 
         private static T? FindAncestor<T>(DependencyObject? current) where T : DependencyObject
