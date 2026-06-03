@@ -32,6 +32,8 @@ namespace PlugHub.Framework.Updates
 
         public string AssetDownloadUrl { get; set; } = string.Empty;
 
+        public List<string> AssetDownloadUrls { get; set; } = new List<string>();
+
         public string ReleaseNotes { get; set; } = string.Empty;
 
         public string Message { get; set; } = string.Empty;

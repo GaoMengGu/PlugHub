@@ -8,6 +8,7 @@ namespace PlugHub.Framework.Updates
     {
         private const string UserAgent = "PlugHub-Framework-Updater/1.0";
         private const SecurityProtocolType Tls12 = (SecurityProtocolType)3072;
+        private const SecurityProtocolType Tls11 = (SecurityProtocolType)768;
 
         public string Download(string downloadUrl, string targetDirectory, string fileName)
         {
@@ -20,12 +21,15 @@ namespace PlugHub.Framework.Updates
             Directory.CreateDirectory(targetDirectory);
             var targetPath = Path.Combine(targetDirectory, SafeFileName(fileName));
 
-            EnsureTls12();
+            EnsureSecureTransport();
             var request = (HttpWebRequest)WebRequest.Create(uri);
             request.Method = "GET";
             request.UserAgent = UserAgent;
             request.Timeout = 60000;
             request.ReadWriteTimeout = 60000;
+            request.KeepAlive = false;
+            request.AllowAutoRedirect = true;
+            request.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
 
             using (var response = (HttpWebResponse)request.GetResponse())
             using (var stream = response.GetResponseStream())
@@ -42,12 +46,15 @@ namespace PlugHub.Framework.Updates
             return targetPath;
         }
 
-        private static void EnsureTls12()
+        private static void EnsureSecureTransport()
         {
-            if ((ServicePointManager.SecurityProtocol & Tls12) != Tls12)
+            var protocols = ServicePointManager.SecurityProtocol | Tls12 | Tls11;
+            if (ServicePointManager.SecurityProtocol != protocols)
             {
-                ServicePointManager.SecurityProtocol |= Tls12;
+                ServicePointManager.SecurityProtocol = protocols;
             }
+
+            ServicePointManager.Expect100Continue = false;
         }
 
         private static string SafeFileName(string value)

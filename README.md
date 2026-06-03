@@ -75,7 +75,7 @@ Ribbon 结构、图标和按钮大小变更后需要重启 Revit。布局页是�
 C:\ProgramData\Autodesk\Revit\Addins\2020\PlugHub.addin
 ```
 
-发布 workflow 使用 NuGet 编译引用，不需要把 `RevitAPI.dll` 或 `RevitAPIUI.dll` 放入仓库。GitHub 使用 `.github\workflows\release.yml` 作为唯一 GitHub 发布入口：每次 `main` 推送后自动创建下一个 patch 版本 tag，例如 `V1.4.6` 后创建 `V1.4.7`；只有需要指定版本号时，才手动触发该 workflow 并填写 `version`。本地直接推送 `V*` tag 时，release workflow 按该 tag 发布。每次 release 会根据上一个 `V*` tag 之后的提交生成简要更新信息，并写入 GitHub/Gitee release 正文。`.github\workflows\sync-gitee.yml` 会把 `main` 和 `V*` tag 同步到 Gitee；Gitee Go 使用 `.gitee\workflows\release.yml` 在镜像 `main` 或 `V*` tag 触发后，等待当前提交对应的 `V*` tag，再打包并通过 Gitee API 发布 release；如果当前提交没有发布 tag，会跳过构建发布。正常发布只需要本地推送 GitHub，不需要从本机直推 Gitee tag。
+发布 workflow 使用 NuGet 编译引用，不需要把 `RevitAPI.dll` 或 `RevitAPIUI.dll` 放入仓库。GitHub 使用 `.github\workflows\release.yml` 作为唯一 GitHub 发布入口：每次 `main` 推送后自动创建下一个 patch 版本 tag，例如 `V1.4.6` 后创建 `V1.4.7`；只有需要指定版本号时，才手动触发该 workflow 并填写 `version`。本地直接推送 `V*` tag 时，release workflow 按该 tag 发布。每次 release 会根据上一个 `V*` tag 之后的提交生成简要更新信息，并写入 GitHub/Gitee release 正文。`.github\workflows\sync-gitee.yml` 会把 `main` 和 `V*` tag 同步到 Gitee；Gitee Go 使用 `.workflow\PlugHubRelease.yml`，按 Gitee Go 的 `version/triggers/stages/steps` 结构在镜像 `main` 或 `V*` tag 触发后，等待当前提交对应的 `V*` tag，再打包并通过 Gitee API 发布 release；该流程需要在 Gitee 配置可运行 Windows、PowerShell 和 .NET 构建的主机组变量 `PLUGHUB_WINDOWS_HOST_GROUP_ID`。如果当前提交没有发布 tag，会跳过构建发布。正常发布只需要本地推送 GitHub，不需要从本机直推 Gitee tag。
 
 Revit API 引用通过 NuGet 仅用于 CI 编译；本地和实机验收仍以真实 Revit 安装目录为准。签名脚本支持 self-signed、signtool、Thumbprint、SHA256 时间戳签名；公开分发前可评估 SignPath Foundation 或其他可信签名方案。Release workflow 使用 cosign keyless blob signing。
 
@@ -83,8 +83,8 @@ Revit API 引用通过 NuGet 仅用于 CI 编译；本地和实机验收仍以�
 
 设置窗口的「关于」页签左上角显示 `PlugHub` 和当前框架版本，版本后方提供两个小图标：检查更新和升级框架。
 
-- 检查更新图标：查询 `GaoMengGu/PlugHub` 的 latest release，定位 `PlugHub-Revit2020-<tag>.zip`，并在左下角提示结果。
-- 升级框架图标：发现新版本后弹出目标版本号和 release 更新信息；确认后下载更新包并启动静默 updater，左下角提示需要重启 Revit；关闭弹窗则退出更新。
+- 检查更新图标：优先查询 Gitee tags/release 下载源，GitHub latest release 作为回退，定位 `PlugHub-Revit2020-<tag>.zip`，并在左下角提示结果。
+- 升级框架图标：发现新版本后弹出目标版本号和 release 更新信息；确认后按 Gitee、GitHub 顺序尝试下载更新包并启动静默 updater，左下角提示需要重启 Revit；关闭弹窗则退出更新。
 
 框架更新只覆盖框架 DLL，不覆盖 `PlugHub.addin`、`packages`、`config`、缓存和日志。当前 Revit 会话不会热替换已加载 DLL；关闭并重新打开 Revit 后，新框架 DLL 才会生效。
 

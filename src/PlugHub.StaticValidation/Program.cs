@@ -190,7 +190,7 @@ namespace PlugHub.StaticValidation
                 "AGENTS.md",
                 ".github/workflows/release.yml",
                 ".github/workflows/sync-gitee.yml",
-                ".gitee/workflows/release.yml",
+                ".workflow/PlugHubRelease.yml",
                 "PlugHub.sln",
                 "PlugHub.slnx",
                 "src/PlugHub.Contracts/PlugHub.Contracts.csproj",
@@ -2324,20 +2324,23 @@ namespace PlugHub.StaticValidation
 
         private static void ValidateGiteeGoReleasePackaging()
         {
-            var giteeWorkflow = ReadText(".gitee/workflows/release.yml");
+            var giteeWorkflowPath = ".workflow/PlugHubRelease.yml";
+            Require(File.Exists(FullPath(giteeWorkflowPath)), "Gitee Go release workflow must live under .workflow instead of GitHub Actions directories.");
+            Require(!File.Exists(FullPath(".gitee/workflows/release.yml")), "Gitee Go release workflow must not use a copied GitHub Actions .gitee/workflows file.");
 
-            Require(giteeWorkflow.Contains("branches:") && giteeWorkflow.Contains("- main"), "Gitee Go release workflow must run for mirrored main pushes.");
-            Require(giteeWorkflow.Contains("tags:") && giteeWorkflow.Contains("- \"V*\""), "Gitee Go release workflow must run for V* tags.");
-            Require(giteeWorkflow.Contains("workflow_dispatch"), "Gitee Go release workflow must support manual reruns.");
+            var giteeWorkflow = ReadText(giteeWorkflowPath);
+            Require(giteeWorkflow.Contains("version:") && giteeWorkflow.Contains("displayName:") && giteeWorkflow.Contains("triggers:") && giteeWorkflow.Contains("stages:"), "Gitee Go release workflow must use Gitee Go top-level structure.");
+            Require(giteeWorkflow.Contains("trigger: auto") && giteeWorkflow.Contains("push:") && giteeWorkflow.Contains("branches:") && giteeWorkflow.Contains("main") && giteeWorkflow.Contains("tags:") && giteeWorkflow.Contains("V*"), "Gitee Go release workflow must trigger from mirrored main and V* tags.");
+            Require(giteeWorkflow.Contains("shell@agent") && giteeWorkflow.Contains("hostGroupID"), "Gitee Go release workflow must run on a configured Windows agent instead of GitHub runs-on.");
+            Require(!giteeWorkflow.Contains("runs-on:") && !giteeWorkflow.Contains("uses: actions/checkout") && !giteeWorkflow.Contains("${{"), "Gitee Go release workflow must not contain GitHub Actions syntax.");
             Require(giteeWorkflow.Contains("git fetch --tags") && giteeWorkflow.Contains("--points-at HEAD"), "Gitee Go release workflow must resolve the GitHub-created V* tag for the current commit.");
-            Require(giteeWorkflow.Contains("PLUGHUB_SKIP_RELEASE") && giteeWorkflow.Contains("skip_release=true") && giteeWorkflow.Contains("steps.resolve.outputs.skip_release != 'true'"), "Gitee Go release workflow must skip branch events until a release tag exists.");
-            Require(giteeWorkflow.Contains("windows") || giteeWorkflow.Contains("Windows"), "Gitee Go release workflow must use a Windows build environment.");
+            Require(giteeWorkflow.Contains("PLUGHUB_SKIP_RELEASE") && giteeWorkflow.Contains("Set-Content -LiteralPath .plughub-release.env"), "Gitee Go release workflow must skip branch events until a release tag exists.");
             Require(giteeWorkflow.Contains("PlugHub.StaticValidation") && giteeWorkflow.Contains("build-revit2020.ps1"), "Gitee Go release workflow must run validation and build the Revit 2020 package.");
             Require(giteeWorkflow.Contains("-UseRevitApiNuGet") && giteeWorkflow.Contains("-UseRelativeAddinAssembly"), "Gitee Go release workflow must use NuGet Revit API references and relative addin assembly paths.");
             Require(giteeWorkflow.Contains("PlugHub.Uninstaller.csproj") && giteeWorkflow.Contains("PlugHub-Uninstall.exe"), "Gitee Go release workflow must build the uninstaller artifact for the installer.");
             Require(giteeWorkflow.Contains("PlugHub.Installer.csproj") && giteeWorkflow.Contains("InstallerPayloadZip") && giteeWorkflow.Contains("InstallerUninstallerExe"), "Gitee Go release workflow must build the installer with embedded payload and uninstaller.");
             Require(giteeWorkflow.Contains("PlugHub-Revit2020-") && giteeWorkflow.Contains("PlugHub-Setup-"), "Gitee Go release workflow must package the same zip and setup exe names as GitHub releases.");
-            Require(giteeWorkflow.Contains("Generate release notes") && giteeWorkflow.Contains("PlugHub-ReleaseNotes-$tag.md") && giteeWorkflow.Contains("$releaseBody"), "Gitee Go release workflow must publish concise release notes.");
+            Require(giteeWorkflow.Contains("PlugHub-ReleaseNotes-$tag.md") && giteeWorkflow.Contains("$releaseBody"), "Gitee Go release workflow must publish concise release notes.");
             Require(giteeWorkflow.Contains("GITEE_TOKEN") && giteeWorkflow.Contains("api/v5/repos/GaoMengGu/PlugHub/releases"), "Gitee Go release workflow must publish to GaoMengGu/PlugHub releases through the Gitee API token.");
             Require(giteeWorkflow.Contains("attach_files") || giteeWorkflow.Contains("attach"), "Gitee Go release workflow must upload release attachments.");
         }
@@ -2416,7 +2419,7 @@ namespace PlugHub.StaticValidation
             var updaterArguments = ReadText("src/PlugHub.Updater/UpdaterArguments.cs");
             var updaterRunner = ReadText("src/PlugHub.Updater/FrameworkDllUpdater.cs");
             var githubWorkflow = ReadText(".github/workflows/release.yml");
-            var giteeWorkflow = ReadText(".gitee/workflows/release.yml");
+            var giteeWorkflow = ReadText(".workflow/PlugHubRelease.yml");
             var buildScript = ReadText("scripts/build-revit2020.ps1");
             var readme = ReadText("README.md");
 
@@ -2431,12 +2434,15 @@ namespace PlugHub.StaticValidation
             Require(!settingsWindow.Contains("CreateButton(\"检查更新\"") && !settingsWindow.Contains("CreateButton(\"更新框架\""), "About tab must not show the old text check/update buttons.");
             Require(settingsWindow.Contains("ShowFrameworkUpdateDialog") && settingsWindow.Contains("ReleaseNotes"), "Upgrade icon must show target version and release notes before starting the updater.");
             Require(settingsWindow.Contains("CheckFrameworkUpdate") && settingsWindow.Contains("ConfirmFrameworkUpdate") && settingsWindow.Contains("RefreshStatus"), "About tab update actions must write to the bottom-left status text.");
-            Require(service.Contains("https://api.github.com/repos/GaoMengGu/PlugHub/releases/latest") && service.Contains("PlugHub-Revit2020-"), "framework update service must target GitHub latest release assets.");
+            Require(service.Contains("https://gitee.com/api/v5/repos/GaoMengGu/PlugHub/tags") && service.Contains("https://api.github.com/repos/GaoMengGu/PlugHub/releases/latest") && service.Contains("PlugHub-Revit2020-"), "framework update service must use Gitee first and GitHub as fallback for latest release assets.");
+            Require(service.Contains("DefaultUpdateSources") && service.Contains("GiteeTagList") && service.Contains("GitHubLatestRelease"), "framework update service must name update source types explicitly.");
+            Require(service.Contains("AssetDownloadUrls") && service.Contains("DownloadFallbackUrls"), "framework update service must preserve fallback asset URLs for blocked or failed hosts.");
             Require(service.Contains("SelectUpdateAsset") && service.Contains("ReleaseNotes = release.Body"), "framework update service must select the update zip and preserve release notes.");
-            Require(releaseClient.Contains("Body = StringValue(root, \"body\")") && releaseClient.Contains("AssetObjects("), "release client must parse release body and release assets from GitHub JSON.");
+            Require(releaseClient.Contains("Body = StringValue(root, \"body\")") && releaseClient.Contains("AssetObjects("), "release client must parse release body and release assets from GitHub/Gitee JSON.");
+            Require(releaseClient.Contains("ParseGiteeTagsJson") && releaseClient.Contains("CreateGiteeReleaseDownloadUrl"), "release client must parse Gitee tags and generate Gitee release asset URLs.");
             Require(service.Contains("PlugHub.Updater.exe") && service.Contains("StartUpdater"), "framework update service must start the silent updater instead of copying DLLs in-process.");
             Require(releaseClient.Contains("HttpWebRequest") && releaseClient.Contains("UserAgent") && releaseClient.Contains("JavaScriptSerializer"), "release client must use net48-compatible HTTP and JSON APIs.");
-            Require(releaseClient.Contains("EnsureTls12()") && releaseAssetDownloader.Contains("EnsureTls12()"), "framework update HTTP client and asset downloader must enable TLS 1.2 before HTTPS requests.");
+            Require(releaseClient.Contains("EnsureSecureTransport()") && releaseAssetDownloader.Contains("EnsureSecureTransport()") && releaseAssetDownloader.Contains("KeepAlive = false"), "framework update HTTP client and asset downloader must harden TLS transport before HTTPS requests.");
             Require(validator.Contains("PlugHub.Revit2020.dll") && validator.Contains("PlugHub.Framework.dll") && validator.Contains("PlugHub.Contracts.dll"), "update package validator must require the core framework DLLs.");
             Require(validator.Contains("IsSafeZipEntry") && validator.Contains("Path.DirectorySeparatorChar"), "update package validator must reject unsafe zip paths.");
             Require(updaterArguments.Contains("/payloadZip") && updaterArguments.Contains("/installDir") && updaterArguments.Contains("/targetVersion") && updaterArguments.Contains("/revitProcessId"), "updater must accept the documented arguments.");
@@ -2444,7 +2450,7 @@ namespace PlugHub.StaticValidation
             Require(updaterRunner.Contains("WaitForExit") && updaterRunner.Contains("CopyFrameworkDllsOnly"), "updater must wait for Revit exit before copying DLLs.");
             Require(updaterRunner.Contains("PlugHub.addin") && updaterRunner.Contains("SkipNonDllEntry") && !updaterRunner.Contains("Directory.Delete(installDirectory"), "updater must avoid addin/config/packages replacement and install directory deletion.");
             Require(githubWorkflow.Contains("Build PlugHub updater") && githubWorkflow.Contains("PlugHub.Updater.csproj"), "GitHub release workflow must build the updater before packaging the release zip.");
-            Require(giteeWorkflow.Contains("Build PlugHub updater") && giteeWorkflow.Contains("PlugHub.Updater.csproj"), "Gitee release workflow must build the updater before packaging the release zip.");
+            Require(giteeWorkflow.Contains("PlugHub.Updater.csproj") && giteeWorkflow.Contains("PlugHub.Updater.exe"), "Gitee release workflow must build the updater before packaging the release zip.");
             Require(buildScript.Contains("PlugHub.Updater.csproj") && buildScript.Contains("PlugHub.Updater.exe"), "local Revit 2020 build script must stage PlugHub.Updater.exe.");
             Require(readme.Contains("检查更新") && readme.Contains("升级框架") && readme.Contains("只覆盖框架 DLL"), "README must document framework auto-update behavior.");
             Require(readme.Contains("检查更新") && readme.Contains("升级框架") && readme.Contains("不能声明 Revit 实机测试成功"), "README must document updater verification boundaries.");
@@ -2461,6 +2467,12 @@ namespace PlugHub.StaticValidation
 
             Require(release.Body.Contains("修复更新检查"), "release client must preserve release body for update confirmation.");
             Require(release.Assets.Any(asset => asset.Name == "PlugHub-Revit2020-V9.8.7.zip" && asset.DownloadUrl.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)), "release client must parse the PlugHub-Revit2020 zip asset download URL.");
+
+            var giteeRelease = client.ParseGiteeTagsJson(
+                "[{\"name\":\"V1.4.8\",\"commit\":{\"sha\":\"a\"}},{\"name\":\"V1.4.10\",\"commit\":{\"sha\":\"b\"}},{\"name\":\"not-release\"}]",
+                "https://gitee.com/GaoMengGu/PlugHub/releases/download/{tag}/{asset}");
+            Require(giteeRelease.TagName == "V1.4.10", "release client must select the newest semantic V* tag from Gitee tags.");
+            Require(giteeRelease.Assets.Any(asset => asset.DownloadUrl == "https://gitee.com/GaoMengGu/PlugHub/releases/download/V1.4.10/PlugHub-Revit2020-V1.4.10.zip"), "release client must generate the Gitee release zip download URL.");
         }
 
         private static void ValidateFrameworkUpdatePackageRejectsUnsafeZip()
