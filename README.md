@@ -81,10 +81,10 @@ Revit API 引用通过 NuGet 仅用于 CI 编译；本地和实机验收仍以�
 
 ## 框架更新
 
-设置窗口的「关于」页签左上角显示 `PlugHub` 和当前框架版本，版本后方提供两个小图标：检查更新和升级框架。
+设置窗口的「关于」页签左上角显示 `PlugHub` 和当前框架版本，版本后方提供一个检查更新小图标。
 
-- 检查更新图标：优先查询 Gitee tags/release 下载源，GitHub latest release 作为回退，定位 `PlugHub-Revit2020-<tag>.zip`，并在左下角提示结果。
-- 升级框架图标：发现新版本后弹出目标版本号和 release 更新信息；确认后按 Gitee、GitHub 顺序尝试下载更新包并启动静默 updater，左下角提示需要重启 Revit；关闭弹窗则退出更新。
+- 检查更新图标：优先查询 Gitee tags/release 下载源，GitHub latest release 作为回退，定位 `PlugHub-Revit2020-<tag>.zip`；已是最新版本时只在左下角提示结果。
+- 发现新版本后会自动弹出目标版本号和 release 更新信息；确认后按 Gitee、GitHub 顺序尝试下载更新包并启动静默 updater，左下角提示需要重启 Revit；关闭弹窗则退出更新。
 
 框架更新只覆盖框架 DLL，不覆盖 `PlugHub.addin`、`packages`、`config`、缓存和日志。当前 Revit 会话不会热替换已加载 DLL；关闭并重新打开 Revit 后，新框架 DLL 才会生效。
 

@@ -105,7 +105,7 @@ namespace PlugHub.Framework.Updates
                         AssetDownloadUrls = downloadUrls,
                         ReleaseNotes = release.Body,
                         Message = hasUpdate
-                            ? "发现框架更新 " + latestVersion + "，点击升级图标查看更新信息。"
+                            ? "发现框架更新 " + latestVersion + "，请确认是否更新。"
                             : "当前框架已是最新版本。"
                     };
                 }

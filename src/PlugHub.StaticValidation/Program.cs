@@ -2437,15 +2437,17 @@ namespace PlugHub.StaticValidation
             Require(settingsWindow.Contains("AssemblyInformationalVersionAttribute") && settingsWindow.Contains("InformationalVersion") && settingsWindow.Contains("Split('+')"), "About tab and update checks must read the release tag from assembly informational version.");
             Require(settingsWindow.Contains("BuildAboutHeader") && settingsWindow.Contains("AssemblyVersionText()"), "About tab header must show PlugHub followed by the current framework version.");
             Require(settingsWindow.Contains("CreateIconButton(\"refresh\"") && settingsWindow.Contains("CheckFrameworkUpdate"), "About tab must use a compact check-update icon beside the framework version.");
-            Require(settingsWindow.Contains("CreateIconButton(\"upgrade\"") && settingsWindow.Contains("ConfirmFrameworkUpdate"), "About tab must use a compact upgrade icon beside the framework version.");
+            Require(!settingsWindow.Contains("CreateIconButton(\"upgrade\"") && !settingsWindow.Contains("ConfirmFrameworkUpdate"), "About tab must merge upgrade into the check-update icon and remove the separate upgrade action.");
             Require(settingsWindow.Contains("CreateBorderlessIconButtonStyle") && settingsWindow.Contains("Control.BorderThicknessProperty") && settingsWindow.Contains("new Thickness(0)"), "About tab icon buttons must be borderless compact glyph actions.");
             Require(!settingsWindow.Contains("CreateButton(\"检查更新\"") && !settingsWindow.Contains("CreateButton(\"更新框架\""), "About tab must not show the old text check/update buttons.");
-            Require(settingsWindow.Contains("ShowFrameworkUpdateDialog") && settingsWindow.Contains("ReleaseNotes"), "Upgrade icon must show target version and release notes before starting the updater.");
-            Require(settingsWindow.Contains("CheckFrameworkUpdate") && settingsWindow.Contains("ConfirmFrameworkUpdate") && settingsWindow.Contains("RefreshStatus"), "About tab update actions must write to the bottom-left status text.");
+            Require(settingsWindow.Contains("ShowFrameworkUpdateDialog") && settingsWindow.Contains("ReleaseNotes"), "Check-update icon must show target version and release notes when an update is available.");
+            Require(settingsWindow.Contains("if (task.Result.Success && task.Result.HasUpdate)") && settingsWindow.Contains("ShowFrameworkUpdateDialog(task.Result)") && settingsWindow.Contains("UpdateFramework(task.Result)"), "Check-update action must automatically prompt and start the updater when a newer framework release exists.");
+            Require(settingsWindow.Contains("CheckFrameworkUpdate") && settingsWindow.Contains("RefreshStatus"), "About tab update actions must write to the bottom-left status text.");
             Require(service.Contains("https://gitee.com/api/v5/repos/GaoMengGu/PlugHub/tags") && service.Contains("https://api.github.com/repos/GaoMengGu/PlugHub/releases/latest") && service.Contains("PlugHub-Revit2020-"), "framework update service must use Gitee first and GitHub as fallback for latest release assets.");
             Require(service.Contains("DefaultUpdateSources") && service.Contains("GiteeTagList") && service.Contains("GitHubLatestRelease"), "framework update service must name update source types explicitly.");
             Require(service.Contains("AssetDownloadUrls") && service.Contains("DownloadFallbackUrls"), "framework update service must preserve fallback asset URLs for blocked or failed hosts.");
             Require(service.Contains("SelectUpdateAsset") && service.Contains("ReleaseNotes = release.Body"), "framework update service must select the update zip and preserve release notes.");
+            Require(!service.Contains("升级图标"), "framework update check message must not reference the removed upgrade icon.");
             Require(releaseClient.Contains("Body = StringValue(root, \"body\")") && releaseClient.Contains("AssetObjects("), "release client must parse release body and release assets from GitHub/Gitee JSON.");
             Require(releaseClient.Contains("ParseGiteeTagsJson") && releaseClient.Contains("CreateGiteeReleaseDownloadUrl"), "release client must parse Gitee tags and generate Gitee release asset URLs.");
             Require(service.Contains("PlugHub.Updater.exe") && service.Contains("StartUpdater"), "framework update service must start the silent updater instead of copying DLLs in-process.");
@@ -2461,8 +2463,8 @@ namespace PlugHub.StaticValidation
             Require(githubWorkflow.Contains("Publish Gitee release") && githubWorkflow.Contains("PlugHub-Revit2020-$tag.zip"), "GitHub release workflow must mirror the built updater package to Gitee release assets.");
             Require(buildScript.Contains("PlugHub.Updater.csproj") && buildScript.Contains("PlugHub.Updater.exe"), "local Revit 2020 build script must stage PlugHub.Updater.exe.");
             Require(buildScript.Contains("Resolve-PlugHubReleaseVersion") && buildScript.Contains("/p:PlugHubVersion=$($PlugHubReleaseVersion.Version)") && buildScript.Contains("/p:PlugHubReleaseTag=$($PlugHubReleaseVersion.ReleaseTag)"), "local and release builds must stamp PlugHub DLLs with the release tag version.");
-            Require(readme.Contains("检查更新") && readme.Contains("升级框架") && readme.Contains("只覆盖框架 DLL"), "README must document framework auto-update behavior.");
-            Require(readme.Contains("检查更新") && readme.Contains("升级框架") && readme.Contains("不能声明 Revit 实机测试成功"), "README must document updater verification boundaries.");
+            Require(readme.Contains("检查更新小图标") && readme.Contains("自动弹出目标版本号") && readme.Contains("只覆盖框架 DLL"), "README must document framework auto-update behavior.");
+            Require(readme.Contains("已是最新版本") && readme.Contains("关闭弹窗则退出更新") && readme.Contains("不能声明 Revit 实机测试成功"), "README must document updater verification boundaries.");
 
             ValidateReleaseClientParsesUpdatePackageAndNotes();
             ValidateFrameworkUpdatePackageRejectsUnsafeZip();

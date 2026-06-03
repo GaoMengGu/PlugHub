@@ -98,9 +98,7 @@ namespace PlugHub.Revit2020
         private DataGrid? _dragSourceGrid;
         private bool _syncingSelectedFeatureEditor;
         private bool _syncingSelectedRibbonDesignerEditor;
-        private FrameworkUpdateCheckResult? _latestFrameworkUpdate;
         private Button? _checkFrameworkIconButton;
-        private Button? _upgradeFrameworkIconButton;
 
         public FrameworkSettingsWindow(string configDirectory, FrameworkConfiguration configuration)
         {
@@ -581,9 +579,6 @@ namespace PlugHub.Revit2020
             _checkFrameworkIconButton.Margin = new Thickness(10, 0, 0, 0);
             panel.Children.Add(_checkFrameworkIconButton);
 
-            _upgradeFrameworkIconButton = CreateIconButton("upgrade", "升级框架", (sender, args) => ConfirmFrameworkUpdate());
-            _upgradeFrameworkIconButton.Margin = new Thickness(6, 0, 0, 0);
-            panel.Children.Add(_upgradeFrameworkIconButton);
             return panel;
         }
 
@@ -5081,45 +5076,31 @@ namespace PlugHub.Revit2020
                 }
             }).ContinueWith(task => Dispatcher.BeginInvoke(new Action(() =>
             {
-                _latestFrameworkUpdate = task.Result;
                 if (_checkFrameworkIconButton != null)
                 {
                     _checkFrameworkIconButton.IsEnabled = true;
                 }
 
-                if (_upgradeFrameworkIconButton != null)
-                {
-                    _upgradeFrameworkIconButton.ToolTip = task.Result.Success && task.Result.HasUpdate
-                        ? "升级到 " + task.Result.LatestVersion
-                        : "升级框架";
-                }
-
                 RefreshStatus(task.Result.Message);
+
+                if (task.Result.Success && task.Result.HasUpdate)
+                {
+                    if (!ShowFrameworkUpdateDialog(task.Result))
+                    {
+                        RefreshStatus("已取消框架更新。");
+                        return;
+                    }
+
+                    UpdateFramework(task.Result);
+                }
             })));
-        }
-
-        private void ConfirmFrameworkUpdate()
-        {
-            if (_latestFrameworkUpdate == null || !_latestFrameworkUpdate.Success || !_latestFrameworkUpdate.HasUpdate)
-            {
-                RefreshStatus("请先检查更新。");
-                return;
-            }
-
-            if (!ShowFrameworkUpdateDialog(_latestFrameworkUpdate))
-            {
-                RefreshStatus("已取消框架更新。");
-                return;
-            }
-
-            UpdateFramework(_latestFrameworkUpdate);
         }
 
         private void UpdateFramework(FrameworkUpdateCheckResult checkResult)
         {
-            if (_upgradeFrameworkIconButton != null)
+            if (_checkFrameworkIconButton != null)
             {
-                _upgradeFrameworkIconButton.IsEnabled = false;
+                _checkFrameworkIconButton.IsEnabled = false;
             }
 
             RefreshStatus("正在下载框架更新，请稍候。");
@@ -5144,9 +5125,9 @@ namespace PlugHub.Revit2020
             }).ContinueWith(task => Dispatcher.BeginInvoke(new Action(() =>
             {
                 RefreshStatus(task.Result.Message);
-                if (_upgradeFrameworkIconButton != null)
+                if (_checkFrameworkIconButton != null)
                 {
-                    _upgradeFrameworkIconButton.IsEnabled = !task.Result.Success;
+                    _checkFrameworkIconButton.IsEnabled = !task.Result.Success;
                 }
             })));
         }
