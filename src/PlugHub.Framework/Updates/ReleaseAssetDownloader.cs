@@ -7,6 +7,7 @@ namespace PlugHub.Framework.Updates
     public sealed class ReleaseAssetDownloader
     {
         private const string UserAgent = "PlugHub-Framework-Updater/1.0";
+        private const SecurityProtocolType Tls12 = (SecurityProtocolType)3072;
 
         public string Download(string downloadUrl, string targetDirectory, string fileName)
         {
@@ -19,6 +20,7 @@ namespace PlugHub.Framework.Updates
             Directory.CreateDirectory(targetDirectory);
             var targetPath = Path.Combine(targetDirectory, SafeFileName(fileName));
 
+            EnsureTls12();
             var request = (HttpWebRequest)WebRequest.Create(uri);
             request.Method = "GET";
             request.UserAgent = UserAgent;
@@ -38,6 +40,14 @@ namespace PlugHub.Framework.Updates
             }
 
             return targetPath;
+        }
+
+        private static void EnsureTls12()
+        {
+            if ((ServicePointManager.SecurityProtocol & Tls12) != Tls12)
+            {
+                ServicePointManager.SecurityProtocol |= Tls12;
+            }
         }
 
         private static string SafeFileName(string value)

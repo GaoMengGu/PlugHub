@@ -13,6 +13,8 @@ namespace PlugHub.Framework.Updates
     {
         public string TagName { get; set; } = string.Empty;
 
+        public string Body { get; set; } = string.Empty;
+
         public List<ReleaseAssetInfo> Assets { get; set; } = new List<ReleaseAssetInfo>();
     }
 
@@ -29,6 +31,8 @@ namespace PlugHub.Framework.Updates
         public string AssetName { get; set; } = string.Empty;
 
         public string AssetDownloadUrl { get; set; } = string.Empty;
+
+        public string ReleaseNotes { get; set; } = string.Empty;
 
         public string Message { get; set; } = string.Empty;
     }

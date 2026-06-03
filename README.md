@@ -67,6 +67,7 @@ Ribbon 结构、图标和按钮大小变更后需要重启 Revit。布局页是�
 
 - `PlugHub-Revit2020-<tag>.zip`：手动部署包。
 - `PlugHub-Setup-<tag>.exe`：安装程序，默认安装目录为 `D:\Program Files\PlugHub`，用户可以手动选择其他目录，安装后会在安装目录写入 `PlugHub-Uninstall.exe`。
+- `PlugHub-Revit2020-<tag>.zip.sigstore.json` 和 `PlugHub-Setup-<tag>.exe.sigstore.json`：zip 与 exe 的 cosign 签名 bundle；不发布单个 DLL 的签名 JSON。
 
 安装程序会复制 PlugHub 文件，自动把 `PlugHub.addin` 中的 DLL 地址改为安装目录下的 `PlugHub.Revit2020.dll` 绝对路径，并复制 addin 到机器级 Revit 2020 插件目录：
 
@@ -74,16 +75,16 @@ Ribbon 结构、图标和按钮大小变更后需要重启 Revit。布局页是�
 C:\ProgramData\Autodesk\Revit\Addins\2020\PlugHub.addin
 ```
 
-发布 workflow 使用 NuGet 编译引用，不需要把 `RevitAPI.dll` 或 `RevitAPIUI.dll` 放入仓库。GitHub 使用 `.github\workflows\release.yml` 作为唯一 GitHub 发布入口：每次 `main` 推送后自动创建下一个 patch 版本 tag，例如 `V1.4.6` 后创建 `V1.4.7`；只有需要指定版本号时，才手动触发该 workflow 并填写 `version`。本地直接推送 `V*` tag 时，release workflow 按该 tag 发布。`.github\workflows\sync-gitee.yml` 会把 `main` 和 `V*` tag 同步到 Gitee；Gitee Go 使用 `.gitee\workflows\release.yml` 打包并通过 Gitee API 发布 release。正常发布只需要本地推送 GitHub，不需要从本机直推 Gitee tag。
+发布 workflow 使用 NuGet 编译引用，不需要把 `RevitAPI.dll` 或 `RevitAPIUI.dll` 放入仓库。GitHub 使用 `.github\workflows\release.yml` 作为唯一 GitHub 发布入口：每次 `main` 推送后自动创建下一个 patch 版本 tag，例如 `V1.4.6` 后创建 `V1.4.7`；只有需要指定版本号时，才手动触发该 workflow 并填写 `version`。本地直接推送 `V*` tag 时，release workflow 按该 tag 发布。每次 release 会根据上一个 `V*` tag 之后的提交生成简要更新信息，并写入 GitHub/Gitee release 正文。`.github\workflows\sync-gitee.yml` 会把 `main` 和 `V*` tag 同步到 Gitee；Gitee Go 使用 `.gitee\workflows\release.yml` 在镜像 `main` 或 `V*` tag 触发后，等待当前提交对应的 `V*` tag，再打包并通过 Gitee API 发布 release；如果当前提交没有发布 tag，会跳过构建发布。正常发布只需要本地推送 GitHub，不需要从本机直推 Gitee tag。
 
 Revit API 引用通过 NuGet 仅用于 CI 编译；本地和实机验收仍以真实 Revit 安装目录为准。签名脚本支持 self-signed、signtool、Thumbprint、SHA256 时间戳签名；公开分发前可评估 SignPath Foundation 或其他可信签名方案。Release workflow 使用 cosign keyless blob signing。
 
 ## 框架更新
 
-设置窗口的「关于」页签提供 `检查更新` 和 `更新框架` 两个按钮。
+设置窗口的「关于」页签左上角显示 `PlugHub` 和当前框架版本，版本后方提供两个小图标：检查更新和升级框架。
 
-- `检查更新`：查询 `GaoMengGu/PlugHub` 的 latest release，并比较当前框架版本。
-- `更新框架`：发现新版本后下载 `PlugHub-Revit2020-<tag>.zip`，启动静默 updater，并在左下角提示需要重启 Revit。
+- 检查更新图标：查询 `GaoMengGu/PlugHub` 的 latest release，定位 `PlugHub-Revit2020-<tag>.zip`，并在左下角提示结果。
+- 升级框架图标：发现新版本后弹出目标版本号和 release 更新信息；确认后下载更新包并启动静默 updater，左下角提示需要重启 Revit；关闭弹窗则退出更新。
 
 框架更新只覆盖框架 DLL，不覆盖 `PlugHub.addin`、`packages`、`config`、缓存和日志。当前 Revit 会话不会热替换已加载 DLL；关闭并重新打开 Revit 后，新框架 DLL 才会生效。
 

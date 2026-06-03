@@ -11,6 +11,7 @@ namespace PlugHub.Framework.Updates
     public sealed class ReleaseClient
     {
         private const string UserAgent = "PlugHub-Framework-Updater/1.0";
+        private const SecurityProtocolType Tls12 = (SecurityProtocolType)3072;
 
         public ReleaseInfo GetLatest(Uri releaseUri)
         {
@@ -20,6 +21,7 @@ namespace PlugHub.Framework.Updates
                 throw new InvalidOperationException("Release API must use HTTPS.");
             }
 
+            EnsureTls12();
             var request = (HttpWebRequest)WebRequest.Create(releaseUri);
             request.Method = "GET";
             request.UserAgent = UserAgent;
@@ -44,12 +46,15 @@ namespace PlugHub.Framework.Updates
                 throw new InvalidDataException("Release response is not a JSON object.");
             }
 
-            var release = new ReleaseInfo { TagName = StringValue(root, "tag_name") };
-            if (root.TryGetValue("assets", out var assetsValue) && assetsValue is ArrayList assets)
+            var release = new ReleaseInfo
             {
-                foreach (var item in assets)
+                TagName = StringValue(root, "tag_name"),
+                Body = StringValue(root, "body")
+            };
+            if (root.TryGetValue("assets", out var assetsValue))
+            {
+                foreach (var asset in AssetObjects(assetsValue))
                 {
-                    if (!(item is Dictionary<string, object> asset)) continue;
                     release.Assets.Add(new ReleaseAssetInfo
                     {
                         Name = StringValue(asset, "name"),
@@ -59,6 +64,30 @@ namespace PlugHub.Framework.Updates
             }
 
             return release;
+        }
+
+        private static void EnsureTls12()
+        {
+            if ((ServicePointManager.SecurityProtocol & Tls12) != Tls12)
+            {
+                ServicePointManager.SecurityProtocol |= Tls12;
+            }
+        }
+
+        private static IEnumerable<Dictionary<string, object>> AssetObjects(object value)
+        {
+            if (!(value is IEnumerable items) || value is string)
+            {
+                yield break;
+            }
+
+            foreach (var item in items)
+            {
+                if (item is Dictionary<string, object> asset)
+                {
+                    yield return asset;
+                }
+            }
         }
 
         private static string StringValue(Dictionary<string, object> source, string key)

@@ -47,6 +47,7 @@ namespace PlugHub.StaticValidation
                 ValidateRibbonLayoutRules();
                 ValidateRibbonLayoutSettingsRows();
                 ValidateRevitRibbonAdapter();
+                ValidateFeatureButtonTooltipBehavior();
                 ValidateRuntimeRoutingSpecification();
                 ValidateRevit2025AlcReadinessSpecification();
                 ValidateManifestAuthoritativeDiscoverySpecification();
@@ -1112,6 +1113,7 @@ namespace PlugHub.StaticValidation
             Require(settingsWindow.Contains("工具栏布局"), "layout canvas title must use a user-facing Chinese label.");
             Require(settingsWindow.Contains("BuildRibbonDesignerLargeButtonPreview") && settingsWindow.Contains("BuildRibbonDesignerSmallButtonPreview"), "visual designer canvas must distinguish large panel buttons from small stacked/menu buttons.");
             Require(settingsWindow.Contains("BuildRibbonDesignerContainerPreview") && settingsWindow.Contains("BuildRibbonDesignerStackPreview"), "visual designer canvas must render dropdown, split, and stack controls with Ribbon-like forms.");
+            Require(settingsWindow.Contains("BuildRibbonDesignerSelectionChrome") && settingsWindow.Contains("RibbonDesignerNodeMouseLeftButtonUp"), "visual designer canvas must refresh selected-state chrome for containers as well as regular buttons.");
             Require(settingsWindow.Contains("BuildRibbonDesignerDropArrow"), "visual designer canvas must show dropdown affordances on dropdown and split controls.");
             Require(settingsWindow.Contains("_expandedRibbonDesignerNodeIds") && settingsWindow.Contains("ToggleRibbonDesignerContainerExpansion"), "visual designer canvas must simulate dropdown and split expand/collapse without persisting preview state.");
             Require(settingsWindow.Contains("LoadRibbonDesignerIcon") && settingsWindow.Contains("LoadConfiguredRibbonDesignerIcon") && settingsWindow.Contains("DefaultRibbonIconProvider.Create"), "visual designer canvas must load configured icons and fall back to built-in defaults.");
@@ -1309,6 +1311,7 @@ namespace PlugHub.StaticValidation
             Require(ribbonBuilder.Contains("CreateContainerButtonData") && ribbonBuilder.Contains("ApplyRibbonItemIcon"), "Ribbon builder must apply configured icons to container ribbon buttons.");
             Require(iconProvider.Contains("CreateSmallIcon") && iconProvider.Contains("CreateLargeIcon"), "default icon provider must expose small and large icon factories.");
             Require(iconProvider.Contains("BuiltinIconKeys") && iconProvider.Contains("FeatureIconKeys") && iconProvider.Contains("UiIconKeys"), "default icon provider must split feature icon choices from UI button icons.");
+            Require(iconProvider.Contains("\"upgrade\"") && iconProvider.Contains("DrawUpgrade"), "default icon provider must expose a distinct small upgrade arrow icon.");
             Require(iconProvider.Contains("settings") && iconProvider.Contains("duct") && iconProvider.Contains("family"), "default icon provider must expose UI and feature icon suites.");
             Require(settingsWindow.Contains("BuildBuiltinIconMenu") && settingsWindow.Contains("SetSelectedFeatureBuiltinIcon"), "settings must let users choose built-in feature icons.");
             var featureIconOptions = MethodBody(settingsWindow, "BuiltinIconOptions");
@@ -1336,7 +1339,7 @@ namespace PlugHub.StaticValidation
             Require(revitProject.Contains("Resources\\Icons\\*.svg") && revitProject.Contains("CopyToOutputDirectory"), "common SVG icons must be copied to the Revit adapter output.");
             Require(revitProject.Contains("PlugHubSvgIcon") && revitProject.Contains("$(PlugHubOutputDir)\\Resources\\Icons\\"), "staged Revit output must include common SVG icons.");
 
-            foreach (var icon in new[] { "about", "batch", "diagnostics", "document", "duct", "family", "feature", "group", "install", "layout", "module", "package", "refresh", "repository", "save", "settings", "tool", "uninstall", "update", "warning" })
+            foreach (var icon in new[] { "about", "batch", "diagnostics", "document", "duct", "family", "feature", "group", "install", "layout", "module", "package", "refresh", "repository", "save", "settings", "tool", "uninstall", "update", "upgrade", "warning" })
             {
                 var path = "src/PlugHub.Revit2020/Resources/Icons/" + icon + ".svg";
                 Require(File.Exists(FullPath(path)) && ReadText(path).Contains("<svg"), "missing common SVG icon asset: " + path);
@@ -1435,7 +1438,7 @@ namespace PlugHub.StaticValidation
             Require(settingsWindow.Contains("provider + \" · \" + visibility") && !settingsWindow.Contains("provider + \" / \" + visibility + \" / \" + state"), "repository source metadata must avoid duplicated enabled state and slash-separated labels.");
             Require(settingsWindow.Contains("BuildRepositorySourceMoreGlyph") && settingsWindow.Contains("OpenRepositorySourceMenuFromCard"), "repository source cards must use a shared ellipsis menu for secondary actions.");
             Require(settingsWindow.Contains("BrowseRepositorySourceCacheFromCard") && settingsWindow.Contains("_packageRepositoryService.BrowseCached(BaseDirectory(), row.ToConfiguration()"), "clicking a repository source card must browse its local cached packages without remote sync.");
-            Require(settingsWindow.Contains("同步仓库插件包") && settingsWindow.Contains("编辑仓库源") && settingsWindow.Contains("删除仓库"), "repository source menu must expose edit, sync, and delete actions.");
+            Require(settingsWindow.Contains("同步仓库源") && !settingsWindow.Contains("同步仓库插件包") && settingsWindow.Contains("编辑仓库源") && settingsWindow.Contains("删除仓库"), "repository source menu must expose edit, sync, and delete actions with source-level wording.");
             Require(settingsWindow.Contains("RevitUiTheme.Current.DangerBrush"), "repository source delete menu item must be visually highlighted as destructive.");
             var repositoryToolbar = MethodBody(settingsWindow, "BuildRepositoryToolbar");
             Require(repositoryToolbar.Contains("一键同步") && !repositoryToolbar.Contains("浏览所选") && !repositoryToolbar.Contains("检查更新"), "repository toolbar must expose manual sync-all and remove redundant repository actions.");
@@ -2323,15 +2326,32 @@ namespace PlugHub.StaticValidation
         {
             var giteeWorkflow = ReadText(".gitee/workflows/release.yml");
 
-            Require(giteeWorkflow.Contains("V*"), "Gitee Go release workflow must run for V* tags.");
+            Require(giteeWorkflow.Contains("branches:") && giteeWorkflow.Contains("- main"), "Gitee Go release workflow must run for mirrored main pushes.");
+            Require(giteeWorkflow.Contains("tags:") && giteeWorkflow.Contains("- \"V*\""), "Gitee Go release workflow must run for V* tags.");
+            Require(giteeWorkflow.Contains("workflow_dispatch"), "Gitee Go release workflow must support manual reruns.");
+            Require(giteeWorkflow.Contains("git fetch --tags") && giteeWorkflow.Contains("--points-at HEAD"), "Gitee Go release workflow must resolve the GitHub-created V* tag for the current commit.");
+            Require(giteeWorkflow.Contains("PLUGHUB_SKIP_RELEASE") && giteeWorkflow.Contains("skip_release=true") && giteeWorkflow.Contains("steps.resolve.outputs.skip_release != 'true'"), "Gitee Go release workflow must skip branch events until a release tag exists.");
             Require(giteeWorkflow.Contains("windows") || giteeWorkflow.Contains("Windows"), "Gitee Go release workflow must use a Windows build environment.");
             Require(giteeWorkflow.Contains("PlugHub.StaticValidation") && giteeWorkflow.Contains("build-revit2020.ps1"), "Gitee Go release workflow must run validation and build the Revit 2020 package.");
             Require(giteeWorkflow.Contains("-UseRevitApiNuGet") && giteeWorkflow.Contains("-UseRelativeAddinAssembly"), "Gitee Go release workflow must use NuGet Revit API references and relative addin assembly paths.");
             Require(giteeWorkflow.Contains("PlugHub.Uninstaller.csproj") && giteeWorkflow.Contains("PlugHub-Uninstall.exe"), "Gitee Go release workflow must build the uninstaller artifact for the installer.");
             Require(giteeWorkflow.Contains("PlugHub.Installer.csproj") && giteeWorkflow.Contains("InstallerPayloadZip") && giteeWorkflow.Contains("InstallerUninstallerExe"), "Gitee Go release workflow must build the installer with embedded payload and uninstaller.");
             Require(giteeWorkflow.Contains("PlugHub-Revit2020-") && giteeWorkflow.Contains("PlugHub-Setup-"), "Gitee Go release workflow must package the same zip and setup exe names as GitHub releases.");
+            Require(giteeWorkflow.Contains("Generate release notes") && giteeWorkflow.Contains("PlugHub-ReleaseNotes-$tag.md") && giteeWorkflow.Contains("$releaseBody"), "Gitee Go release workflow must publish concise release notes.");
             Require(giteeWorkflow.Contains("GITEE_TOKEN") && giteeWorkflow.Contains("api/v5/repos/GaoMengGu/PlugHub/releases"), "Gitee Go release workflow must publish to GaoMengGu/PlugHub releases through the Gitee API token.");
             Require(giteeWorkflow.Contains("attach_files") || giteeWorkflow.Contains("attach"), "Gitee Go release workflow must upload release attachments.");
+        }
+
+        private static void ValidateFeatureButtonTooltipBehavior()
+        {
+            var ribbonBuilder = ReadText("src/PlugHub.Revit2020/FeatureRibbonBuilder.cs");
+
+            Require(ribbonBuilder.Contains("private static string BuildToolTip(FeatureViewModel feature)"), "feature ribbon builder must centralize feature button tooltip text.");
+            Require(ribbonBuilder.Contains("return string.IsNullOrWhiteSpace(feature.Description)") && ribbonBuilder.Contains("feature.Description.Trim()"), "feature button tooltip must only display features[].description.");
+            foreach (var metadataToken in new[] { "\"Module: \"", "\"Feature: \"", "\"Category: \"", "\"Command: \"", "\"Command type: \"", "\"Button size: \"" })
+            {
+                Require(!ribbonBuilder.Contains(metadataToken), "feature button tooltip must not include metadata token " + metadataToken + ".");
+            }
         }
 
         private static void ValidateMachineWideAddinRegistration()
@@ -2389,6 +2409,7 @@ namespace PlugHub.StaticValidation
             var frameworkProject = ReadText("src/PlugHub.Framework/PlugHub.Framework.csproj");
             var service = ReadText("src/PlugHub.Framework/Updates/FrameworkUpdateService.cs");
             var releaseClient = ReadText("src/PlugHub.Framework/Updates/ReleaseClient.cs");
+            var releaseAssetDownloader = ReadText("src/PlugHub.Framework/Updates/ReleaseAssetDownloader.cs");
             var validator = ReadText("src/PlugHub.Framework/Updates/FrameworkUpdatePackageValidator.cs");
             var updaterProject = ReadText("src/PlugHub.Updater/PlugHub.Updater.csproj");
             var updaterProgram = ReadText("src/PlugHub.Updater/Program.cs");
@@ -2403,11 +2424,19 @@ namespace PlugHub.StaticValidation
             Require(solution.Contains("src\\PlugHub.Updater\\PlugHub.Updater.csproj"), "updater project must be included in PlugHub.sln.");
             Require(solutionX.Contains("src/PlugHub.Updater/PlugHub.Updater.csproj"), "updater project must be included in PlugHub.slnx.");
             Require(updaterProject.Contains("<TargetFramework>net48</TargetFramework>") && updaterProject.Contains("<OutputType>WinExe</OutputType>"), "updater must build as a silent net48 Windows EXE.");
-            Require(settingsWindow.Contains("\"检查更新\"") && settingsWindow.Contains("\"更新框架\""), "About tab must expose Check Update and Update Framework buttons.");
-            Require(settingsWindow.Contains("CheckFrameworkUpdate") && settingsWindow.Contains("UpdateFramework") && settingsWindow.Contains("RefreshStatus"), "About tab update actions must write to the bottom-left status text.");
+            Require(settingsWindow.Contains("BuildAboutHeader") && settingsWindow.Contains("AssemblyVersionText()"), "About tab header must show PlugHub followed by the current framework version.");
+            Require(settingsWindow.Contains("CreateIconButton(\"refresh\"") && settingsWindow.Contains("CheckFrameworkUpdate"), "About tab must use a compact check-update icon beside the framework version.");
+            Require(settingsWindow.Contains("CreateIconButton(\"upgrade\"") && settingsWindow.Contains("ConfirmFrameworkUpdate"), "About tab must use a compact upgrade icon beside the framework version.");
+            Require(settingsWindow.Contains("CreateBorderlessIconButtonStyle") && settingsWindow.Contains("Control.BorderThicknessProperty") && settingsWindow.Contains("new Thickness(0)"), "About tab icon buttons must be borderless compact glyph actions.");
+            Require(!settingsWindow.Contains("CreateButton(\"检查更新\"") && !settingsWindow.Contains("CreateButton(\"更新框架\""), "About tab must not show the old text check/update buttons.");
+            Require(settingsWindow.Contains("ShowFrameworkUpdateDialog") && settingsWindow.Contains("ReleaseNotes"), "Upgrade icon must show target version and release notes before starting the updater.");
+            Require(settingsWindow.Contains("CheckFrameworkUpdate") && settingsWindow.Contains("ConfirmFrameworkUpdate") && settingsWindow.Contains("RefreshStatus"), "About tab update actions must write to the bottom-left status text.");
             Require(service.Contains("https://api.github.com/repos/GaoMengGu/PlugHub/releases/latest") && service.Contains("PlugHub-Revit2020-"), "framework update service must target GitHub latest release assets.");
+            Require(service.Contains("SelectUpdateAsset") && service.Contains("ReleaseNotes = release.Body"), "framework update service must select the update zip and preserve release notes.");
+            Require(releaseClient.Contains("Body = StringValue(root, \"body\")") && releaseClient.Contains("AssetObjects("), "release client must parse release body and release assets from GitHub JSON.");
             Require(service.Contains("PlugHub.Updater.exe") && service.Contains("StartUpdater"), "framework update service must start the silent updater instead of copying DLLs in-process.");
             Require(releaseClient.Contains("HttpWebRequest") && releaseClient.Contains("UserAgent") && releaseClient.Contains("JavaScriptSerializer"), "release client must use net48-compatible HTTP and JSON APIs.");
+            Require(releaseClient.Contains("EnsureTls12()") && releaseAssetDownloader.Contains("EnsureTls12()"), "framework update HTTP client and asset downloader must enable TLS 1.2 before HTTPS requests.");
             Require(validator.Contains("PlugHub.Revit2020.dll") && validator.Contains("PlugHub.Framework.dll") && validator.Contains("PlugHub.Contracts.dll"), "update package validator must require the core framework DLLs.");
             Require(validator.Contains("IsSafeZipEntry") && validator.Contains("Path.DirectorySeparatorChar"), "update package validator must reject unsafe zip paths.");
             Require(updaterArguments.Contains("/payloadZip") && updaterArguments.Contains("/installDir") && updaterArguments.Contains("/targetVersion") && updaterArguments.Contains("/revitProcessId"), "updater must accept the documented arguments.");
@@ -2417,10 +2446,21 @@ namespace PlugHub.StaticValidation
             Require(githubWorkflow.Contains("Build PlugHub updater") && githubWorkflow.Contains("PlugHub.Updater.csproj"), "GitHub release workflow must build the updater before packaging the release zip.");
             Require(giteeWorkflow.Contains("Build PlugHub updater") && giteeWorkflow.Contains("PlugHub.Updater.csproj"), "Gitee release workflow must build the updater before packaging the release zip.");
             Require(buildScript.Contains("PlugHub.Updater.csproj") && buildScript.Contains("PlugHub.Updater.exe"), "local Revit 2020 build script must stage PlugHub.Updater.exe.");
-            Require(readme.Contains("检查更新") && readme.Contains("更新框架") && readme.Contains("只覆盖框架 DLL"), "README must document framework auto-update behavior.");
-            Require(readme.Contains("检查更新") && readme.Contains("更新框架") && readme.Contains("不能声明 Revit 实机测试成功"), "README must document updater verification boundaries.");
+            Require(readme.Contains("检查更新") && readme.Contains("升级框架") && readme.Contains("只覆盖框架 DLL"), "README must document framework auto-update behavior.");
+            Require(readme.Contains("检查更新") && readme.Contains("升级框架") && readme.Contains("不能声明 Revit 实机测试成功"), "README must document updater verification boundaries.");
 
+            ValidateReleaseClientParsesUpdatePackageAndNotes();
             ValidateFrameworkUpdatePackageRejectsUnsafeZip();
+        }
+
+        private static void ValidateReleaseClientParsesUpdatePackageAndNotes()
+        {
+            var client = new PlugHub.Framework.Updates.ReleaseClient();
+            var release = client.ParseReleaseJson(
+                "{\"tag_name\":\"V9.8.7\",\"body\":\"- 修复更新检查\",\"assets\":[{\"name\":\"PlugHub-Revit2020-V9.8.7.zip\",\"browser_download_url\":\"https://github.com/GaoMengGu/PlugHub/releases/download/V9.8.7/PlugHub-Revit2020-V9.8.7.zip\"},{\"name\":\"PlugHub-Revit2020-V9.8.7.zip.sigstore.json\",\"browser_download_url\":\"https://github.com/GaoMengGu/PlugHub/releases/download/V9.8.7/PlugHub-Revit2020-V9.8.7.zip.sigstore.json\"}]}");
+
+            Require(release.Body.Contains("修复更新检查"), "release client must preserve release body for update confirmation.");
+            Require(release.Assets.Any(asset => asset.Name == "PlugHub-Revit2020-V9.8.7.zip" && asset.DownloadUrl.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)), "release client must parse the PlugHub-Revit2020 zip asset download URL.");
         }
 
         private static void ValidateFrameworkUpdatePackageRejectsUnsafeZip()
@@ -2468,6 +2508,9 @@ namespace PlugHub.StaticValidation
             Require(releaseWorkflow.Contains("git tag") && releaseWorkflow.Contains("git push origin \"refs/tags/${{ steps.resolve.outputs.tag }}\""), "release workflow must create and push the resolved release tag.");
             Require(releaseWorkflow.Contains("actions: write") && releaseWorkflow.Contains("contents: write"), "release workflow must have permissions to create tags and dispatch workflows.");
             Require(releaseWorkflow.Contains("PLUGHUB_RELEASE_TAG") && releaseWorkflow.Contains("needs.resolve-release-tag.outputs.tag"), "release workflow must use the resolved release tag for packaging and publishing.");
+            Require(releaseWorkflow.Contains("PlugHub-Setup-${{ env.PLUGHUB_RELEASE_TAG }}.exe.sigstore.json") && releaseWorkflow.Contains("PlugHub-Revit2020-${{ env.PLUGHUB_RELEASE_TAG }}.zip.sigstore.json"), "GitHub release workflow must publish zip and setup signature bundles.");
+            Require(!releaseWorkflow.Contains("PlugHub*.dll.sigstore.json"), "GitHub release workflow must not publish DLL signature bundles.");
+            Require(releaseWorkflow.Contains("Generate release notes") && releaseWorkflow.Contains("body_path: PlugHub-ReleaseNotes-${{ env.PLUGHUB_RELEASE_TAG }}.md"), "GitHub release workflow must publish concise release notes.");
             Require(releaseWorkflow.Contains("sync-gitee.yml/dispatches"), "release workflow must dispatch Gitee sync after creating a tag.");
             Require(syncWorkflow.Contains("workflow_dispatch"), "Gitee sync workflow must support explicit dispatch from release.yml.");
             Require(readme.Contains("release.yml") && readme.Contains("每次 `main` 推送") && readme.Contains("version"), "README must document release.yml automatic patch versioning and manual explicit version override.");

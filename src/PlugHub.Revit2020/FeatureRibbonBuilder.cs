@@ -399,37 +399,7 @@ namespace PlugHub.Revit2020
 
         private static string BuildToolTip(FeatureViewModel feature)
         {
-            var lines = new List<string>
-            {
-                feature.DisplayName,
-                feature.GroupName,
-                "Module: " + feature.ModuleId,
-                "Feature: " + feature.FeatureId
-            };
-
-            if (!string.IsNullOrWhiteSpace(feature.Category))
-            {
-                lines.Add("Category: " + feature.Category);
-            }
-
-            if (!string.IsNullOrWhiteSpace(feature.CommandKey))
-            {
-                lines.Add("Command: " + feature.CommandKey);
-            }
-
-            if (!string.IsNullOrWhiteSpace(feature.CommandType))
-            {
-                lines.Add("Command type: " + feature.CommandType);
-            }
-
-            lines.Add("Button size: " + SafeDisplayName(feature.ButtonSize, "large"));
-
-            if (!string.IsNullOrWhiteSpace(feature.Description))
-            {
-                lines.Add(feature.Description);
-            }
-
-            return string.Join("\n", lines.Where(line => !string.IsNullOrWhiteSpace(line)));
+            return string.IsNullOrWhiteSpace(feature.Description) ? string.Empty : feature.Description.Trim();
         }
 
         private static bool IsRibbonItemType(RibbonItemViewModel item, string type)

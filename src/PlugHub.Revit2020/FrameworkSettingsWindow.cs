@@ -99,7 +99,8 @@ namespace PlugHub.Revit2020
         private bool _syncingSelectedFeatureEditor;
         private bool _syncingSelectedRibbonDesignerEditor;
         private FrameworkUpdateCheckResult? _latestFrameworkUpdate;
-        private Button? _updateFrameworkButton;
+        private Button? _checkFrameworkIconButton;
+        private Button? _upgradeFrameworkIconButton;
 
         public FrameworkSettingsWindow(string configDirectory, FrameworkConfiguration configuration)
         {
@@ -436,13 +437,7 @@ namespace PlugHub.Revit2020
             root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
             var summary = new StackPanel { Margin = new Thickness(0, 0, 14, 0) };
-            summary.Children.Add(new TextBlock
-            {
-                Text = "PlugHub",
-                FontSize = 22,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = theme.TextBrush
-            });
+            summary.Children.Add(BuildAboutHeader());
             summary.Children.Add(new TextBlock
             {
                 Text = "面向 Revit 2020 的模块化插件框架。",
@@ -470,7 +465,6 @@ namespace PlugHub.Revit2020
             metrics.Children.Add(BuildAboutMetric("仓库数", ConfiguredRepositoryCount().ToString(CultureInfo.InvariantCulture)));
             metrics.Children.Add(BuildAboutMetric("目标版本", "Revit 2020"));
             summary.Children.Add(metrics);
-            summary.Children.Add(BuildFrameworkUpdateActions());
             Grid.SetColumn(summary, 0);
             root.Children.Add(summary);
 
@@ -558,22 +552,38 @@ namespace PlugHub.Revit2020
             };
         }
 
-        private UIElement BuildFrameworkUpdateActions()
+        private UIElement BuildAboutHeader()
         {
             var panel = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
-                Margin = new Thickness(0, 16, 0, 0)
+                VerticalAlignment = VerticalAlignment.Center
             };
 
-            var checkButton = CreateButton("检查更新", (sender, args) => CheckFrameworkUpdate());
-            checkButton.Margin = new Thickness(0, 0, 0, 0);
-            panel.Children.Add(checkButton);
+            panel.Children.Add(new TextBlock
+            {
+                Text = "PlugHub",
+                FontSize = 22,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = RevitUiTheme.Current.TextBrush,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+            panel.Children.Add(new TextBlock
+            {
+                Text = AssemblyVersionText(),
+                Margin = new Thickness(8, 4, 0, 0),
+                FontSize = 13,
+                Foreground = RevitUiTheme.Current.MutedTextBrush,
+                VerticalAlignment = VerticalAlignment.Center
+            });
 
-            _updateFrameworkButton = CreateButton("更新框架", (sender, args) => UpdateFramework());
-            _updateFrameworkButton.IsEnabled = false;
-            _updateFrameworkButton.Margin = new Thickness(8, 0, 0, 0);
-            panel.Children.Add(_updateFrameworkButton);
+            _checkFrameworkIconButton = CreateIconButton("refresh", "检查更新", (sender, args) => CheckFrameworkUpdate());
+            _checkFrameworkIconButton.Margin = new Thickness(10, 0, 0, 0);
+            panel.Children.Add(_checkFrameworkIconButton);
+
+            _upgradeFrameworkIconButton = CreateIconButton("upgrade", "升级框架", (sender, args) => ConfirmFrameworkUpdate());
+            _upgradeFrameworkIconButton.Margin = new Thickness(6, 0, 0, 0);
+            panel.Children.Add(_upgradeFrameworkIconButton);
             return panel;
         }
 
@@ -1004,6 +1014,54 @@ namespace PlugHub.Revit2020
             };
             button.Click += handler;
             return button;
+        }
+
+        private static Button CreateIconButton(string iconKey, string tooltip, RoutedEventHandler handler)
+        {
+            var button = new Button
+            {
+                Content = new Image
+                {
+                    Source = DefaultRibbonIconProvider.CreateSmallIcon(iconKey),
+                    Width = 16,
+                    Height = 16,
+                    Stretch = Stretch.Uniform
+                },
+                Width = 28,
+                MinWidth = 28,
+                Height = 28,
+                Padding = new Thickness(4),
+                ToolTip = tooltip,
+                Style = CreateBorderlessIconButtonStyle()
+            };
+            button.Click += handler;
+            return button;
+        }
+
+        private static Style CreateBorderlessIconButtonStyle()
+        {
+            var theme = RevitUiTheme.Current;
+            var style = new Style(typeof(Button));
+            style.Setters.Add(new Setter(Control.BackgroundProperty, Brushes.Transparent));
+            style.Setters.Add(new Setter(Control.BorderBrushProperty, Brushes.Transparent));
+            style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(0)));
+            style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(4)));
+            style.Setters.Add(new Setter(FrameworkElement.MinHeightProperty, 0.0));
+            style.Setters.Add(new Setter(Control.HorizontalContentAlignmentProperty, HorizontalAlignment.Center));
+            style.Setters.Add(new Setter(Control.VerticalContentAlignmentProperty, VerticalAlignment.Center));
+
+            var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+            hover.Setters.Add(new Setter(Control.BackgroundProperty, theme.ControlHoverBackground));
+            style.Triggers.Add(hover);
+
+            var pressed = new Trigger { Property = ButtonBase.IsPressedProperty, Value = true };
+            pressed.Setters.Add(new Setter(Control.BackgroundProperty, theme.ControlPressedBackground));
+            style.Triggers.Add(pressed);
+
+            var disabled = new Trigger { Property = UIElement.IsEnabledProperty, Value = false };
+            disabled.Setters.Add(new Setter(UIElement.OpacityProperty, 0.45));
+            style.Triggers.Add(disabled);
+            return style;
         }
 
         private static object BuildButtonContent(string text)
@@ -1500,6 +1558,7 @@ namespace PlugHub.Revit2020
                 AllowDrop = true
             };
             surface.PreviewMouseLeftButtonDown += RibbonDesignerNodeMouseLeftButtonDown;
+            surface.PreviewMouseLeftButtonUp += RibbonDesignerNodeMouseLeftButtonUp;
             surface.PreviewMouseMove += RibbonDesignerNodeMouseMove;
             surface.DragOver += RibbonDesignerNodeDragOver;
             surface.Drop += RibbonDesignerNodeDrop;
@@ -1856,25 +1915,31 @@ namespace PlugHub.Revit2020
 
         private Border BuildRibbonDesignerDropBorder(RibbonDesignerNodeRow row, UIElement child, Thickness margin, Thickness padding, Brush background)
         {
+            var border = BuildRibbonDesignerSelectionChrome(row, child, margin, padding, background);
+            border.AllowDrop = true;
+            border.PreviewMouseLeftButtonDown += RibbonDesignerNodeMouseLeftButtonDown;
+            border.PreviewMouseLeftButtonUp += RibbonDesignerNodeMouseLeftButtonUp;
+            border.PreviewMouseMove += RibbonDesignerNodeMouseMove;
+            border.DragOver += RibbonDesignerNodeDragOver;
+            border.Drop += RibbonDesignerNodeDrop;
+            return border;
+        }
+
+        private Border BuildRibbonDesignerSelectionChrome(RibbonDesignerNodeRow row, UIElement child, Thickness margin, Thickness padding, Brush background)
+        {
             var theme = RevitUiTheme.Current;
             var selected = ReferenceEquals(row, _viewModel.SelectedRibbonDesignerNode);
-            var border = new Border
+            return new Border
             {
                 Tag = row,
                 MinWidth = RibbonDesignerPanelPreviewMinWidth(row),
                 Margin = margin,
                 Padding = padding,
-                Background = background,
+                Background = selected ? theme.SelectionBrush : background,
                 BorderBrush = selected ? theme.AccentBrush : theme.BorderBrush,
                 BorderThickness = new Thickness(selected ? 2 : 1),
-                Child = child,
-                AllowDrop = true
+                Child = child
             };
-            border.PreviewMouseLeftButtonDown += RibbonDesignerNodeMouseLeftButtonDown;
-            border.PreviewMouseMove += RibbonDesignerNodeMouseMove;
-            border.DragOver += RibbonDesignerNodeDragOver;
-            border.Drop += RibbonDesignerNodeDrop;
-            return border;
         }
 
         private static double RibbonDesignerPanelPreviewMinWidth(RibbonDesignerNodeRow row)
@@ -1923,6 +1988,7 @@ namespace PlugHub.Revit2020
                 args.Handled = true;
             };
             button.PreviewMouseLeftButtonDown += RibbonDesignerNodeMouseLeftButtonDown;
+            button.PreviewMouseLeftButtonUp += RibbonDesignerNodeMouseLeftButtonUp;
             button.PreviewMouseMove += RibbonDesignerNodeMouseMove;
             button.DragOver += RibbonDesignerNodeDragOver;
             button.Drop += RibbonDesignerNodeDrop;
@@ -1938,6 +2004,15 @@ namespace PlugHub.Revit2020
             {
                 SelectRibbonDesignerNode(row, false);
             }
+        }
+
+        private void RibbonDesignerNodeMouseLeftButtonUp(object sender, MouseButtonEventArgs args)
+        {
+            if (!IsRibbonDesignerDirectEventNode(sender, args.OriginalSource)) return;
+            if (!(ResolveRibbonDesignerEventNode(args.OriginalSource, sender) is RibbonDesignerNodeRow row)) return;
+            if (!ReferenceEquals(row, _viewModel.SelectedRibbonDesignerNode)) return;
+
+            RefreshRibbonDesignerCanvas();
         }
 
         private void RibbonDesignerNodeMouseMove(object sender, MouseEventArgs args)
@@ -3816,7 +3891,7 @@ namespace PlugHub.Revit2020
         {
             var menu = new ContextMenu();
             menu.Items.Add(MenuItem("编辑仓库源", (sender, args) => EditSelectedRepository()));
-            menu.Items.Add(MenuItem("同步仓库插件包", (sender, args) => BrowseSelectedRepository()));
+            menu.Items.Add(MenuItem("同步仓库源", (sender, args) => BrowseSelectedRepository()));
             menu.Items.Add(new Separator());
             var delete = MenuItem("删除仓库", (sender, args) => RemoveSelectedRepository());
             delete.Foreground = RevitUiTheme.Current.DangerBrush;
@@ -4989,6 +5064,11 @@ namespace PlugHub.Revit2020
         private void CheckFrameworkUpdate()
         {
             RefreshStatus("正在检查框架更新，请稍候。");
+            if (_checkFrameworkIconButton != null)
+            {
+                _checkFrameworkIconButton.IsEnabled = false;
+            }
+
             Task.Run(() =>
             {
                 try
@@ -5002,16 +5082,23 @@ namespace PlugHub.Revit2020
             }).ContinueWith(task => Dispatcher.BeginInvoke(new Action(() =>
             {
                 _latestFrameworkUpdate = task.Result;
-                if (_updateFrameworkButton != null)
+                if (_checkFrameworkIconButton != null)
                 {
-                    _updateFrameworkButton.IsEnabled = task.Result.Success && task.Result.HasUpdate;
+                    _checkFrameworkIconButton.IsEnabled = true;
+                }
+
+                if (_upgradeFrameworkIconButton != null)
+                {
+                    _upgradeFrameworkIconButton.ToolTip = task.Result.Success && task.Result.HasUpdate
+                        ? "升级到 " + task.Result.LatestVersion
+                        : "升级框架";
                 }
 
                 RefreshStatus(task.Result.Message);
             })));
         }
 
-        private void UpdateFramework()
+        private void ConfirmFrameworkUpdate()
         {
             if (_latestFrameworkUpdate == null || !_latestFrameworkUpdate.Success || !_latestFrameworkUpdate.HasUpdate)
             {
@@ -5019,15 +5106,25 @@ namespace PlugHub.Revit2020
                 return;
             }
 
-            if (_updateFrameworkButton != null)
+            if (!ShowFrameworkUpdateDialog(_latestFrameworkUpdate))
             {
-                _updateFrameworkButton.IsEnabled = false;
+                RefreshStatus("已取消框架更新。");
+                return;
+            }
+
+            UpdateFramework(_latestFrameworkUpdate);
+        }
+
+        private void UpdateFramework(FrameworkUpdateCheckResult checkResult)
+        {
+            if (_upgradeFrameworkIconButton != null)
+            {
+                _upgradeFrameworkIconButton.IsEnabled = false;
             }
 
             RefreshStatus("正在下载框架更新，请稍候。");
             var baseDirectory = BaseDirectory();
             var processId = Process.GetCurrentProcess().Id;
-            var checkResult = _latestFrameworkUpdate;
             Task.Run(() =>
             {
                 try
@@ -5047,11 +5144,78 @@ namespace PlugHub.Revit2020
             }).ContinueWith(task => Dispatcher.BeginInvoke(new Action(() =>
             {
                 RefreshStatus(task.Result.Message);
-                if (_updateFrameworkButton != null && !task.Result.Success)
+                if (_upgradeFrameworkIconButton != null)
                 {
-                    _updateFrameworkButton.IsEnabled = true;
+                    _upgradeFrameworkIconButton.IsEnabled = !task.Result.Success;
                 }
             })));
+        }
+
+        private bool ShowFrameworkUpdateDialog(FrameworkUpdateCheckResult update)
+        {
+            var theme = RevitUiTheme.Current;
+            var dialog = new Window
+            {
+                Title = "升级框架",
+                Owner = this,
+                Width = 520,
+                Height = 360,
+                MinWidth = 460,
+                MinHeight = 300,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                ResizeMode = ResizeMode.CanResize
+            };
+            RevitUiTheme.Apply(dialog);
+
+            var root = new Grid { Margin = new Thickness(14), Background = theme.WindowBackground };
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            root.Children.Add(new TextBlock
+            {
+                Text = "更新版本 " + update.LatestVersion,
+                FontSize = 16,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = theme.TextBrush,
+                Margin = new Thickness(0, 0, 0, 10)
+            });
+
+            var notes = new TextBox
+            {
+                Text = ReleaseNotesText(update.ReleaseNotes),
+                IsReadOnly = true,
+                AcceptsReturn = true,
+                TextWrapping = TextWrapping.Wrap,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                BorderBrush = theme.BorderBrush,
+                Background = theme.SurfaceBackground,
+                Foreground = theme.MutedTextBrush,
+                Padding = new Thickness(8)
+            };
+            Grid.SetRow(notes, 1);
+            root.Children.Add(notes);
+
+            var buttons = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 12, 0, 0)
+            };
+            var close = CreateButton("关闭", (sender, args) => dialog.DialogResult = false);
+            var confirm = CreateButton("确认", (sender, args) => dialog.DialogResult = true);
+            buttons.Children.Add(close);
+            buttons.Children.Add(confirm);
+            Grid.SetRow(buttons, 2);
+            root.Children.Add(buttons);
+
+            dialog.Content = root;
+            return dialog.ShowDialog() == true;
+        }
+
+        private static string ReleaseNotesText(string value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? "暂无更新信息。" : value.Trim();
         }
 
         private void RefreshStatus(string text)

@@ -40,15 +40,13 @@ namespace PlugHub.Framework.Updates
                 var release = _releaseClient.GetLatest(_latestReleaseUri);
                 var latestVersion = NormalizeVersionText(release.TagName);
                 var current = NormalizeVersionText(currentVersion);
-                var asset = release.Assets.FirstOrDefault(item =>
-                    item.Name.StartsWith("PlugHub-Revit2020-", StringComparison.OrdinalIgnoreCase)
-                    && item.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
 
                 if (string.IsNullOrWhiteSpace(latestVersion))
                 {
                     return FailureCheck(current, "未能从 latest release 解析版本。");
                 }
 
+                var asset = SelectUpdateAsset(release, latestVersion);
                 if (asset == null || string.IsNullOrWhiteSpace(asset.DownloadUrl))
                 {
                     return FailureCheck(current, "latest release 未找到 PlugHub-Revit2020 更新包。");
@@ -63,8 +61,9 @@ namespace PlugHub.Framework.Updates
                     LatestVersion = latestVersion,
                     AssetName = asset.Name,
                     AssetDownloadUrl = asset.DownloadUrl,
+                    ReleaseNotes = release.Body,
                     Message = hasUpdate
-                        ? "发现框架更新 " + latestVersion + "，可点击更新框架。"
+                        ? "发现框架更新 " + latestVersion + "，点击升级图标查看更新信息。"
                         : "当前框架已是最新版本。"
                 };
             }
@@ -183,6 +182,19 @@ namespace PlugHub.Framework.Updates
             }
 
             return !string.Equals(latestVersion, currentVersion, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static ReleaseAssetInfo? SelectUpdateAsset(ReleaseInfo release, string latestVersion)
+        {
+            if (release == null) return null;
+            var expectedName = "PlugHub-Revit2020-" + latestVersion + ".zip";
+            var exact = release.Assets.FirstOrDefault(item =>
+                string.Equals(item.Name, expectedName, StringComparison.OrdinalIgnoreCase));
+            if (exact != null) return exact;
+
+            return release.Assets.FirstOrDefault(item =>
+                item.Name.StartsWith("PlugHub-Revit2020-", StringComparison.OrdinalIgnoreCase)
+                && item.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
         }
 
         private static string NormalizeVersionText(string version)

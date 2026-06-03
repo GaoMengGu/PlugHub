@@ -35,6 +35,7 @@ namespace PlugHub.Revit2020
             "save",
             "install",
             "update",
+            "upgrade",
             "uninstall",
             "close"
         };
@@ -61,6 +62,7 @@ namespace PlugHub.Revit2020
             "save",
             "install",
             "update",
+            "upgrade",
             "uninstall",
             "close"
         };
@@ -182,6 +184,12 @@ namespace PlugHub.Revit2020
                 || string.Equals(key, "update", StringComparison.OrdinalIgnoreCase))
             {
                 DrawRefresh(context, size, foreground, accent);
+                return;
+            }
+
+            if (string.Equals(key, "upgrade", StringComparison.OrdinalIgnoreCase))
+            {
+                DrawUpgrade(context, size, foreground, accent);
                 return;
             }
 
@@ -371,6 +379,16 @@ namespace PlugHub.Revit2020
             context.DrawRoundedRectangle(accent, null, new Rect(size * 0.29, size * 0.66, size * 0.42, size * 0.1), size * 0.03, size * 0.03);
         }
 
+        private static void DrawUpgrade(DrawingContext context, double size, Brush foreground, Brush accent)
+        {
+            var pen = new Pen(foreground, size * 0.08);
+            pen.Freeze();
+            context.DrawLine(pen, new Point(size * 0.5, size * 0.24), new Point(size * 0.5, size * 0.62));
+            context.DrawLine(pen, new Point(size * 0.38, size * 0.36), new Point(size * 0.5, size * 0.24));
+            context.DrawLine(pen, new Point(size * 0.62, size * 0.36), new Point(size * 0.5, size * 0.24));
+            context.DrawRoundedRectangle(accent, null, new Rect(size * 0.29, size * 0.68, size * 0.42, size * 0.09), size * 0.03, size * 0.03);
+        }
+
         private static void DrawClose(DrawingContext context, double size, Brush foreground, Brush accent)
         {
             var pen = new Pen(foreground, size * 0.09);
@@ -468,6 +486,7 @@ namespace PlugHub.Revit2020
             if (string.Equals(key, "save", StringComparison.OrdinalIgnoreCase)) return Color.FromRgb(26, 115, 232);
             if (string.Equals(key, "install", StringComparison.OrdinalIgnoreCase)) return Color.FromRgb(36, 121, 94);
             if (string.Equals(key, "update", StringComparison.OrdinalIgnoreCase)) return Color.FromRgb(26, 115, 232);
+            if (string.Equals(key, "upgrade", StringComparison.OrdinalIgnoreCase)) return Color.FromRgb(26, 115, 232);
             if (string.Equals(key, "uninstall", StringComparison.OrdinalIgnoreCase)) return Color.FromRgb(176, 63, 55);
             if (string.Equals(key, "close", StringComparison.OrdinalIgnoreCase)) return Color.FromRgb(89, 96, 108);
             if (string.Equals(key, "tool", StringComparison.OrdinalIgnoreCase)) return Color.FromRgb(36, 121, 94);
