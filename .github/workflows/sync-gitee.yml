@@ -30,11 +30,9 @@ jobs:
         shell: bash
         env:
           GITEE_PRIVATE_KEY: ${{ secrets.GITEE_PRIVATE_KEY }}
-          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
           GITEE_USER: ${{ secrets.GITEE_USER }}
         run: |
           test -n "$GITEE_PRIVATE_KEY" || { echo "GITEE_PRIVATE_KEY is required."; exit 1; }
-          test -n "$GITEE_TOKEN" || { echo "GITEE_TOKEN is required."; exit 1; }
           test -n "$GITEE_USER" || { echo "GITEE_USER is required."; exit 1; }
 
       - name: Configure Gitee SSH

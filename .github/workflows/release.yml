@@ -240,3 +240,76 @@ jobs:
             PlugHub-Setup-${{ env.PLUGHUB_RELEASE_TAG }}.exe.sigstore.json
             PlugHub-Revit2020-${{ env.PLUGHUB_RELEASE_TAG }}.zip
             PlugHub-Revit2020-${{ env.PLUGHUB_RELEASE_TAG }}.zip.sigstore.json
+
+      - name: Wait for Gitee tag
+        shell: pwsh
+        run: |
+          $tag = $env:PLUGHUB_RELEASE_TAG
+          for ($attempt = 1; $attempt -le 30; $attempt++) {
+            $remoteTag = git ls-remote https://gitee.com/GaoMengGu/PlugHub.git "refs/tags/$tag"
+            if (![string]::IsNullOrWhiteSpace($remoteTag)) {
+              Write-Host "Gitee tag is available: $tag"
+              exit 0
+            }
+
+            Write-Host "Waiting for Gitee tag sync: $tag ($attempt/30)"
+            Start-Sleep -Seconds 10
+          }
+
+          throw "Timed out waiting for Gitee tag sync: $tag"
+
+      - name: Publish Gitee release
+        shell: pwsh
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:GITEE_TOKEN)) {
+            throw "GITEE_TOKEN is required to publish the Gitee release."
+          }
+
+          $tag = $env:PLUGHUB_RELEASE_TAG
+          $notesPath = "PlugHub-ReleaseNotes-$tag.md"
+          $assets = @(
+            "PlugHub-Setup-$tag.exe",
+            "PlugHub-Setup-$tag.exe.sigstore.json",
+            "PlugHub-Revit2020-$tag.zip",
+            "PlugHub-Revit2020-$tag.zip.sigstore.json"
+          )
+
+          foreach ($asset in $assets) {
+            if (!(Test-Path -LiteralPath $asset)) {
+              throw "Release asset was not found before Gitee upload: $asset"
+            }
+          }
+
+          $releaseBaseUri = "https://gitee.com/api/v5/repos/GaoMengGu/PlugHub/releases"
+          $releaseBody = Get-Content -LiteralPath $notesPath -Raw
+          $escapedToken = [Uri]::EscapeDataString($env:GITEE_TOKEN)
+          $escapedTag = [Uri]::EscapeDataString($tag)
+          $release = $null
+
+          try {
+            $release = Invoke-RestMethod -Method Post -Uri $releaseBaseUri -Body @{
+              access_token = $env:GITEE_TOKEN
+              tag_name = $tag
+              target_commitish = "main"
+              name = "PlugHub $tag"
+              body = $releaseBody
+              prerelease = "false"
+            }
+          }
+          catch {
+            $release = Invoke-RestMethod -Method Get -Uri "$releaseBaseUri/tags/$escapedTag?access_token=$escapedToken"
+          }
+
+          if ($null -eq $release -or [string]::IsNullOrWhiteSpace([string]$release.id)) {
+            throw "Gitee release was not created or resolved for tag $tag."
+          }
+
+          foreach ($asset in $assets) {
+            $fullPath = (Resolve-Path $asset).Path
+            & curl.exe -sS -f -X POST -F "access_token=$($env:GITEE_TOKEN)" -F "file=@$fullPath" "$releaseBaseUri/$($release.id)/attach_files"
+            if ($LASTEXITCODE -ne 0) {
+              throw "Failed to upload Gitee release attachment: $asset"
+            }
+          }
