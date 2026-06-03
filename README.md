@@ -1,102 +1,165 @@
-# PlugHub
+# PlugHub Revit 2020 用户指南
 
-PlugHub 是面向 Revit 2020 的模块化插件框架。它提供统一 Ribbon 入口、模块发现、功能开关、排序组合、日志和设置界面，用于承载后续 Revit 功能模块。
+PlugHub 是面向建模用户的 Revit 2020 插件管理框架。它把多个插件集中到一个 `PlugHub` Ribbon 页签里，让用户可以在同一个设置窗口中管理功能按钮、插件包、仓库源和框架更新。
 
-## 核心能力
+## 框架概览
 
-- 单一 `PlugHub` Ribbon tab 和 `workspace` 工作台。
-- 通过 JSON 配置管理已安装插件包、仓库、功能、分组、显示名、图标、按钮大小和排序。
-- 启动时只扫描本地 `packages` 目录；仓库只在设置页中由用户显式浏览或检查更新，再选择安装、更新或卸载。
-- 设置入口采用 Ribbon 按钮，设置窗口采用 WPF。
-- 框架层隔离 Revit API，不包含内置业务功能；具体业务命令由外部模块实现。
+PlugHub 的作用不是提供某一个固定建模命令，而是提供一个统一入口：
 
-## 插件包和仓库
+- 把已安装插件显示在 `PlugHub` 页签中。
+- 允许用户调整 Ribbon 分组、按钮顺序、按钮大小和按钮图标。
+- 从仓库源同步插件列表，并选择需要的插件安装到本机。
+- 在「关于」页签查看当前框架版本并检查更新。
+- 记录诊断信息，方便定位插件加载或仓库同步问题。
 
-默认配置不包含任何业务模块。模块可通过以下方式接入：
+能做什么：
 
-- 复制插件包文件夹到 `packages`，包内使用 `package.json`。
-- 平铺投放 DLL 时，使用 `<DllName>.package.json` 作为邻接清单。
-- 默认公开仓库使用 Gitee `https://gitee.com/GaoMengGu/PlugHub_Packages`；也可以在设置页的「仓库」中配置 GitHub 或 Gitee 的公开/私有仓库，私有仓库填写 `apiKey`；浏览仓库后通过搜索、状态、来源、分类/标签筛选和行内按钮选择插件安装到 `packages`。同一个 `package.json` 中的多个 module 会显示为多个插件行，安装时由 PlugHub 拆成单插件本地包。
-- 浏览仓库通过 HTTP archive 下载并刷新本地仓库缓存，普通用户不需要安装 Git；安装只复制选中插件的单模块清单和引用文件，不复制整个仓库。
-- 如果 Revit 正在占用已加载 DLL，更新和卸载会先移除本地 `package.json` 中的模块声明，并写入待处理操作；下次启动 PlugHub 会在模块发现前删除或替换文件。
-- Revit 启动时不会拉取仓库，也不会直接从仓库缓存加载插件包。
+- 给不同项目或团队整理一套稳定的插件工具栏。
+- 只安装当前需要的插件，减少 Ribbon 上的无关按钮。
+- 把插件来源集中到仓库源，避免手工到处复制 DLL。
+- 在更新框架时尽量只替换框架 DLL，不覆盖本地插件和配置。
 
-## 验证
+## 安装
 
-当前非 Revit 环境只做 C# 静态验证：
-
-```powershell
-dotnet run --project src\PlugHub.StaticValidation\PlugHub.StaticValidation.csproj
-```
-
-静态验证不能替代 Windows + Revit 2020 实机测试。
-
-仓库中的 `docs/` 目录作为本地协作资料目录处理，后续提交默认忽略其中内容；公开使用说明和静态验证约束以本 README、源码、配置、脚本和 workflow 为准。
-
-## Revit 2020 构建
-
-本地构建默认引用本机 Revit 安装目录中的 API DLL：
-
-```powershell
-.\scripts\build-revit2020.ps1 -RevitApiDir "D:\Program Files\Autodesk\Revit 2020"
-```
-
-输出目录：
+推荐使用发布页中的安装程序：
 
 ```text
-dist\Revit2020
+PlugHub-Setup-<版本号>.exe
 ```
 
-如需安装 addin manifest：
-
-```powershell
-.\scripts\build-revit2020.ps1 -RevitApiDir "D:\Program Files\Autodesk\Revit 2020" -InstallAddin
-```
-
-只需要验证编译、不需要刷新 `dist\Revit2020` 时，可以关闭 staging：
-
-```powershell
-dotnet build src\PlugHub.Revit2020\PlugHub.Revit2020.csproj /p:RevitApiReferenceMode=NuGet /p:StagePlugHubOutput=false
-```
-
-Ribbon 结构、图标和按钮大小变更后需要重启 Revit。布局页是唯一的 Ribbon 布局入口，布局画布会阻止同一个 featureId 重复添加。Ribbon 容器规则固定为：Panel 可放 PushButton、PulldownButton、SplitButton 和 Stack；Stack 不能嵌套 Stack，且只能放 2-3 个 PushButton、PulldownButton 或 SplitButton；PulldownButton 和 SplitButton 只能包含 PushButton。
-
-## 安装包
-
-发布 `V*` tag 后，GitHub Release 会同时生成：
-
-- `PlugHub-Revit2020-<tag>.zip`：手动部署包。
-- `PlugHub-Setup-<tag>.exe`：安装程序，默认安装目录为 `D:\Program Files\PlugHub`，用户可以手动选择其他目录，安装后会在安装目录写入 `PlugHub-Uninstall.exe`。
-- `PlugHub-Revit2020-<tag>.zip.sigstore.json` 和 `PlugHub-Setup-<tag>.exe.sigstore.json`：zip 与 exe 的 cosign 签名 bundle；不发布单个 DLL 的签名 JSON。
-
-安装程序会复制 PlugHub 文件，自动把 `PlugHub.addin` 中的 DLL 地址改为安装目录下的 `PlugHub.Revit2020.dll` 绝对路径，并复制 addin 到机器级 Revit 2020 插件目录：
+安装程序会复制 PlugHub 文件，写入 addin，并把 Revit 2020 的插件入口注册到：
 
 ```text
 C:\ProgramData\Autodesk\Revit\Addins\2020\PlugHub.addin
 ```
 
-发布 workflow 使用 NuGet 编译引用，不需要把 `RevitAPI.dll` 或 `RevitAPIUI.dll` 放入仓库。GitHub 使用 `.github\workflows\release.yml` 作为唯一发布入口：每次 `main` 推送后自动创建下一个 patch 版本 tag，例如 `V1.4.6` 后创建 `V1.4.7`；只有需要指定版本号时，才手动触发该 workflow 并填写 `version`。本地直接推送 `V*` tag 时，release workflow 按该 tag 发布。每次 release 会根据上一个 `V*` tag 之后的提交生成简要更新信息，并写入 GitHub/Gitee release 正文。release 构建会把 `V*` tag 写入框架 DLL 的 informational version，「关于」页签和框架更新检查都以该版本为准。`.github\workflows\sync-gitee.yml` 只负责把 `main` 和 `V*` tag 按 GitHub 当前 ref 强制镜像到 Gitee；GitHub release 发布完成后，`.github\workflows\release.yml` 会等待 Gitee tag 可见，再使用 `GITEE_TOKEN` 调用 Gitee API 创建 release，并上传与 GitHub release 同名的 zip、exe 以及 zip/exe 签名 JSON 资产。不再使用 Gitee Go `.workflow` 流水线，也不需要配置 Gitee Windows agent 或 `PLUGHUB_WINDOWS_HOST_GROUP_ID`。正常发布只需要本地推送 GitHub，不需要从本机直推 Gitee tag。
+默认安装目录是：
 
-Revit API 引用通过 NuGet 仅用于 CI 编译；本地和实机验收仍以真实 Revit 安装目录为准。签名脚本支持 self-signed、signtool、Thumbprint、SHA256 时间戳签名；公开分发前可评估 SignPath Foundation 或其他可信签名方案。Release workflow 使用 cosign keyless blob signing。
+```text
+D:\Program Files\PlugHub
+```
 
-## 框架更新
+安装完成后，目录中会包含 `PlugHub-Uninstall.exe`，可用于卸载 PlugHub。
 
-设置窗口的「关于」页签左上角显示 `PlugHub` 和当前框架版本，版本后方提供一个检查更新小图标。
+### 文件夹权限
 
-- 检查更新图标：优先查询 Gitee tags/release 下载源，GitHub latest release 作为回退，定位 `PlugHub-Revit2020-<tag>.zip`；已是最新版本时只在左下角提示结果。
-- 发现新版本后会自动弹出目标版本号和 release 更新信息；确认后按 Gitee、GitHub 顺序尝试下载更新包并启动静默 updater，左下角提示需要重启 Revit；关闭弹窗则退出更新。
+如果安装或更新时遇到文件夹权限问题，优先按下面方式处理：
 
-框架更新只覆盖框架 DLL，不覆盖 `PlugHub.addin`、`packages`、`config`、缓存和日志。当前 Revit 会话不会热替换已加载 DLL；关闭并重新打开 Revit 后，新框架 DLL 才会生效。
+1. 右键安装程序，选择「以管理员身份运行」。
+2. 如果公司电脑不允许写入 `D:\Program Files\PlugHub`，在安装器中选择一个你有写入权限的目录，例如 `D:\PlugHub` 或 IT 已授权的共享软件目录。
+3. 不要把 PlugHub 安装到会被自动清理、同步冲突或权限收回的目录，例如临时目录、桌面同步目录、网盘缓存目录。
+4. 如果无法写入 `C:\ProgramData\Autodesk\Revit\Addins\2020`，需要管理员或 IT 帮你完成一次 addin 注册。注册成功后，日常使用 Revit 不需要管理员权限。
+5. 安装后不要手动移动 PlugHub 文件夹；如果必须换目录，请重新运行安装程序，让 addin 路径同步更新。
 
-## 插件开发要点
+## 更新
 
-插件包使用 `package.json` 描述模块和功能；功能命令实现 Revit `IExternalCommand`，框架层只负责发现、路由和状态提示，不实现具体业务操作。
+打开 Revit 后，进入 `PlugHub` 页签，打开设置窗口，再进入「关于」页签。
 
-运行时硬性要求包括：插件包必须声明可识别的模块、功能、命令类型和目标 DLL；推荐字段包括 `description`、`category`、`tags`、`revitVersions`、`frameworkVersionRange`、`sha256` 和 `signature`。不再建议把用户 Ribbon 布局写进插件包清单；插件包清单只声明功能，用户布局由设置页保存。
+- 左上角会显示 `PlugHub` 和当前框架版本。
+- 版本后方有一个检查更新小图标。
+- 点击后，如果已是最新版本，只在窗口左下角提示结果。
+- 如果发现新版本，会自动弹出目标版本号和 release 更新信息。
+- 点击确认后，PlugHub 会下载更新包并启动静默更新程序；关闭弹窗则退出更新。
 
-仓库凭据使用 DPAPI 保护。PlugHub.Contracts 当前多目标到 `net48;netstandard2.1`，为未来适配层共享契约；PlugHub.Framework 仍保持 net48，因为配置、仓库和设置写回边界仍依赖 `System.Web.Script.Serialization`。V1.2 之后的架构硬化以配置、仓库、路由和静态验证为边界。
+框架更新只覆盖框架 DLL，不覆盖这些内容：
 
-Revit 2025+ ALC 需要单独 net8 适配层、.NET SDK 8、Revit 2025 API 引用和 `AlcLoadRules` 共享程序集边界；当前仓库不声明 Revit 2025 实机支持，也不能声明 Revit 实机测试成功。
+- `PlugHub.addin`
+- `packages`
+- `config`
+- 仓库缓存
+- 日志
+
+当前 Revit 会话不会热替换已加载 DLL。确认更新后，左下角会提示需要重启 Revit；关闭并重新打开 Revit 后，新框架 DLL 才会生效。
+
+## 布局设置
+
+布局设置用于调整 `PlugHub` Ribbon 页签中的按钮位置和显示方式。
+
+常见操作：
+
+- 打开设置窗口，进入「布局」页签。
+- 在可用功能列表中选择插件功能。
+- 将功能拖拽到目标分组或面板中。
+- 选中已有按钮后，可以修改显示名、分组、按钮大小和图标。
+- 常规按钮被选中时会高亮；下拉按钮、拆分按钮等控件也会显示选中状态。
+- 保存配置后，涉及 Ribbon 结构的变化需要重启 Revit 后生效。
+
+布局建议：
+
+- 高频命令放在靠左或靠前的位置。
+- 同一专业或同一流程的功能放在同一分组。
+- 小按钮适合辅助命令，大按钮适合主流程命令。
+- 不确定的功能先放到临时分组，确认稳定后再整理到正式布局。
+
+## 仓库源
+
+仓库源用于告诉 PlugHub 从哪里同步可安装插件。默认公开仓库源使用 Gitee：
+
+```text
+https://gitee.com/GaoMengGu/PlugHub_Packages
+```
+
+设置方法：
+
+1. 打开设置窗口，进入「仓库源」或「仓库」相关页面。
+2. 新增或编辑仓库源，填写名称、地址和分支。
+3. 私有仓库需要填写 Token；公开仓库通常不需要。
+4. 保存后点击「同步仓库源」。
+5. 同步完成后，在插件列表中筛选、搜索并安装插件。
+
+PlugHub 通过 HTTP archive 同步仓库源，普通建模用户不需要安装 Git。同步失败时，优先检查网络、仓库地址、分支名称和 Token 权限。
+
+## 插件安装
+
+插件安装有两种常见方式。
+
+### 从仓库源安装
+
+推荐方式：
+
+1. 先同步仓库源。
+2. 在插件列表中搜索插件名称、分类或标签。
+3. 点击插件卡片或行内按钮中的「安装插件」。
+4. 安装后保存配置。
+5. 如果提示需要重启 Revit，关闭并重新打开 Revit。
+
+安装后的插件会进入本机 `packages` 目录。后续更新或卸载也在同一设置窗口中操作。
+
+### 手动放入 packages
+
+如果插件包由团队内部直接提供，也可以手动放入安装目录下的 `packages` 文件夹。手动安装后需要重新打开 Revit，或在设置窗口中重新加载配置。
+
+注意：
+
+- 不要在 Revit 正在运行时强行替换已加载 DLL。
+- 如果更新或卸载提示需要重启，先关闭 Revit，再重新打开。
+- 不要删除 `config`，它保存了你的布局、仓库源和启用状态。
+
+## 常见问题
+
+### 安装后 Revit 中没有 PlugHub 页签
+
+检查 `C:\ProgramData\Autodesk\Revit\Addins\2020\PlugHub.addin` 是否存在。不存在时，重新以管理员身份运行安装程序，或让 IT 帮你写入该文件。
+
+### 更新后版本没有变化
+
+确认 Revit 已完全关闭后再重新打开。框架 DLL 只有在 Revit 退出后才能被静默更新程序覆盖。
+
+### 仓库源同步失败
+
+检查仓库地址、分支名称、网络访问和 Token。公司电脑无法访问 GitHub 时，优先使用 Gitee 仓库源。
+
+### 插件安装后没有显示按钮
+
+检查插件是否已启用、功能是否被加入布局、配置是否已保存。涉及 Ribbon 结构的变化需要重启 Revit。
+
+### 公司电脑不允许安装到 Program Files
+
+选择一个你有写入权限的安装目录，例如 `D:\PlugHub`。如果 addin 注册目录也没有权限，需要管理员完成 `C:\ProgramData\Autodesk\Revit\Addins\2020\PlugHub.addin` 的写入。
+
+## 适用范围
+
+当前说明面向 Revit 2020 用户。非 Revit 环境只能做本地静态验证，不代表已经完成 Revit 现场验收。
 
 ## 许可
 

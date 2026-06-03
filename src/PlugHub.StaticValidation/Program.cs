@@ -298,19 +298,14 @@ namespace PlugHub.StaticValidation
             Require(ignore.Contains("docs/"), "docs directory must be ignored for future commits.");
             Require(!readme.Contains("[docs/README.md]"), "root README must not point users at ignored docs content.");
             Require(!readme.Contains("D:\\AI\\code\\PlugHub_Modules"), "root README must not expose local external module paths.");
-            Require(readme.Contains("package.json"), "README must describe package.json.");
-            Require(readme.Contains("IExternalCommand"), "README must describe IExternalCommand integration.");
-            Require(readme.Contains("运行时硬性要求"), "README must separate runtime package manifest requirements from recommendations.");
-            Require(readme.Contains("推荐字段"), "README must document recommended package manifest fields.");
-            Require(readme.Contains("不再建议"), "README must document obsolete or no-longer-recommended package manifest fields.");
-            Require(readme.Contains("StagePlugHubOutput=false"), "README must document staging opt-out.");
-            Require(readme.Contains("DPAPI"), "README must document credential protection.");
-            Require(readme.Contains("V1.2"), "README must mention V1.2 architecture hardening.");
-            Require(readme.Contains("布局页") && readme.Contains("PulldownButton") && readme.Contains("SplitButton"), "README must describe advanced Ribbon layout controls.");
-            Require(readme.Contains("同一个 featureId") && readme.Contains("重复添加"), "README must state each feature can appear only once in a layout.");
-            Require(readme.Contains("Stack 不能嵌套 Stack") && readme.Contains("PulldownButton 和 SplitButton 只能包含 PushButton"), "README must state Revit Ribbon containment rules.");
-            Require(readme.Contains("Ribbon 结构") && readme.Contains("重启 Revit"), "README must state Ribbon layout changes require Revit restart.");
-            Require(readme.Contains("插件包清单只声明功能"), "README must keep package manifests separate from user Ribbon layout.");
+            Require(readme.Contains("面向建模用户") && readme.Contains("框架概览") && readme.Contains("能做什么"), "root README must introduce PlugHub for modeling users.");
+            Require(readme.Contains("安装") && readme.Contains("文件夹权限") && readme.Contains(@"D:\Program Files\PlugHub"), "root README must document installation and folder permission guidance.");
+            Require(readme.Contains("更新") && readme.Contains("检查更新小图标") && readme.Contains("只覆盖框架 DLL"), "root README must document framework update behavior.");
+            Require(readme.Contains("布局设置") && readme.Contains("拖拽") && readme.Contains("重启 Revit"), "root README must document how users change Ribbon layout.");
+            Require(readme.Contains("仓库源") && readme.Contains("同步仓库源") && readme.Contains("不需要安装 Git"), "root README must document repository source setup for users.");
+            Require(readme.Contains("插件安装") && readme.Contains("安装插件") && readme.Contains("packages"), "root README must document plugin installation for users.");
+            Require(!readme.Contains("IExternalCommand") && !readme.Contains("StagePlugHubOutput=false") && !readme.Contains("release.yml"), "root README must not include developer or release automation instructions.");
+            Require(!readme.Contains("PlugHub.Contracts") && !readme.Contains("System.Web.Script.Serialization") && !readme.Contains("Revit 2025+ ALC"), "root README must not expose framework development internals.");
         }
 
         private static void ValidateLayering()
@@ -430,7 +425,7 @@ namespace PlugHub.StaticValidation
             Require(contractsProject.Contains("<TargetFrameworks>net48;netstandard2.1</TargetFrameworks>"), "PlugHub.Contracts must target net48 and netstandard2.1 for future net8 adapters.");
             Require(!ReadAllCSharp("src/PlugHub.Contracts").Contains("System.Web"), "PlugHub.Contracts must stay free of net48-only System.Web dependencies.");
             Require(frameworkProject.Contains("<TargetFramework>net48</TargetFramework>") && frameworkProject.Contains("System.Web.Extensions"), "PlugHub.Framework remains net48 until its JSON serializer boundary is replaced.");
-            Require(readme.Contains("PlugHub.Contracts") && readme.Contains("netstandard2.1") && readme.Contains("System.Web.Script.Serialization"), "README must describe the Contracts multi-target boundary and Framework blocker.");
+            Require(!readme.Contains("netstandard2.1") && !readme.Contains("System.Web.Script.Serialization"), "root README must not document framework development internals.");
         }
 
         private static void ValidatePackageManifestSchemaAndCompatibility()
@@ -871,8 +866,7 @@ namespace PlugHub.StaticValidation
 
             Require(!revitText.Contains("AssemblyLoadContext"), "Revit 2020 adapter must not use AssemblyLoadContext.");
             Require(!revitText.Contains("AssemblyDependencyResolver"), "Revit 2020 adapter must not use AssemblyDependencyResolver.");
-            Require(readme.Contains("Revit 2025+ ALC") && readme.Contains("AlcLoadRules"), "README must describe the Revit 2025+ ALC readiness boundary.");
-            Require(readme.Contains(".NET SDK 8") && readme.Contains("不声明 Revit 2025 实机支持"), "README must state the local Revit 2025+ ALC prerequisites and non-support boundary.");
+            Require(readme.Contains("Revit 2020") && !readme.Contains("Revit 2025+ ALC") && !readme.Contains("AlcLoadRules"), "root README must stay focused on Revit 2020 user guidance.");
         }
 
         private static void ValidateManifestAuthoritativeDiscoverySpecification()
@@ -2320,7 +2314,7 @@ namespace PlugHub.StaticValidation
             Require(addinWriter.Contains("PlugHub.Revit2020.dll") && addinWriter.Contains("Assembly") && addinWriter.Contains("Backup"), "installer must rewrite addin Assembly to the installed DLL path and backup existing manifests.");
             Require(workflow.Contains("Build PlugHub installer") && workflow.Contains("-t:Rebuild") && workflow.Contains("InstallerPayloadZip") && workflow.Contains("PlugHub-Setup-$tag.exe"), "release workflow must rebuild and upload PlugHub installer EXE.");
             Require(readme.Contains("PlugHub-Setup") && readme.Contains(@"D:\Program Files\PlugHub"), "README must document the installer EXE and default install directory.");
-            Require(readme.Contains("PlugHub-Setup") && readme.Contains("复制 addin") && readme.Contains("Revit 2020"), "README must document release installer behavior.");
+            Require(readme.Contains("PlugHub-Setup") && readme.Contains("写入 addin") && readme.Contains("Revit 2020"), "README must document release installer behavior.");
         }
 
         private static void ValidateGiteeReleaseMirrorPackaging()
@@ -2464,7 +2458,7 @@ namespace PlugHub.StaticValidation
             Require(buildScript.Contains("PlugHub.Updater.csproj") && buildScript.Contains("PlugHub.Updater.exe"), "local Revit 2020 build script must stage PlugHub.Updater.exe.");
             Require(buildScript.Contains("Resolve-PlugHubReleaseVersion") && buildScript.Contains("/p:PlugHubVersion=$($PlugHubReleaseVersion.Version)") && buildScript.Contains("/p:PlugHubReleaseTag=$($PlugHubReleaseVersion.ReleaseTag)"), "local and release builds must stamp PlugHub DLLs with the release tag version.");
             Require(readme.Contains("检查更新小图标") && readme.Contains("自动弹出目标版本号") && readme.Contains("只覆盖框架 DLL"), "README must document framework auto-update behavior.");
-            Require(readme.Contains("已是最新版本") && readme.Contains("关闭弹窗则退出更新") && readme.Contains("不能声明 Revit 实机测试成功"), "README must document updater verification boundaries.");
+            Require(readme.Contains("已是最新版本") && readme.Contains("关闭弹窗则退出更新") && !readme.Contains("Revit 实机测试成功"), "README must document updater behavior without claiming Revit real-machine validation.");
 
             ValidateReleaseClientParsesUpdatePackageAndNotes();
             ValidateFrameworkUpdatePackageRejectsUnsafeZip();
@@ -2536,24 +2530,22 @@ namespace PlugHub.StaticValidation
             Require(releaseWorkflow.Contains("Generate release notes") && releaseWorkflow.Contains("body_path: PlugHub-ReleaseNotes-${{ env.PLUGHUB_RELEASE_TAG }}.md"), "GitHub release workflow must publish concise release notes.");
             Require(releaseWorkflow.Contains("sync-gitee.yml/dispatches"), "release workflow must dispatch Gitee sync after creating a tag.");
             Require(syncWorkflow.Contains("workflow_dispatch"), "Gitee sync workflow must support explicit dispatch from release.yml.");
-            Require(readme.Contains("release.yml") && readme.Contains("每次 `main` 推送") && readme.Contains("version"), "README must document release.yml automatic patch versioning and manual explicit version override.");
+            Require(!readme.Contains("release.yml") && !readme.Contains("workflow_dispatch") && !readme.Contains("每次 `main` 推送"), "root README must not document release automation.");
         }
 
         private static void ValidateSigningGuidance()
         {
-            var signingDoc = ReadText("README.md");
             var signingScript = ReadText("scripts/sign-revit2020.ps1");
             var workflow = ReadText(".github/workflows/release.yml");
 
-            foreach (var token in new[] { "SignPath Foundation", "self-signed", "signtool", "Thumbprint" })
+            foreach (var token in new[] { "self-signed", "signtool", "Thumbprint" })
             {
-                Require(signingDoc.Contains(token) || signingScript.Contains(token), "signing guidance must mention: " + token);
+                Require(signingScript.Contains(token), "signing guidance must mention: " + token);
             }
 
             Require(signingScript.Contains("signtool") && signingScript.Contains("/fd SHA256") && signingScript.Contains("/tr"), "signing script must use Authenticode SHA256 signing with timestamp support.");
             Require(workflow.Contains("push:") && workflow.Contains("tags:") && workflow.Contains("\"V*\"") && workflow.Contains("workflow_dispatch"), "release workflow must run for version tag pushes and explicit dispatch.");
             Require(workflow.Contains("sigstore/cosign-installer") && workflow.Contains("cosign sign-blob") && workflow.Contains("id-token: write"), "release workflow must use keyless cosign blob signing.");
-            Require(signingDoc.Contains("Revit API 引用通过 NuGet 仅用于 CI 编译"), "README must document the NuGet-only CI Revit API reference strategy.");
         }
 
         private static void ValidateRevitDeploymentConfiguration()
