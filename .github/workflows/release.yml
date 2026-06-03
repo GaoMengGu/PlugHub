@@ -263,6 +263,14 @@ jobs:
         env:
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
         run: |
+          function New-FormBody {
+            param([hashtable]$Fields)
+
+            return ($Fields.GetEnumerator() | ForEach-Object {
+              "$([Uri]::EscapeDataString($_.Key))=$([Uri]::EscapeDataString([string]$_.Value))"
+            }) -join "&"
+          }
+
           if ([string]::IsNullOrWhiteSpace($env:GITEE_TOKEN)) {
             throw "GITEE_TOKEN is required to publish the Gitee release."
           }
@@ -289,7 +297,7 @@ jobs:
           $release = $null
 
           try {
-            $release = Invoke-RestMethod -Method Post -Uri $releaseBaseUri -Body @{
+            $createBody = New-FormBody @{
               access_token = $env:GITEE_TOKEN
               tag_name = $tag
               target_commitish = "main"
@@ -297,6 +305,7 @@ jobs:
               body = $releaseBody
               prerelease = "false"
             }
+            $release = Invoke-RestMethod -Method Post -Uri $releaseBaseUri -ContentType "application/x-www-form-urlencoded; charset=utf-8" -Body $createBody
           }
           catch {
             $release = Invoke-RestMethod -Method Get -Uri "$releaseBaseUri/tags/$escapedTag?access_token=$escapedToken"

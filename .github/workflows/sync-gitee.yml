@@ -63,11 +63,11 @@ jobs:
           git remote add gitee git@gitee.com:GaoMengGu/PlugHub.git
           case "$GITHUB_REF" in
             refs/heads/main)
-              git push gitee HEAD:main
+              git push gitee +HEAD:main
               ;;
             refs/tags/V*)
               tag="${GITHUB_REF#refs/tags/}"
-              git push gitee "refs/tags/$tag:refs/tags/$tag"
+              git push gitee "+refs/tags/$tag:refs/tags/$tag"
               ;;
             *)
               echo "Skipping unsupported ref: $GITHUB_REF"

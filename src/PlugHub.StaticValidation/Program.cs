@@ -1553,8 +1553,8 @@ namespace PlugHub.StaticValidation
             Require(giteeWorkflow.Contains("workflow_dispatch"), "Gitee sync workflow must support manual dispatch.");
             Require(giteeWorkflow.Contains("GITEE_PRIVATE_KEY") && giteeWorkflow.Contains("GITEE_USER"), "Gitee sync workflow must validate configured Gitee SSH secrets.");
             Require(!giteeWorkflow.Contains("GITEE_TOKEN"), "Gitee sync workflow must not require the release API token; release.yml owns Gitee release publishing.");
-            Require(giteeWorkflow.Contains("git@gitee.com:GaoMengGu/PlugHub.git") && giteeWorkflow.Contains("git push gitee HEAD:main"), "Gitee sync workflow must push main to GaoMengGu/PlugHub on Gitee.");
-            Require(giteeWorkflow.Contains("refs/tags/") && giteeWorkflow.Contains("git push gitee \"refs/tags/$tag:refs/tags/$tag\""), "Gitee sync workflow must push GitHub release tags to Gitee before release.yml mirrors release assets.");
+            Require(giteeWorkflow.Contains("git@gitee.com:GaoMengGu/PlugHub.git") && giteeWorkflow.Contains("git push gitee +HEAD:main"), "Gitee sync workflow must mirror main to GaoMengGu/PlugHub on Gitee with GitHub as source of truth.");
+            Require(giteeWorkflow.Contains("refs/tags/") && giteeWorkflow.Contains("git push gitee \"+refs/tags/$tag:refs/tags/$tag\""), "Gitee sync workflow must mirror GitHub release tags to Gitee before release.yml mirrors release assets.");
             Require(buildScript.Contains("[switch]$UseRelativeAddinAssembly") && buildScript.Contains("PlugHub.Revit2020.dll"), "build script must support relative release addin assembly paths.");
             Require(workflow.Contains("*.pdb") && workflow.Contains("*.sigstore.json") && !workflow.Contains("Compress-Archive -Path \"dist\\Revit2020\\*\""), "release zip must exclude pdb and sigstore files.");
 
@@ -2333,6 +2333,7 @@ namespace PlugHub.StaticValidation
             Require(releaseWorkflow.Contains("Wait for Gitee tag") && releaseWorkflow.Contains("git ls-remote https://gitee.com/GaoMengGu/PlugHub.git \"refs/tags/$tag\""), "GitHub release workflow must wait until the tag exists on Gitee before creating a Gitee release.");
             Require(releaseWorkflow.Contains("GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}") && releaseWorkflow.Contains("GITEE_TOKEN is required"), "GitHub release workflow must use the Gitee API token for release publishing.");
             Require(releaseWorkflow.Contains("api/v5/repos/GaoMengGu/PlugHub/releases") && releaseWorkflow.Contains("target_commitish = \"main\""), "GitHub release workflow must create or resolve GaoMengGu/PlugHub Gitee releases through the API.");
+            Require(releaseWorkflow.Contains("New-FormBody") && releaseWorkflow.Contains("application/x-www-form-urlencoded; charset=utf-8"), "GitHub release workflow must submit Gitee release metadata as explicit UTF-8 form data.");
             Require(releaseWorkflow.Contains("attach_files") && releaseWorkflow.Contains("curl.exe -sS -f"), "GitHub release workflow must upload Gitee release attachments and fail on HTTP upload errors.");
 
             foreach (var asset in new[]
