@@ -10,7 +10,7 @@ namespace PlugHub.Framework.Packages
 {
     public sealed class PackageRepositoryService
     {
-        private const string DefaultModulesManifestName = "modules.json";
+        private const string DefaultPackageManifestName = "packages.json";
         private const string PackagesDirectoryName = "packages";
         private const string PendingOperationsFileName = "pending-operations.json";
 
@@ -193,7 +193,7 @@ namespace PlugHub.Framework.Packages
                     var operation = PendingPackageOperation.Delete(package.PackageId, moduleId, installDirectory);
                     operation.ManifestBackups = manifestBackups;
                     QueuePendingOperation(baseDirectory, operation);
-                    var queuedCleanupMessage = lockedCleanedManifests > 0 ? " 已先从 modules.json 移除插件声明。" : string.Empty;
+                    var queuedCleanupMessage = lockedCleanedManifests > 0 ? " 已先从 packages.json 移除插件声明。" : string.Empty;
                     return PackageRepositoryOperationResult.Succeeded("插件包已标记为待卸载。当前 DLL 正被 Revit 占用，请重启 Revit 后自动删除: " + package.PackageId + queuedCleanupMessage + " 占用文件: " + lockedFile);
                 }
 
@@ -273,7 +273,7 @@ namespace PlugHub.Framework.Packages
                     var operation = PendingPackageOperation.Update(package.PackageId, moduleId, installDirectory, stagingDirectory);
                     operation.ManifestBackups = manifestBackups;
                     QueuePendingOperation(baseDirectory, operation);
-                    var lockedCleanupMessage = lockedCleanedManifests > 0 ? " 已先从 modules.json 移除旧插件声明。" : string.Empty;
+                    var lockedCleanupMessage = lockedCleanedManifests > 0 ? " 已先从 packages.json 移除旧插件声明。" : string.Empty;
                     return PackageRepositoryOperationResult.Succeeded("插件包已标记为待更新。当前 DLL 正被 Revit 占用，请重启 Revit 后自动替换: " + package.PackageId + lockedCleanupMessage + " 占用文件: " + lockedFile);
                 }
 
@@ -363,14 +363,14 @@ namespace PlugHub.Framework.Packages
             if (string.IsNullOrWhiteSpace(moduleId)) return false;
             var installRoot = InstalledPackagesRoot(baseDirectory);
             return InstalledManifestsContainingModule(installRoot, moduleId).Any()
-                || ManifestContainsModule(Path.Combine(installDirectory, DefaultModulesManifestName), moduleId);
+                || ManifestContainsModule(Path.Combine(installDirectory, DefaultPackageManifestName), moduleId);
         }
 
         private string InstalledPackageVersion(string baseDirectory, string installDirectory, string moduleId)
         {
             if (string.IsNullOrWhiteSpace(moduleId)) return string.Empty;
 
-            var preferredManifest = Path.Combine(installDirectory, DefaultModulesManifestName);
+            var preferredManifest = Path.Combine(installDirectory, DefaultPackageManifestName);
             if (TryReadManifest(preferredManifest, out var root, out var modules)
                 && ManifestContainsModule(modules, moduleId))
             {

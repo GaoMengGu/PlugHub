@@ -10,7 +10,7 @@ namespace PlugHub.Framework.Packages
 {
     public sealed class PackageInstallService
     {
-        private const string DefaultModulesManifestName = "modules.json";
+        private const string DefaultPackageManifestName = "packages.json";
 
         private readonly JavaScriptSerializer _serializer = new JavaScriptSerializer();
         private readonly PackageManifestReader _manifestReader;
@@ -32,7 +32,7 @@ namespace PlugHub.Framework.Packages
         {
             if (!_manifestReader.TryReadManifest(package.ManifestPath, out var root, out var modules))
             {
-                return PackageRepositoryOperationResult.Failed("Modules manifest could not be read: " + package.ManifestPath);
+                return PackageRepositoryOperationResult.Failed("Packages manifest could not be read: " + package.ManifestPath);
             }
 
             var module = _manifestReader.FindModule(modules, package);
@@ -48,7 +48,7 @@ namespace PlugHub.Framework.Packages
             }
 
             Directory.CreateDirectory(installDirectory);
-            WriteSingleModuleManifest(root, moduleObject, Path.Combine(installDirectory, DefaultModulesManifestName));
+            WriteSingleModuleManifest(root, moduleObject, Path.Combine(installDirectory, DefaultPackageManifestName));
             foreach (var relativePath in PayloadPaths(module))
             {
                 if (!CopyPayloadFile(package.SourceDirectory, installDirectory, relativePath, out var error))

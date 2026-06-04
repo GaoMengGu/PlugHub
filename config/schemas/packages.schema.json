@@ -18,6 +18,7 @@
         "properties": {
           "id": { "type": "string" },
           "version": { "type": "string" },
+          "author": { "type": "string" },
           "assembly": { "type": "string" },
           "displayName": { "type": "string" },
           "description": { "type": "string" },

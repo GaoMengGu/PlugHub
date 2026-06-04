@@ -140,7 +140,6 @@ $StaleOutputPaths = @(
     (Join-Path $OutputDir ($RemovedModuleName + ".pdb")),
     (Join-Path $OutputDir "PlugHub.BuiltinModule.dll"),
     (Join-Path $OutputDir "PlugHub.BuiltinModule.pdb"),
-    (Join-Path $OutputDir "config\modules.json"),
     (Join-Path $OutputDir "config\plugin-sources.json"),
     (Join-Path $OutputDir ("packages\" + "dropins")),
     (Join-Path $OutputDir ("packages\" + "github")),

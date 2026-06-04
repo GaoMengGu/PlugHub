@@ -10,8 +10,8 @@ namespace PlugHub.Framework.Sources
 {
     public sealed class ModuleSourceResolver
     {
-        private const string DefaultModulesManifestName = "modules.json";
-        private const string AdjacentModulesManifestPattern = "*.modules.json";
+        private const string DefaultPackageManifestName = "packages.json";
+        private const string AdjacentPackageManifestPattern = "*.packages.json";
 
         private readonly JavaScriptSerializer _serializer = new JavaScriptSerializer();
 
@@ -77,14 +77,14 @@ namespace PlugHub.Framework.Sources
 
         private static IEnumerable<string> FindModuleManifests(string sourceDirectory)
         {
-            var rootManifest = Path.Combine(sourceDirectory, DefaultModulesManifestName);
+            var rootManifest = Path.Combine(sourceDirectory, DefaultPackageManifestName);
             if (File.Exists(rootManifest))
             {
                 yield return rootManifest;
             }
 
-            var manifests = Directory.GetFiles(sourceDirectory, DefaultModulesManifestName, SearchOption.AllDirectories)
-                .Concat(Directory.GetFiles(sourceDirectory, AdjacentModulesManifestPattern, SearchOption.AllDirectories))
+            var manifests = Directory.GetFiles(sourceDirectory, DefaultPackageManifestName, SearchOption.AllDirectories)
+                .Concat(Directory.GetFiles(sourceDirectory, AdjacentPackageManifestPattern, SearchOption.AllDirectories))
                 .Where(path => !string.Equals(path, rootManifest, StringComparison.OrdinalIgnoreCase))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(path => path, StringComparer.OrdinalIgnoreCase);
@@ -97,7 +97,7 @@ namespace PlugHub.Framework.Sources
 
         private bool AddModulesFromManifest(ModuleSourceConfiguration source, string sourceDirectory, ModulesConfiguration resolved, ICollection<DiagnosticMessage> diagnostics, bool ignoreNonPlugHubManifest = false)
         {
-            var manifestPath = Path.Combine(sourceDirectory, string.IsNullOrWhiteSpace(source.ManifestPath) ? DefaultModulesManifestName : source.ManifestPath);
+            var manifestPath = Path.Combine(sourceDirectory, string.IsNullOrWhiteSpace(source.ManifestPath) ? DefaultPackageManifestName : source.ManifestPath);
             if (!File.Exists(manifestPath))
             {
                 AddSourceDiagnostic(diagnostics, source.Id, "PH-SOURCE-MANIFEST", "Module source manifest was not found: " + manifestPath);
@@ -143,7 +143,7 @@ namespace PlugHub.Framework.Sources
             var root = _serializer.Deserialize<Dictionary<string, object>>(text);
             if (root == null || !ContainsKey(root, "schemaVersion") || !ContainsKey(root, "modules"))
             {
-                error = "Manifest is not a PlugHub modules manifest: " + manifestPath;
+                error = "Manifest is not a PlugHub packages manifest: " + manifestPath;
                 return false;
             }
 

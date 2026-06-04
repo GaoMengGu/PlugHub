@@ -5,7 +5,7 @@ namespace PlugHub.Revit2020.Settings.Rows
 {
     internal sealed class RepositoryRow
     {
-        private const string DefaultPackageManifestName = "modules.json";
+        private const string DefaultPackageManifestName = "packages.json";
         private const string DefaultRepositoryProvider = "gitee";
 
         public string Id { get; set; } = string.Empty;

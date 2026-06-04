@@ -11,7 +11,7 @@
       "visibility": "public",
       "repository": "https://gitee.com/GaoMengGu/PlugHub_Packages",
       "ref": "main",
-      "manifestPath": "modules.json",
+      "manifestPath": "packages.json",
       "apiKey": "",
       "enabled": true
     },
@@ -21,7 +21,7 @@
       "visibility": "private",
       "repository": "https://gitee.com/your-gitee-org/private-plughub-packages",
       "ref": "master",
-      "manifestPath": "modules.json",
+      "manifestPath": "packages.json",
       "apiKey": "",
       "enabled": false
     },
@@ -31,7 +31,7 @@
       "visibility": "public",
       "repository": "GaoMengGu/PlugHub_Packages",
       "ref": "main",
-      "manifestPath": "modules.json",
+      "manifestPath": "packages.json",
       "apiKey": "",
       "enabled": false
     },
@@ -41,7 +41,7 @@
       "visibility": "private",
       "repository": "your-org/private-plughub-packages",
       "ref": "main",
-      "manifestPath": "modules.json",
+      "manifestPath": "packages.json",
       "apiKey": "",
       "enabled": false
     }

@@ -203,6 +203,7 @@ namespace PlugHub.Framework.Updates
                     throw new FileNotFoundException("PlugHub.Updater.exe 不存在。", updaterPath);
                 }
 
+                var temporaryUpdaterPath = CreateTemporaryUpdaterCopy(updaterPath);
                 var arguments = string.Join(" ", new[]
                 {
                     "/payloadZipBase64", ToBase64(packagePath),
@@ -213,7 +214,7 @@ namespace PlugHub.Framework.Updates
 
                 Process.Start(new ProcessStartInfo
                 {
-                    FileName = updaterPath,
+                    FileName = temporaryUpdaterPath,
                     Arguments = arguments,
                     UseShellExecute = false,
                     CreateNoWindow = true,
@@ -234,6 +235,15 @@ namespace PlugHub.Framework.Updates
                     Message = "启动框架更新失败：" + ex.Message
                 };
             }
+        }
+
+        private static string CreateTemporaryUpdaterCopy(string updaterPath)
+        {
+            var temporaryDirectory = Path.Combine(Path.GetTempPath(), "PlugHub", "updater", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(temporaryDirectory);
+            var temporaryUpdaterPath = Path.Combine(temporaryDirectory, Path.GetFileName(updaterPath));
+            File.Copy(updaterPath, temporaryUpdaterPath, true);
+            return temporaryUpdaterPath;
         }
 
         private static FrameworkUpdateCheckResult FailureCheck(string currentVersion, string message)

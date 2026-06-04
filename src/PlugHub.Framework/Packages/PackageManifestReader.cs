@@ -10,8 +10,8 @@ namespace PlugHub.Framework.Packages
 {
     public sealed class PackageManifestReader
     {
-        private const string DefaultModulesManifestName = "modules.json";
-        private const string AdjacentModulesManifestPattern = "*.modules.json";
+        private const string DefaultPackageManifestName = "packages.json";
+        private const string AdjacentPackageManifestPattern = "*.packages.json";
         private const string PackagesDirectoryName = "packages";
 
         private readonly JavaScriptSerializer _serializer = new JavaScriptSerializer();
@@ -68,14 +68,14 @@ namespace PlugHub.Framework.Packages
         {
             if (!Directory.Exists(sourceDirectory)) yield break;
 
-            var rootManifest = Path.Combine(sourceDirectory, DefaultModulesManifestName);
+            var rootManifest = Path.Combine(sourceDirectory, DefaultPackageManifestName);
             if (File.Exists(rootManifest))
             {
                 yield return rootManifest;
             }
 
-            var manifests = Directory.GetFiles(sourceDirectory, DefaultModulesManifestName, SearchOption.AllDirectories)
-                .Concat(Directory.GetFiles(sourceDirectory, AdjacentModulesManifestPattern, SearchOption.AllDirectories))
+            var manifests = Directory.GetFiles(sourceDirectory, DefaultPackageManifestName, SearchOption.AllDirectories)
+                .Concat(Directory.GetFiles(sourceDirectory, AdjacentPackageManifestPattern, SearchOption.AllDirectories))
                 .Where(path => !string.Equals(path, rootManifest, StringComparison.OrdinalIgnoreCase))
                 .Where(path => path.IndexOf(Path.DirectorySeparatorChar + ".git" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) < 0)
                 .Distinct(StringComparer.OrdinalIgnoreCase)

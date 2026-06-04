@@ -7,6 +7,7 @@ namespace PlugHub.Updater
 {
     internal sealed class FrameworkDllUpdater
     {
+        private const string InstalledUpdaterName = "PlugHub.Updater.exe";
         private const string InstalledUninstallerName = "PlugHub-Uninstall.exe";
 
         private readonly UpdaterLogger _logger;
@@ -86,6 +87,7 @@ namespace PlugHub.Updater
             }
 
             return string.Equals(Path.GetExtension(normalized), ".dll", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, InstalledUpdaterName, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalized, InstalledUninstallerName, StringComparison.OrdinalIgnoreCase);
         }
 

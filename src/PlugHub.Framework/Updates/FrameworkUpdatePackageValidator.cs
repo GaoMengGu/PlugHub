@@ -17,6 +17,7 @@ namespace PlugHub.Framework.Updates
 
         private static readonly string[] RequiredRootFiles =
         {
+            "PlugHub.Updater.exe",
             "PlugHub-Uninstall.exe"
         };
 

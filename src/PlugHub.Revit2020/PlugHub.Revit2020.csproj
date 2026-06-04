@@ -73,6 +73,6 @@
     <Copy SourceFiles="..\..\config\views.example.json" DestinationFiles="$(PlugHubOutputDir)\config\views.json" />
     <Copy SourceFiles="..\..\config\feature-combinations.example.json" DestinationFiles="$(PlugHubOutputDir)\config\feature-combinations.json" />
     <Copy SourceFiles="@(PlugHubSvgIcon)" DestinationFolder="$(PlugHubOutputDir)\Resources\Icons\" SkipUnchangedFiles="true" />
-    <WriteLinesToFile File="$(PlugHubOutputDir)\packages\README.md" Lines="Put installed plugin module folders with modules.json manifests here to let PlugHub discover them during startup." Overwrite="true" />
+    <WriteLinesToFile File="$(PlugHubOutputDir)\packages\README.md" Lines="Put installed plugin module folders with packages.json manifests here to let PlugHub discover them during startup." Overwrite="true" />
   </Target>
 </Project>

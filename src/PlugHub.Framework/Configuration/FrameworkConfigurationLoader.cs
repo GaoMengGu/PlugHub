@@ -190,6 +190,7 @@ namespace PlugHub.Framework.Configuration
             {
                 Id = module.Id,
                 Version = module.Version,
+                Author = module.Author,
                 Assembly = module.Assembly,
                 Type = module.Type,
                 Name = module.Name,
