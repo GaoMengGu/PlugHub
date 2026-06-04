@@ -10,8 +10,8 @@ namespace PlugHub.Revit2020.Settings
     internal sealed class SettingsConfigurationStore
     {
         private const string SourcesFileName = "sources.json";
-        private const string DefaultPackageManifestName = "package.json";
-        private const string AdjacentPackageManifestPattern = "*.package.json";
+        private const string DefaultModulesManifestName = "modules.json";
+        private const string AdjacentModulesManifestPattern = "*.modules.json";
 
         private readonly JavaScriptSerializer _serializer = new JavaScriptSerializer { MaxJsonLength = int.MaxValue, RecursionLimit = 128 };
 
@@ -136,7 +136,7 @@ namespace PlugHub.Revit2020.Settings
         {
             if (string.IsNullOrWhiteSpace(path) || modules == null) return;
             var fullPath = Path.GetFullPath(path);
-            if (!File.Exists(fullPath) && !IsPackageManifestFileName(Path.GetFileName(fullPath))) return;
+            if (!File.Exists(fullPath) && !IsModulesManifestFileName(Path.GetFileName(fullPath))) return;
             if (!seenPaths.Add(fullPath)) return;
             documents.Add(new ModuleManifestDocument(fullPath, modules));
         }
@@ -145,14 +145,14 @@ namespace PlugHub.Revit2020.Settings
         {
             if (!Directory.Exists(sourceDirectory)) yield break;
 
-            var rootManifest = Path.Combine(sourceDirectory, DefaultPackageManifestName);
+            var rootManifest = Path.Combine(sourceDirectory, DefaultModulesManifestName);
             if (File.Exists(rootManifest))
             {
                 yield return rootManifest;
             }
 
-            var manifests = Directory.GetFiles(sourceDirectory, DefaultPackageManifestName, SearchOption.AllDirectories)
-                .Concat(Directory.GetFiles(sourceDirectory, AdjacentPackageManifestPattern, SearchOption.AllDirectories))
+            var manifests = Directory.GetFiles(sourceDirectory, DefaultModulesManifestName, SearchOption.AllDirectories)
+                .Concat(Directory.GetFiles(sourceDirectory, AdjacentModulesManifestPattern, SearchOption.AllDirectories))
                 .Where(path => !string.Equals(path, rootManifest, StringComparison.OrdinalIgnoreCase))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(path => path, StringComparer.OrdinalIgnoreCase);
@@ -163,10 +163,10 @@ namespace PlugHub.Revit2020.Settings
             }
         }
 
-        private static bool IsPackageManifestFileName(string fileName)
+        private static bool IsModulesManifestFileName(string fileName)
         {
-            return string.Equals(fileName, DefaultPackageManifestName, StringComparison.OrdinalIgnoreCase)
-                || fileName.EndsWith(".package.json", StringComparison.OrdinalIgnoreCase);
+            return string.Equals(fileName, DefaultModulesManifestName, StringComparison.OrdinalIgnoreCase)
+                || fileName.EndsWith(".modules.json", StringComparison.OrdinalIgnoreCase);
         }
 
         private static string ResolvePath(string baseDirectory, string path)
@@ -186,7 +186,7 @@ namespace PlugHub.Revit2020.Settings
         private static bool IsDefaultManifestPath(string manifestPath)
         {
             return string.IsNullOrWhiteSpace(manifestPath)
-                || string.Equals(manifestPath.Trim(), DefaultPackageManifestName, StringComparison.OrdinalIgnoreCase);
+                || string.Equals(manifestPath.Trim(), DefaultModulesManifestName, StringComparison.OrdinalIgnoreCase);
         }
 
         internal sealed class ModuleManifestDocument

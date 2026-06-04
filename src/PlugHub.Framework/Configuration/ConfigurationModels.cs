@@ -12,11 +12,9 @@ namespace PlugHub.Framework.Configuration
     public sealed class ModulesConfiguration
     {
         public string SchemaVersion { get; set; } = string.Empty;
-        public string Version { get; set; } = string.Empty;
+        public string IndexVersion { get; set; } = string.Empty;
         public List<string> RevitVersions { get; set; } = new List<string>();
         public string FrameworkVersionRange { get; set; } = string.Empty;
-        public string Sha256 { get; set; } = string.Empty;
-        public string Signature { get; set; } = string.Empty;
         public List<string> PackageDirectories { get; set; } = new List<string>();
         public List<ModuleSourceConfiguration> ModuleSources { get; set; } = new List<ModuleSourceConfiguration>();
         public List<PackageRepositoryConfiguration> Repositories { get; set; } = new List<PackageRepositoryConfiguration>();
@@ -60,11 +58,13 @@ namespace PlugHub.Framework.Configuration
     public sealed class ModuleConfiguration
     {
         public string Id { get; set; } = string.Empty;
+        public string Version { get; set; } = string.Empty;
         public string Assembly { get; set; } = string.Empty;
         public string Type { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
         public string DisplayName { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;
+        public string Category { get; set; } = string.Empty;
         public string SourceId { get; set; } = string.Empty;
         public string ResolvedBaseDirectory { get; set; } = string.Empty;
         public List<string> RevitVersions { get; set; } = new List<string>();

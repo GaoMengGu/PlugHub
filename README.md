@@ -61,7 +61,7 @@ D:\Program Files\PlugHub
 - 如果发现新版本，会自动弹出目标版本号和 release 更新信息。
 - 点击确认后，PlugHub 会下载更新包并启动静默更新程序；关闭弹窗则退出更新。
 
-框架更新只覆盖框架 DLL，不覆盖这些内容：
+框架更新只覆盖框架 DLL 和卸载程序，不覆盖这些内容：
 
 - `PlugHub.addin`
 - `packages`
@@ -69,7 +69,7 @@ D:\Program Files\PlugHub
 - 仓库缓存
 - 日志
 
-当前 Revit 会话不会热替换已加载 DLL。确认更新后，左下角会提示需要重启 Revit；关闭并重新打开 Revit 后，新框架 DLL 才会生效。
+当前 Revit 会话不会热替换已加载 DLL。确认更新后，左下角会提示需要重启 Revit；关闭并重新打开 Revit 后，新框架 DLL 和 `PlugHub-Uninstall.exe` 才会生效。
 
 ## 布局设置
 

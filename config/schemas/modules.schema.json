@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["schemaVersion", "modules"],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "indexVersion": { "type": "string" },
+    "revitVersions": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "frameworkVersionRange": { "type": "string" },
+    "modules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "version", "assembly", "features"],
+        "properties": {
+          "id": { "type": "string" },
+          "version": { "type": "string" },
+          "assembly": { "type": "string" },
+          "displayName": { "type": "string" },
+          "description": { "type": "string" },
+          "category": { "type": "string" },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "revitVersions": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "frameworkVersionRange": { "type": "string" },
+          "features": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "displayName", "commandType"],
+              "properties": {
+                "id": { "type": "string" },
+                "displayName": { "type": "string" },
+                "description": { "type": "string" },
+                "iconPath": { "type": "string" },
+                "commandType": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

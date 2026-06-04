@@ -7,6 +7,8 @@ namespace PlugHub.Updater
 {
     internal sealed class FrameworkDllUpdater
     {
+        private const string InstalledUninstallerName = "PlugHub-Uninstall.exe";
+
         private readonly UpdaterLogger _logger;
 
         public FrameworkDllUpdater(UpdaterLogger logger)
@@ -23,7 +25,7 @@ namespace PlugHub.Updater
             }
 
             WaitForRevitExit(args.RevitProcessId);
-            CopyFrameworkDllsOnly(args.PayloadZip, installDirectory, args.TargetVersion);
+            CopyFrameworkFilesAndUninstaller(args.PayloadZip, installDirectory, args.TargetVersion);
         }
 
         private void WaitForRevitExit(int processId)
@@ -41,7 +43,7 @@ namespace PlugHub.Updater
             }
         }
 
-        private void CopyFrameworkDllsOnly(string payloadZip, string installDirectory, string targetVersion)
+        private void CopyFrameworkFilesAndUninstaller(string payloadZip, string installDirectory, string targetVersion)
         {
             var backupDirectory = Path.Combine(installDirectory, "update-backup", SafeSegment(targetVersion) + "-" + DateTime.UtcNow.ToString("yyyyMMddHHmmss"));
             Directory.CreateDirectory(backupDirectory);
@@ -51,7 +53,7 @@ namespace PlugHub.Updater
                 {
                     foreach (var entry in archive.Entries)
                     {
-                        if (SkipNonDllEntry(entry.FullName)) continue;
+                        if (!ShouldCopyUpdateEntry(entry.FullName)) continue;
                         var name = Path.GetFileName(entry.FullName);
                         if (string.Equals(name, "PlugHub.addin", StringComparison.OrdinalIgnoreCase)) continue;
 
@@ -66,7 +68,7 @@ namespace PlugHub.Updater
                     }
                 }
 
-                _logger.Info("Framework DLL update completed: " + targetVersion);
+                _logger.Info("Framework file update completed: " + targetVersion);
             }
             catch
             {
@@ -75,17 +77,22 @@ namespace PlugHub.Updater
             }
         }
 
-        private static bool SkipNonDllEntry(string entryName)
+        private static bool ShouldCopyUpdateEntry(string entryName)
         {
             var normalized = (entryName ?? string.Empty).Replace('/', Path.DirectorySeparatorChar);
-            return !string.Equals(Path.GetExtension(normalized), ".dll", StringComparison.OrdinalIgnoreCase)
-                || !string.Equals(Path.GetFileName(normalized), normalized, StringComparison.OrdinalIgnoreCase);
+            if (!string.Equals(Path.GetFileName(normalized), normalized, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return string.Equals(Path.GetExtension(normalized), ".dll", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, InstalledUninstallerName, StringComparison.OrdinalIgnoreCase);
         }
 
         private static void RestoreBackup(string backupDirectory, string installDirectory)
         {
             if (!Directory.Exists(backupDirectory)) return;
-            foreach (var file in Directory.GetFiles(backupDirectory, "*.dll"))
+            foreach (var file in Directory.GetFiles(backupDirectory))
             {
                 File.Copy(file, Path.Combine(installDirectory, Path.GetFileName(file)), true);
             }

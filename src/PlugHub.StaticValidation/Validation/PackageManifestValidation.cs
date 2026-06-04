@@ -14,14 +14,14 @@ namespace PlugHub.StaticValidation.Validation
             var root = serializer.Deserialize<Dictionary<string, object>>(File.ReadAllText(path));
             if (root == null || !root.ContainsKey("schemaVersion") || !root.ContainsKey("modules"))
             {
-                yield return Error(path, "PH-PACKAGE-SCHEMA", "Package manifest must contain schemaVersion and modules.", "Add schemaVersion and a modules array.");
+                yield return Error(path, "PH-PACKAGE-SCHEMA", "Modules manifest must contain schemaVersion and modules.", "Add schemaVersion and a modules array.");
                 yield break;
             }
 
             var modules = root["modules"] as IEnumerable;
             if (modules == null || root["modules"] is string || !modules.Cast<object>().Any())
             {
-                yield return Error(path, "PH-PACKAGE-MODULES", "Package manifest must declare at least one module.", "Add one module entry.");
+                yield return Error(path, "PH-PACKAGE-MODULES", "Modules manifest must declare at least one module.", "Add one module entry.");
             }
         }
 

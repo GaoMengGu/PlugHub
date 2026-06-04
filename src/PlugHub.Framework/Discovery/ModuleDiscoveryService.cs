@@ -75,9 +75,9 @@ namespace PlugHub.Framework.Discovery
                     ModuleId = module.Id,
                     Name = DisplayNameResolver.Resolve(feature.DisplayName, feature.Name, string.Empty, feature.Id),
                     Description = feature.Description,
-                    Category = feature.Category,
+                    Category = FirstNonEmpty(feature.Category, module.Category),
                     Group = feature.Group,
-                    Tags = new List<string>(feature.Tags ?? new List<string>()),
+                    Tags = MergeTags(module.Tags, feature.Tags),
                     Order = feature.Order,
                     DefaultState = ParseFeatureState(feature.DefaultState),
                     CommandKey = feature.CommandKey,
@@ -122,6 +122,21 @@ namespace PlugHub.Framework.Discovery
         private static FeatureState ParseFeatureState(string value)
         {
             return Enum.TryParse(value, true, out FeatureState state) ? state : FeatureState.Visible;
+        }
+
+        private static string FirstNonEmpty(params string[] values)
+        {
+            return values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
+        }
+
+        private static List<string> MergeTags(IEnumerable<string> moduleTags, IEnumerable<string> featureTags)
+        {
+            return (moduleTags ?? Enumerable.Empty<string>())
+                .Concat(featureTags ?? Enumerable.Empty<string>())
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => value.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
     }
 

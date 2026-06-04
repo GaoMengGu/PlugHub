@@ -41,7 +41,7 @@ namespace PlugHub.StaticValidation
                 ValidateComposerShape();
                 ValidateCoreContracts();
                 ValidateContractsMultiTargetReadiness();
-                ValidatePackageManifestSchemaAndCompatibility();
+                ValidateModulesManifestSchemaAndCompatibility();
                 ValidateRibbonLayoutConfigurationModels();
                 ValidateRibbonLayoutComposerShape();
                 ValidateRibbonLayoutRules();
@@ -261,7 +261,7 @@ namespace PlugHub.StaticValidation
                 "config/feature-combinations.example.json",
                 "config/schemas/sources.schema.json",
                 "config/schemas/views.schema.json",
-                "config/schemas/package.schema.json"
+                "config/schemas/modules.schema.json"
             };
 
             var missing = required.Where(path => !File.Exists(FullPath(path))).ToList();
@@ -300,7 +300,7 @@ namespace PlugHub.StaticValidation
             Require(!readme.Contains("D:\\AI\\code\\PlugHub_Modules"), "root README must not expose local external module paths.");
             Require(readme.Contains("面向建模用户") && readme.Contains("框架概览") && readme.Contains("能做什么"), "root README must introduce PlugHub for modeling users.");
             Require(readme.Contains("安装") && readme.Contains("文件夹权限") && readme.Contains(@"D:\Program Files\PlugHub"), "root README must document installation and folder permission guidance.");
-            Require(readme.Contains("更新") && readme.Contains("检查更新小图标") && readme.Contains("只覆盖框架 DLL"), "root README must document framework update behavior.");
+            Require(readme.Contains("更新") && readme.Contains("检查更新小图标") && readme.Contains("框架 DLL 和卸载程序"), "root README must document framework update behavior.");
             Require(readme.Contains("布局设置") && readme.Contains("拖拽") && readme.Contains("重启 Revit"), "root README must document how users change Ribbon layout.");
             Require(readme.Contains("仓库源") && readme.Contains("同步仓库源") && readme.Contains("不需要安装 Git"), "root README must document repository source setup for users.");
             Require(readme.Contains("插件安装") && readme.Contains("安装插件") && readme.Contains("packages"), "root README must document plugin installation for users.");
@@ -428,48 +428,50 @@ namespace PlugHub.StaticValidation
             Require(!readme.Contains("netstandard2.1") && !readme.Contains("System.Web.Script.Serialization"), "root README must not document framework development internals.");
         }
 
-        private static void ValidatePackageManifestSchemaAndCompatibility()
+        private static void ValidateModulesManifestSchemaAndCompatibility()
         {
-            var schema = ReadText("config/schemas/package.schema.json");
-            Require(schema.Contains("\"revitVersions\""), "package schema must define revitVersions.");
-            Require(schema.Contains("\"frameworkVersionRange\""), "package schema must define frameworkVersionRange.");
-            Require(schema.Contains("\"sha256\""), "package schema must define sha256.");
-            Require(schema.Contains("\"signature\""), "package schema must define signature.");
+            var schema = ReadText("config/schemas/modules.schema.json");
+            Require(schema.Contains("\"indexVersion\""), "modules schema must define indexVersion for repository index snapshots.");
+            Require(schema.Contains("\"revitVersions\""), "modules schema must define revitVersions.");
+            Require(schema.Contains("\"frameworkVersionRange\""), "modules schema must define frameworkVersionRange.");
             foreach (var token in new[]
             {
-                "\"name\"",
-                "\"description\"",
-                "\"sourceId\"",
-                "\"dependsOn\"",
+                "\"version\"",
+                "\"assembly\"",
                 "\"category\"",
-                "\"group\"",
+                "\"displayName\"",
+                "\"description\"",
                 "\"tags\"",
-                "\"order\"",
-                "\"defaultState\"",
-                "\"buttonSize\"",
                 "\"iconPath\"",
-                "\"commandKey\"",
-                "\"commandAssembly\"",
                 "\"commandType\""
             })
             {
-                Require(schema.Contains(token), "package schema must define current module or feature field: " + token);
+                Require(schema.Contains(token), "modules schema must define current module or feature field: " + token);
+            }
+
+            foreach (var removedToken in new[] { "\"enabled\"", "\"visible\"", "\"order\"", "\"defaultState\"", "\"buttonSize\"", "\"commandAssembly\"", "\"moduleSources\"", "\"repositories\"", "\"packageDirectories\"", "\"conflictPolicy\"", "\"sha256\"", "\"signature\"" })
+            {
+                Require(!schema.Contains(removedToken), "modules schema must not define layout, runtime state, source config, or stale signature fields: " + removedToken);
             }
 
             var packageValidation = ReadText("src/PlugHub.StaticValidation/Validation/PackageManifestValidation.cs");
-            Require(packageValidation.Contains("IEnumerable") && packageValidation.Contains("Cast<object>().Any()") && !packageValidation.Contains("object[]"), "package manifest validation must accept JavaScriptSerializer ArrayList modules.");
+            Require(packageValidation.Contains("Modules manifest") && packageValidation.Contains("IEnumerable") && packageValidation.Contains("Cast<object>().Any()") && !packageValidation.Contains("object[]"), "modules manifest validation must accept JavaScriptSerializer ArrayList modules.");
 
             var models = ReadText("src/PlugHub.Framework/Configuration/ConfigurationModels.cs");
-            Require(models.Contains("RevitVersions") && models.Contains("FrameworkVersionRange"), "configuration models must expose package compatibility fields.");
+            Require(models.Contains("IndexVersion") && models.Contains("public string Version") && models.Contains("public string Category") && models.Contains("RevitVersions") && models.Contains("FrameworkVersionRange"), "configuration models must expose modules manifest version and compatibility fields.");
 
             var sourceResolver = ReadText("src/PlugHub.Framework/Sources/ModuleSourceResolver.cs");
+            Require(sourceResolver.Contains("DefaultModulesManifestName = \"modules.json\""), "module source resolver must use modules.json as the only default module manifest.");
+            Require(sourceResolver.Contains("AdjacentModulesManifestPattern = \"*.modules.json\""), "module source resolver must scan adjacent *.modules.json manifests.");
+            Require(sourceResolver.Contains("NormalizeRepositoryModuleDefaults") && sourceResolver.Contains("module.Enabled = true") && sourceResolver.Contains("module.Visible = true"), "module source resolver must default repository modules to enabled and visible when modules.json omits layout state.");
             Require(sourceResolver.Contains("PushRootCompatibilityToModules") && sourceResolver.Contains("module.RevitVersions = new List<string>(modules.RevitVersions)") && sourceResolver.Contains("module.FrameworkVersionRange = modules.FrameworkVersionRange"), "module source resolver must push root compatibility fields down to modules.");
 
             var configurationLoader = ReadText("src/PlugHub.Framework/Configuration/FrameworkConfigurationLoader.cs");
-            foreach (var token in new[] { "Version = modules.Version", "RevitVersions = new List<string>(modules.RevitVersions", "FrameworkVersionRange = modules.FrameworkVersionRange", "Sha256 = modules.Sha256", "Signature = modules.Signature", "RevitVersions = new List<string>(module.RevitVersions", "FrameworkVersionRange = module.FrameworkVersionRange" })
+            foreach (var token in new[] { "IndexVersion = modules.IndexVersion", "RevitVersions = new List<string>(modules.RevitVersions", "FrameworkVersionRange = modules.FrameworkVersionRange", "Version = module.Version", "Category = module.Category", "RevitVersions = new List<string>(module.RevitVersions", "FrameworkVersionRange = module.FrameworkVersionRange" })
             {
-                Require(configurationLoader.Contains(token), "framework configuration loader must preserve package compatibility fields: " + token);
+                Require(configurationLoader.Contains(token), "framework configuration loader must preserve modules manifest fields: " + token);
             }
+            Require(!configurationLoader.Contains("Version = modules.Version") && !configurationLoader.Contains("Sha256 = modules.Sha256") && !configurationLoader.Contains("Signature = modules.Signature"), "framework configuration loader must not preserve obsolete root package version or signature fields.");
 
             var discovery = ReadText("src/PlugHub.Framework/Discovery/ModuleDiscoveryService.cs");
             Require(discovery.Contains("IsCompatibleWithRuntime"), "module discovery must skip packages incompatible with the active runtime.");
@@ -478,12 +480,14 @@ namespace PlugHub.StaticValidation
             Require(discovery.Contains("FrameworkVersionRange") && discovery.Contains("metadata"), "frameworkVersionRange must be explicitly preserved as metadata and not treated as runtime compatibility logic yet.");
 
             var packageInstallService = ReadText("src/PlugHub.Framework/Packages/PackageInstallService.cs");
+            Require(packageInstallService.Contains("DefaultModulesManifestName = \"modules.json\""), "repository installs must write modules.json as the local module manifest.");
             Require(packageInstallService.Contains("\"revitVersions\"") && packageInstallService.Contains("\"frameworkVersionRange\""), "single-module installed manifests must preserve root compatibility metadata.");
-            Require(!packageInstallService.Contains("CopyOptionalManifestValue(root, manifest, \"sha256\")") && !packageInstallService.Contains("CopyOptionalManifestValue(root, manifest, \"signature\")"), "single-module installed manifests must not copy root sha256 or signature after rewriting the manifest.");
+            Require(!packageInstallService.Contains("CopyOptionalManifestValue(root, manifest, \"version\")") && !packageInstallService.Contains("CopyOptionalManifestValue(root, manifest, \"indexVersion\")") && !packageInstallService.Contains("CopyOptionalManifestValue(root, manifest, \"sha256\")") && !packageInstallService.Contains("CopyOptionalManifestValue(root, manifest, \"signature\")"), "single-module installed manifests must not copy root index or signature metadata after rewriting the manifest.");
 
             ValidateRuntimeAcceptsWhitespacePaddedRevitVersion();
             ValidateRuntimeSkipsPresetOverriddenIncompatiblePackage();
             ValidateInstalledRepositoryPackagePreservesCompatibilityAndSkips();
+            ValidateRepositoryModulesManifestVersionAndDefaults();
         }
 
         private static void ValidateRuntimeAcceptsWhitespacePaddedRevitVersion()
@@ -498,8 +502,8 @@ namespace PlugHub.StaticValidation
 
                 WriteRuntimeConfig(configDirectory);
                 File.WriteAllText(
-                    Path.Combine(packageDirectory, "package.json"),
-                    "{\"schemaVersion\":\"1.0\",\"revitVersions\":[\" 2020 \",\"\"],\"frameworkVersionRange\":\">=1.2\",\"modules\":[{\"id\":\"compatible-package\",\"assembly\":\"Compatible.dll\",\"type\":\"Demo.CompatibleModule\",\"enabled\":true,\"visible\":true,\"features\":[{\"id\":\"compatible-feature\",\"displayName\":\"Compatible\",\"category\":\"test\",\"group\":\"test\",\"defaultState\":\"Visible\"}]}]}");
+                    Path.Combine(packageDirectory, "modules.json"),
+                    "{\"schemaVersion\":\"1.1\",\"revitVersions\":[\" 2020 \",\"\"],\"frameworkVersionRange\":\">=1.2\",\"modules\":[{\"id\":\"compatible-package\",\"version\":\"V1.0.0\",\"assembly\":\"Compatible.dll\",\"type\":\"Demo.CompatibleModule\",\"features\":[{\"id\":\"compatible-feature\",\"displayName\":\"Compatible\",\"category\":\"test\"}]}]}");
 
                 var snapshot = new PlugHub.Framework.Runtime.FrameworkRuntime().Load(configDirectory);
                 Require(snapshot.Features.Any(feature => feature.ModuleId == "compatible-package"), "runtime must accept whitespace-padded Revit 2020 compatibility declarations.");
@@ -526,8 +530,8 @@ namespace PlugHub.StaticValidation
 
                 WriteRuntimeConfig(configDirectory, "incompatible-package");
                 File.WriteAllText(
-                    Path.Combine(packageDirectory, "package.json"),
-                    "{\"schemaVersion\":\"1.0\",\"revitVersions\":[\"2024\"],\"modules\":[{\"id\":\"incompatible-package\",\"assembly\":\"Incompatible.dll\",\"type\":\"Demo.IncompatibleModule\",\"enabled\":true,\"visible\":true,\"features\":[{\"id\":\"incompatible-feature\",\"displayName\":\"Incompatible\",\"category\":\"test\",\"group\":\"test\",\"defaultState\":\"Visible\"}]}]}");
+                    Path.Combine(packageDirectory, "modules.json"),
+                    "{\"schemaVersion\":\"1.1\",\"revitVersions\":[\"2024\"],\"modules\":[{\"id\":\"incompatible-package\",\"version\":\"V1.0.0\",\"assembly\":\"Incompatible.dll\",\"type\":\"Demo.IncompatibleModule\",\"features\":[{\"id\":\"incompatible-feature\",\"displayName\":\"Incompatible\",\"category\":\"test\"}]}]}");
 
                 var snapshot = new PlugHub.Framework.Runtime.FrameworkRuntime().Load(configDirectory);
                 Require(!snapshot.Features.Any(feature => feature.ModuleId == "incompatible-package"), "runtime must skip preset-overridden packages incompatible with Revit 2020.");
@@ -555,8 +559,8 @@ namespace PlugHub.StaticValidation
                 File.WriteAllText(Path.Combine(repositoryDirectory, "Incompatible.dll"), "payload");
                 WriteRuntimeConfig(configDirectory);
                 File.WriteAllText(
-                    Path.Combine(repositoryDirectory, "package.json"),
-                    "{\"schemaVersion\":\"1.0\",\"version\":\"1.0.0\",\"revitVersions\":[\"2024\"],\"frameworkVersionRange\":\">=1.2\",\"sha256\":\"stale-after-rewrite\",\"signature\":\"stale-after-rewrite\",\"modules\":[{\"id\":\"root-incompatible-package\",\"assembly\":\"Incompatible.dll\",\"type\":\"Demo.IncompatibleModule\",\"enabled\":true,\"visible\":true,\"features\":[{\"id\":\"root-incompatible-feature\",\"displayName\":\"Root Incompatible\",\"category\":\"test\",\"group\":\"test\",\"defaultState\":\"Visible\"}]}]}");
+                    Path.Combine(repositoryDirectory, "modules.json"),
+                    "{\"schemaVersion\":\"1.1\",\"indexVersion\":\"V1.0.0\",\"revitVersions\":[\"2024\"],\"frameworkVersionRange\":\">=1.2\",\"modules\":[{\"id\":\"root-incompatible-package\",\"version\":\"V1.0.0\",\"assembly\":\"Incompatible.dll\",\"type\":\"Demo.IncompatibleModule\",\"features\":[{\"id\":\"root-incompatible-feature\",\"displayName\":\"Root Incompatible\",\"category\":\"test\"}]}]}");
 
                 var package = new PlugHub.Framework.Packages.RepositoryPackageDescriptor
                 {
@@ -564,21 +568,72 @@ namespace PlugHub.StaticValidation
                     PackageId = "root-incompatible-package",
                     ModuleId = "root-incompatible-package",
                     DisplayName = "Root Incompatible Package",
-                    ManifestPath = Path.Combine(repositoryDirectory, "package.json"),
+                    ManifestPath = Path.Combine(repositoryDirectory, "modules.json"),
                     SourceDirectory = repositoryDirectory,
                     InstallDirectory = installDirectory
                 };
                 var installResult = new PlugHub.Framework.Packages.PackageRepositoryService().Install(tempRoot, package);
                 Require(installResult.Success, "installing repository package with root compatibility metadata should succeed: " + installResult.Message);
 
-                var installedManifest = ReadInstalledManifest(Path.Combine(installDirectory, "package.json"));
+                var installedManifest = ReadInstalledManifest(Path.Combine(installDirectory, "modules.json"));
                 Require(installedManifest.Contains("\"revitVersions\"") && installedManifest.Contains("\"2024\""), "installed single-module manifest must preserve root revitVersions metadata.");
                 Require(installedManifest.Contains("\"frameworkVersionRange\""), "installed single-module manifest must preserve root frameworkVersionRange metadata.");
-                Require(!installedManifest.Contains("\"sha256\"") && !installedManifest.Contains("\"signature\""), "installed single-module manifest must not preserve stale root signature metadata after rewrite.");
+                Require(!installedManifest.Contains("\"indexVersion\""), "installed single-module manifest must not preserve repository index metadata after rewrite.");
 
                 var snapshot = new PlugHub.Framework.Runtime.FrameworkRuntime().Load(configDirectory);
                 Require(!snapshot.Features.Any(feature => feature.ModuleId == "root-incompatible-package"), "runtime must skip installed repository packages whose root manifest declared incompatible Revit versions.");
                 Require(snapshot.Diagnostics.Any(diagnostic => diagnostic.Code == "RT-MODULE-COMPATIBILITY" && diagnostic.ModuleId == "root-incompatible-package"), "runtime must report RT-MODULE-COMPATIBILITY for installed repository packages with incompatible root metadata.");
+            }
+            finally
+            {
+                if (Directory.Exists(tempRoot))
+                {
+                    Directory.Delete(tempRoot, true);
+                }
+            }
+        }
+
+        private static void ValidateRepositoryModulesManifestVersionAndDefaults()
+        {
+            var tempRoot = Path.Combine(Path.GetTempPath(), "PlugHub.StaticValidation", Guid.NewGuid().ToString("N"));
+            try
+            {
+                var configDirectory = Path.Combine(tempRoot, "config");
+                var repositoryRoot = Path.Combine(tempRoot, "repository-cache", "modules-index");
+                var installDirectory = Path.Combine(tempRoot, "packages", "minimal-module");
+                Directory.CreateDirectory(configDirectory);
+                Directory.CreateDirectory(repositoryRoot);
+                Directory.CreateDirectory(Path.Combine(repositoryRoot, "icons"));
+                File.WriteAllText(Path.Combine(repositoryRoot, "Minimal.dll"), "payload");
+                File.WriteAllText(Path.Combine(repositoryRoot, "icons", "minimal.png"), "icon");
+                WriteRuntimeConfig(configDirectory);
+                File.WriteAllText(
+                    Path.Combine(repositoryRoot, "minimal.modules.json"),
+                    "{\"schemaVersion\":\"1.1\",\"indexVersion\":\"V9.0.0\",\"revitVersions\":[\"2020\"],\"frameworkVersionRange\":\">=1.3.0\",\"modules\":[{\"id\":\"minimal-module\",\"version\":\"V2.3.4\",\"displayName\":\"Minimal Module\",\"description\":\"Minimal repository module.\",\"assembly\":\"Minimal.dll\",\"category\":\"view\",\"tags\":[\"view\",\"minimal\"],\"features\":[{\"id\":\"minimal-module.run\",\"displayName\":\"Run Minimal\",\"description\":\"Run the minimal module.\",\"iconPath\":\"icons/minimal.png\",\"commandType\":\"Demo.MinimalCommand\"}]}]}");
+
+                var service = new PlugHub.Framework.Packages.PackageRepositoryService();
+                var packages = service.BrowseCached(tempRoot, "modules-index", repositoryRoot, out var browseDiagnostics);
+                Require(!browseDiagnostics.Any(), "*.modules.json repository browse should not emit diagnostics: " + string.Join("; ", browseDiagnostics.Select(item => item.Message)));
+                Require(packages.Count == 1, "repository *.modules.json must browse one plugin row for one module.");
+                var package = packages[0];
+                Require(package.Version == "V2.3.4", "repository package row version must come from modules[].version instead of the root indexVersion.");
+                Require(package.Categories.Contains("view"), "repository package category metadata must include module category when features omit category.");
+                Require(package.Tags.Contains("minimal"), "repository package tags must include module tags.");
+
+                var installResult = service.Install(tempRoot, package);
+                Require(installResult.Success, "installing a minimal modules.json repository module should succeed: " + installResult.Message);
+                Require(File.Exists(Path.Combine(installDirectory, "modules.json")), "installed repository module must write modules.json as the package-local manifest.");
+                Require(!File.Exists(Path.Combine(installDirectory, "package.json")), "installed repository module must not write legacy package.json.");
+                var installedManifest = ReadInstalledManifest(Path.Combine(installDirectory, "modules.json"));
+                Require(installedManifest.Contains("\"version\":\"V2.3.4\""), "installed modules.json must preserve the selected module version.");
+                Require(!installedManifest.Contains("\"indexVersion\""), "installed modules.json must not preserve repository indexVersion.");
+
+                var refreshed = service.RefreshInstallState(tempRoot, package);
+                Require(refreshed.InstalledVersion == "V2.3.4", "installed package version must be read from the installed module version.");
+
+                var snapshot = new PlugHub.Framework.Runtime.FrameworkRuntime().Load(configDirectory);
+                Require(snapshot.Features.Any(feature => feature.Id == "minimal-module.run"), "runtime must load installed modules.json even when enabled, visible, group, order, defaultState, buttonSize, and commandAssembly are omitted.");
+                Require(snapshot.Features.Any(feature => feature.Id == "minimal-module.run" && feature.Category == "view" && feature.CommandAssembly.EndsWith("Minimal.dll", StringComparison.OrdinalIgnoreCase)), "runtime must inherit module category and command assembly defaults for features.");
             }
             finally
             {
@@ -843,7 +898,7 @@ namespace PlugHub.StaticValidation
             Require(loader.Contains("runtime-cache"), "shadow-copy loader must copy business assemblies under runtime-cache.");
             Require(loader.Contains("SHA256.Create"), "shadow-copy loader must compute a content hash for cache directories.");
             Require(loader.Contains("CopyPackagePayload"), "shadow-copy loader must copy package payload before loading commands.");
-            Require(loader.Contains("IsFlatPayloadFile"), "shadow-copy loader must avoid copying every installed package for flat DLL package manifests.");
+            Require(loader.Contains("IsFlatPayloadFile"), "shadow-copy loader must avoid copying every installed package for flat DLL module manifests.");
             Require(loader.Contains("ApplyPendingCleanup") && loader.Contains("pending-cleanup.txt"), "shadow-copy loader must retry cleanup of old locked cache directories.");
             Require(loader.Contains("Assembly.LoadFrom(cachedAssemblyPath)"), "net48 command loader must load the cached business assembly copy.");
             Require(!loader.Contains("Assembly.LoadFrom(assemblyPath)"), "net48 command loader must not load directly from the installed package assembly path.");
@@ -876,7 +931,7 @@ namespace PlugHub.StaticValidation
             Require(!discovery.Contains("Activator.CreateInstance"), "manifest-authoritative discovery must not instantiate module types at startup.");
             Require(!discovery.Contains(".Describe("), "manifest-authoritative discovery must not call IPlugHubModule.Describe() at startup.");
             Require(!discovery.Contains("GetType(module.Type"), "manifest-authoritative discovery must not reflect configured module types at startup.");
-            Require(discovery.Contains("ToDescriptor(baseDirectory, module)") && discovery.Contains("descriptors.Add(descriptor)"), "manifest-authoritative discovery must build module descriptors directly from package manifests.");
+            Require(discovery.Contains("ToDescriptor(baseDirectory, module)") && discovery.Contains("descriptors.Add(descriptor)"), "manifest-authoritative discovery must build module descriptors directly from modules manifests.");
 
             var tempRoot = Path.Combine(Path.GetTempPath(), "PlugHub.StaticValidation", Guid.NewGuid().ToString("N"));
             try
@@ -889,12 +944,12 @@ namespace PlugHub.StaticValidation
 
                 WriteRuntimeIsolationConfiguration(configDirectory);
                 File.WriteAllText(
-                    Path.Combine(packageDirectory, "package.json"),
-                    "{\"schemaVersion\":\"1.0\",\"modules\":[{\"id\":\"manifest-authority-module\",\"assembly\":\"MissingBusiness.dll\",\"type\":\"Missing.Plugin.Module\",\"enabled\":true,\"visible\":true,\"order\":10,\"features\":[{\"id\":\"manifest-authority-feature\",\"displayName\":\"Manifest Feature\",\"defaultState\":\"Visible\",\"order\":10}]}]}");
+                    Path.Combine(packageDirectory, "modules.json"),
+                    "{\"schemaVersion\":\"1.1\",\"modules\":[{\"id\":\"manifest-authority-module\",\"version\":\"V1.0.0\",\"assembly\":\"MissingBusiness.dll\",\"type\":\"Missing.Plugin.Module\",\"features\":[{\"id\":\"manifest-authority-feature\",\"displayName\":\"Manifest Feature\"}]}]}");
 
                 var runtime = new PlugHub.Framework.Runtime.FrameworkRuntime();
                 var snapshot = runtime.Load(baseDirectory, configDirectory);
-                Require(snapshot.Features.Any(feature => feature.Id == "manifest-authority-feature"), "package manifest features must load even when the optional module assembly/type cannot be validated at startup.");
+                Require(snapshot.Features.Any(feature => feature.Id == "manifest-authority-feature"), "modules manifest features must load even when the optional module assembly/type cannot be validated at startup.");
                 Require(!snapshot.Diagnostics.Any(message => message.Code == "RT-MODULE-MANIFEST" || message.Code == "RT-MODULE-ASSEMBLY" || message.Code == "RT-MODULE-TYPE" || message.Code == "RT-MODULE-LOAD"), "manifest-authoritative discovery must not warn or fail only because optional module assembly/type validation is unavailable at startup.");
             }
             finally
@@ -968,8 +1023,8 @@ namespace PlugHub.StaticValidation
         private static void WriteRuntimeIsolationManifest(string packageDirectory, string featureId)
         {
             File.WriteAllText(
-                Path.Combine(packageDirectory, "package.json"),
-                "{\"schemaVersion\":\"1.0\",\"modules\":[{\"id\":\"runtime-isolation-module\",\"enabled\":true,\"visible\":true,\"order\":10,\"features\":[{\"id\":\"" + featureId + "\",\"displayName\":\"" + featureId + "\",\"defaultState\":\"Visible\",\"order\":10}]}]}");
+                Path.Combine(packageDirectory, "modules.json"),
+                "{\"schemaVersion\":\"1.1\",\"modules\":[{\"id\":\"runtime-isolation-module\",\"version\":\"V1.0.0\",\"features\":[{\"id\":\"" + featureId + "\",\"displayName\":\"" + featureId + "\"}]}]}");
         }
 
         private static void ValidateExternalModuleCommandResolution()
@@ -1020,7 +1075,7 @@ namespace PlugHub.StaticValidation
             Require(modulesText.Contains("\"repositories\""), "modules config must include repository catalog settings.");
             Require(!modulesText.Contains("\"autoUpdate\""), "repository catalog settings must not expose startup autoUpdate.");
             Require(modulesText.Contains("\"provider\": \"gitee\"") && modulesText.Contains("\"repository\": \"https://gitee.com/GaoMengGu/PlugHub_Packages\""), "default repository must point at the public Gitee PlugHub_Packages URL.");
-            Require(modulesText.Contains("\"manifestPath\": \"package.json\""), "module source examples must point at package.json.");
+            Require(modulesText.Contains("\"manifestPath\": \"modules.json\""), "repository examples must point at modules.json.");
 
             var revitText = ReadAllCSharp("src/PlugHub.Revit2020");
             Require(!revitText.Contains("RegisterDockablePane") && !revitText.Contains("DockablePaneProviderData") && !revitText.Contains("IDockablePaneProvider"), "settings and feature UI must not use Revit DockablePane for this architecture.");
@@ -1196,9 +1251,9 @@ namespace PlugHub.StaticValidation
                 Require(statusWindow.Contains(token), "status window must separate refresh, status, and log concerns: " + token);
             }
             Require(configurationModels.Contains("PackageRepositoryConfiguration"), "module configuration must expose repository catalog settings.");
-            Require(sourceResolver.Contains("AddPackageDirectoryModules"), "package directories must be scanned for drop-in package manifests.");
+            Require(sourceResolver.Contains("AddPackageDirectoryModules"), "package directories must be scanned for drop-in modules manifests.");
             Require(sourceResolver.Contains("FindModuleManifests"), "module directory resolver must discover manifests automatically.");
-            Require(sourceResolver.Contains("\"package.json\"") && sourceResolver.Contains("\"*.package.json\""), "module directory resolver must discover package.json and DLL-adjacent *.package.json manifests.");
+            Require(sourceResolver.Contains("\"modules.json\"") && sourceResolver.Contains("\"*.modules.json\"") && !sourceResolver.Contains("\"package.json\"") && !sourceResolver.Contains("\"*.package.json\""), "module directory resolver must discover only modules.json and *.modules.json manifests.");
             Require(!sourceResolver.Contains("ProcessStartInfo") && !sourceResolver.Contains("packages/github"), "startup resolver must not access repository caches or run git.");
             Require(!revitProject.Contains("System.Windows.Forms") && !revitProject.Contains("WindowsFormsIntegration"), "Revit adapter should not reference WinForms after moving settings and feature UI to WPF.");
             Require(!revitProject.Contains("PlugHubModuleFiles"), "Revit build must not depend on a source modules folder.");
@@ -1218,6 +1273,7 @@ namespace PlugHub.StaticValidation
             Require(settingsStore.Contains("Save(") && settingsStore.Contains("ModuleManifestDocument"), "settings must save edits back to their owning module manifest through SettingsConfigurationStore.");
             Require(!settingsStore.Contains("Save(configuration, LoadModuleDocuments(configuration))"), "SettingsConfigurationStore must not expose a Save overload that reloads module documents from disk.");
             Require(settingsStore.Contains("foreach (var document in moduleDocuments)") && settingsStore.Contains("SaveJson(document.Path, document.Modules)"), "SettingsConfigurationStore Save must persist the provided moduleDocuments.");
+            Require(settingsStore.Contains("AdjacentModulesManifestPattern = \"*.modules.json\""), "settings configuration store must discover adjacent *.modules.json manifests.");
             Require(!settingsWindow.Contains("nameof(FeatureRow.Panel)") && !settingsWindow.Contains("feature.Group = row.Panel"), "feature settings must not expose user-editable panel ownership.");
             Require(!settingsWindow.Contains("点击 Ribbon 的「刷新配置」"), "settings UI must not point users to the removed refresh Ribbon button.");
 
@@ -1518,6 +1574,7 @@ namespace PlugHub.StaticValidation
             Require(packageRepositoryService.Contains("new PackageManifestReader"), "PackageRepositoryService must delegate manifest reading to PackageManifestReader.");
             Require(packageRepositoryService.Contains("new PackageInstallService"), "PackageRepositoryService must delegate payload installation to PackageInstallService.");
             Require(packageManifestReader.Contains("ReadPackagesFromManifest") && packageManifestReader.Contains("RepositoryPackageDisplayName"), "repository manifest reading must live in PackageManifestReader.");
+            Require(packageManifestReader.Contains("AdjacentModulesManifestPattern = \"*.modules.json\""), "repository manifest reader must discover adjacent *.modules.json manifests.");
             Require(packageInstallService.Contains("InstallPackagePayload") && packageInstallService.Contains("CopyPackagePayload") && packageInstallService.Contains("WriteSingleModuleManifest") && !packageInstallService.Contains("CopyDirectory("), "repository install must split selected plugins and must not copy the whole repository directory.");
             Require(packageRepositoryService.Contains("ApplyPendingOperations") && packageRepositoryService.Contains("pending-operations.json") && packageRepositoryService.Contains("PendingPackageOperation.Restart"), "repository package operations must defer locked DLL deletion and replacement and mark normal installs as restart-required.");
             Require(packageRepositoryService.Contains("ListPendingOperations"), "package repository service must expose pending operation listing.");
@@ -1760,10 +1817,10 @@ namespace PlugHub.StaticValidation
                 Directory.CreateDirectory(packageDirectory);
                 Directory.CreateDirectory(repositoryCacheDirectory);
                 File.WriteAllText(
-                    Path.Combine(packageDirectory, "package.json"),
+                    Path.Combine(packageDirectory, "modules.json"),
                     "{\"schemaVersion\":\"1.0\",\"modules\":[{\"id\":\"installed-package\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
                 File.WriteAllText(
-                    Path.Combine(repositoryCacheDirectory, "package.json"),
+                    Path.Combine(repositoryCacheDirectory, "modules.json"),
                     "{\"schemaVersion\":\"1.0\",\"modules\":[{\"id\":\"repository-only-package\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
 
                 var modules = new PlugHub.Framework.Configuration.ModulesConfiguration
@@ -1779,7 +1836,7 @@ namespace PlugHub.StaticValidation
                             Path = "repository-cache/GaoMengGu_PlugHub_Packages",
                             Repository = "GaoMengGu/PlugHub_Packages",
                             Ref = "main",
-                            ManifestPath = "package.json",
+                            ManifestPath = "modules.json",
                             Enabled = true,
                             AutoUpdate = true
                         }
@@ -1793,7 +1850,7 @@ namespace PlugHub.StaticValidation
                             Visibility = "public",
                             Repository = "GaoMengGu/PlugHub_Packages",
                             Ref = "main",
-                            ManifestPath = "package.json",
+                            ManifestPath = "modules.json",
                             Enabled = true
                         },
                         new PlugHub.Framework.Configuration.PackageRepositoryConfiguration
@@ -1803,7 +1860,7 @@ namespace PlugHub.StaticValidation
                             Visibility = "private",
                             Repository = "example/private-packages",
                             Ref = "main",
-                            ManifestPath = "package.json",
+                            ManifestPath = "modules.json",
                             ApiKey = "test-key",
                             Enabled = false
                         }
@@ -1840,9 +1897,9 @@ namespace PlugHub.StaticValidation
 
                 var directInstalledDll = Path.Combine(directInstalledDirectory, "DirectUpdate.dll");
                 File.WriteAllText(directInstalledDll, "old");
-                File.WriteAllText(Path.Combine(directInstalledDirectory, "package.json"), "{\"schemaVersion\":\"1.0\",\"version\":\"1.0.0\",\"modules\":[{\"id\":\"direct-update\",\"assembly\":\"DirectUpdate.dll\",\"type\":\"Demo.DirectUpdateModule\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
+                File.WriteAllText(Path.Combine(directInstalledDirectory, "modules.json"), "{\"schemaVersion\":\"1.0\",\"version\":\"1.0.0\",\"modules\":[{\"id\":\"direct-update\",\"assembly\":\"DirectUpdate.dll\",\"type\":\"Demo.DirectUpdateModule\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
                 File.WriteAllText(Path.Combine(directSourceDirectory, "DirectUpdate.dll"), "replacement");
-                File.WriteAllText(Path.Combine(directSourceDirectory, "package.json"), "{\"schemaVersion\":\"1.0\",\"version\":\"2.0.0\",\"modules\":[{\"id\":\"direct-update\",\"assembly\":\"DirectUpdate.dll\",\"type\":\"Demo.DirectUpdateModule\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
+                File.WriteAllText(Path.Combine(directSourceDirectory, "modules.json"), "{\"schemaVersion\":\"1.0\",\"version\":\"2.0.0\",\"modules\":[{\"id\":\"direct-update\",\"assembly\":\"DirectUpdate.dll\",\"type\":\"Demo.DirectUpdateModule\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
 
                 var directDescriptor = new PlugHub.Framework.Packages.RepositoryPackageDescriptor
                 {
@@ -1850,7 +1907,7 @@ namespace PlugHub.StaticValidation
                     PackageId = "direct-update",
                     ModuleId = "direct-update",
                     DisplayName = "Direct Update",
-                    ManifestPath = Path.Combine(directSourceDirectory, "package.json"),
+                    ManifestPath = Path.Combine(directSourceDirectory, "modules.json"),
                     SourceDirectory = directSourceDirectory,
                     InstallDirectory = directInstalledDirectory,
                     IsInstalled = true
@@ -1870,9 +1927,9 @@ namespace PlugHub.StaticValidation
 
                 var installedDll = Path.Combine(installedDirectory, "LockedUpdate.dll");
                 File.WriteAllText(installedDll, "locked");
-                File.WriteAllText(Path.Combine(installedDirectory, "package.json"), "{\"schemaVersion\":\"1.0\",\"version\":\"1.0.0\",\"modules\":[{\"id\":\"locked-update\",\"assembly\":\"LockedUpdate.dll\",\"type\":\"Demo.LockedUpdateModule\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
+                File.WriteAllText(Path.Combine(installedDirectory, "modules.json"), "{\"schemaVersion\":\"1.0\",\"version\":\"1.0.0\",\"modules\":[{\"id\":\"locked-update\",\"assembly\":\"LockedUpdate.dll\",\"type\":\"Demo.LockedUpdateModule\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
                 File.WriteAllText(Path.Combine(sourceDirectory, "LockedUpdate.dll"), "replacement");
-                File.WriteAllText(Path.Combine(sourceDirectory, "package.json"), "{\"schemaVersion\":\"1.0\",\"version\":\"2.0.0\",\"modules\":[{\"id\":\"locked-update\",\"assembly\":\"LockedUpdate.dll\",\"type\":\"Demo.LockedUpdateModule\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
+                File.WriteAllText(Path.Combine(sourceDirectory, "modules.json"), "{\"schemaVersion\":\"1.0\",\"version\":\"2.0.0\",\"modules\":[{\"id\":\"locked-update\",\"assembly\":\"LockedUpdate.dll\",\"type\":\"Demo.LockedUpdateModule\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
 
                 var descriptor = new PlugHub.Framework.Packages.RepositoryPackageDescriptor
                 {
@@ -1880,7 +1937,7 @@ namespace PlugHub.StaticValidation
                     PackageId = "locked-update",
                     ModuleId = "locked-update",
                     DisplayName = "Locked Update",
-                    ManifestPath = Path.Combine(sourceDirectory, "package.json"),
+                    ManifestPath = Path.Combine(sourceDirectory, "modules.json"),
                     SourceDirectory = sourceDirectory,
                     InstallDirectory = installedDirectory,
                     IsInstalled = true
@@ -1894,14 +1951,14 @@ namespace PlugHub.StaticValidation
                     Require(updateResult.Success, "updating a locked Revit package must queue a deferred update instead of failing: " + updateResult.Message);
                     Require(updateResult.Message.Contains("重启") && updateResult.Message.Contains("更新"), "locked update message must tell the user the update is queued for Revit restart.");
                     Require(File.Exists(installedDll), "locked package files must remain in place until Revit restarts.");
-                    Require(!File.ReadAllText(Path.Combine(installedDirectory, "package.json")).Contains("locked-update"), "locked update must remove the old module declaration before restart.");
+                    Require(!File.ReadAllText(Path.Combine(installedDirectory, "modules.json")).Contains("locked-update"), "locked update must remove the old module declaration before restart.");
                     Require(Directory.GetFiles(Path.Combine(tempRoot, "repository-cache"), "pending-operations.json", SearchOption.AllDirectories).Any(), "locked update must write a pending operation marker.");
                 }
 
                 var updateDiagnostics = new PlugHub.Framework.Packages.PackageRepositoryService().ApplyPendingOperations(tempRoot);
                 Require(!updateDiagnostics.Any(message => message.Severity == PlugHub.Contracts.Modules.DiagnosticSeverity.Error), "pending locked update must apply on next startup: " + string.Join("; ", updateDiagnostics.Select(item => item.Message)));
                 Require(File.ReadAllText(installedDll) == "replacement", "pending locked update must replace the DLL after restart.");
-                Require(File.ReadAllText(Path.Combine(installedDirectory, "package.json")).Contains("locked-update"), "pending locked update must restore the selected module manifest.");
+                Require(File.ReadAllText(Path.Combine(installedDirectory, "modules.json")).Contains("locked-update"), "pending locked update must restore the selected module manifest.");
 
                 var cancelUpdateDirectory = Path.Combine(tempRoot, "packages", "cancel-locked-update");
                 var cancelUpdateSourceDirectory = Path.Combine(tempRoot, "repository-cache", "cancel-locked-update");
@@ -1911,20 +1968,20 @@ namespace PlugHub.StaticValidation
                 Directory.CreateDirectory(cancelUpdateDuplicateDirectory);
                 var cancelUpdateDll = Path.Combine(cancelUpdateDirectory, "CancelLockedUpdate.dll");
                 var cancelUpdateDuplicateDll = Path.Combine(cancelUpdateDuplicateDirectory, "CancelLockedUpdateDuplicate.dll");
-                var cancelUpdateManifest = Path.Combine(cancelUpdateDirectory, "package.json");
+                var cancelUpdateManifest = Path.Combine(cancelUpdateDirectory, "modules.json");
                 File.WriteAllText(cancelUpdateDll, "locked");
                 File.WriteAllText(cancelUpdateDuplicateDll, "duplicate");
                 File.WriteAllText(cancelUpdateManifest, "{\"schemaVersion\":\"1.0\",\"version\":\"1.0.0\",\"modules\":[{\"id\":\"cancel-locked-update\",\"assembly\":\"CancelLockedUpdate.dll\",\"type\":\"Demo.CancelLockedUpdateModule\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
-                File.WriteAllText(Path.Combine(cancelUpdateDuplicateDirectory, "package.json"), "{\"schemaVersion\":\"1.0\",\"version\":\"1.0.0\",\"modules\":[{\"id\":\"cancel-locked-update\",\"assembly\":\"CancelLockedUpdateDuplicate.dll\",\"type\":\"Demo.CancelLockedUpdateDuplicateModule\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
+                File.WriteAllText(Path.Combine(cancelUpdateDuplicateDirectory, "modules.json"), "{\"schemaVersion\":\"1.0\",\"version\":\"1.0.0\",\"modules\":[{\"id\":\"cancel-locked-update\",\"assembly\":\"CancelLockedUpdateDuplicate.dll\",\"type\":\"Demo.CancelLockedUpdateDuplicateModule\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
                 File.WriteAllText(Path.Combine(cancelUpdateSourceDirectory, "CancelLockedUpdate.dll"), "replacement");
-                File.WriteAllText(Path.Combine(cancelUpdateSourceDirectory, "package.json"), "{\"schemaVersion\":\"1.0\",\"version\":\"2.0.0\",\"modules\":[{\"id\":\"cancel-locked-update\",\"assembly\":\"CancelLockedUpdate.dll\",\"type\":\"Demo.CancelLockedUpdateModule\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
+                File.WriteAllText(Path.Combine(cancelUpdateSourceDirectory, "modules.json"), "{\"schemaVersion\":\"1.0\",\"version\":\"2.0.0\",\"modules\":[{\"id\":\"cancel-locked-update\",\"assembly\":\"CancelLockedUpdate.dll\",\"type\":\"Demo.CancelLockedUpdateModule\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
                 var cancelUpdateDescriptor = new PlugHub.Framework.Packages.RepositoryPackageDescriptor
                 {
                     RepositoryId = "test-repository",
                     PackageId = "cancel-locked-update",
                     ModuleId = "cancel-locked-update",
                     DisplayName = "Cancel Locked Update",
-                    ManifestPath = Path.Combine(cancelUpdateSourceDirectory, "package.json"),
+                    ManifestPath = Path.Combine(cancelUpdateSourceDirectory, "modules.json"),
                     SourceDirectory = cancelUpdateSourceDirectory,
                     InstallDirectory = cancelUpdateDirectory,
                     IsInstalled = true
@@ -1939,7 +1996,7 @@ namespace PlugHub.StaticValidation
                     Require(cancelResult.Success, "cancel pending locked update must succeed: " + cancelResult.Message);
                     Require(File.ReadAllText(cancelUpdateManifest).Contains("cancel-locked-update"), "cancel pending locked update must restore the original module manifest.");
                     Require(File.Exists(cancelUpdateDuplicateDll), "cancel pending locked update must not leave duplicate package payload deleted.");
-                    Require(File.ReadAllText(Path.Combine(cancelUpdateDuplicateDirectory, "package.json")).Contains("cancel-locked-update"), "cancel pending locked update must restore duplicate module manifests.");
+                    Require(File.ReadAllText(Path.Combine(cancelUpdateDuplicateDirectory, "modules.json")).Contains("cancel-locked-update"), "cancel pending locked update must restore duplicate module manifests.");
                     Require(string.IsNullOrWhiteSpace(service.RefreshInstallState(tempRoot, cancelUpdateDescriptor).PendingOperation), "cancel pending locked update must clear pending operation metadata.");
                 }
 
@@ -1947,7 +2004,7 @@ namespace PlugHub.StaticValidation
                 Directory.CreateDirectory(uninstallDirectory);
                 var uninstallDll = Path.Combine(uninstallDirectory, "LockedUninstall.dll");
                 File.WriteAllText(uninstallDll, "locked");
-                File.WriteAllText(Path.Combine(uninstallDirectory, "package.json"), "{\"schemaVersion\":\"1.0\",\"modules\":[{\"id\":\"locked-uninstall\",\"assembly\":\"LockedUninstall.dll\",\"type\":\"Demo.LockedUninstallModule\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
+                File.WriteAllText(Path.Combine(uninstallDirectory, "modules.json"), "{\"schemaVersion\":\"1.0\",\"modules\":[{\"id\":\"locked-uninstall\",\"assembly\":\"LockedUninstall.dll\",\"type\":\"Demo.LockedUninstallModule\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
                 var uninstallDescriptor = new PlugHub.Framework.Packages.RepositoryPackageDescriptor
                 {
                     RepositoryId = "test-repository",
@@ -1965,7 +2022,7 @@ namespace PlugHub.StaticValidation
                     Require(uninstallResult.Success, "uninstalling a locked Revit package must queue a deferred delete instead of failing: " + uninstallResult.Message);
                     Require(uninstallResult.Message.Contains("重启") && uninstallResult.Message.Contains("卸载"), "locked uninstall message must tell the user the delete is queued for Revit restart.");
                     Require(File.Exists(uninstallDll), "locked package files must remain in place until Revit restarts.");
-                    Require(!File.ReadAllText(Path.Combine(uninstallDirectory, "package.json")).Contains("locked-uninstall"), "locked uninstall must remove the module declaration before restart.");
+                    Require(!File.ReadAllText(Path.Combine(uninstallDirectory, "modules.json")).Contains("locked-uninstall"), "locked uninstall must remove the module declaration before restart.");
 
                     var resolvedWhileLocked = new PlugHub.Framework.Sources.ModuleSourceResolver().Resolve(
                         tempRoot,
@@ -1989,9 +2046,9 @@ namespace PlugHub.StaticValidation
                 Directory.CreateDirectory(unlockedUninstallDirectory);
                 Directory.CreateDirectory(unlockedUninstallDuplicateDirectory);
                 File.WriteAllText(Path.Combine(unlockedUninstallDirectory, "UnlockedUninstall.dll"), "unlocked");
-                File.WriteAllText(Path.Combine(unlockedUninstallDirectory, "package.json"), "{\"schemaVersion\":\"1.0\",\"modules\":[{\"id\":\"unlocked-uninstall\",\"assembly\":\"UnlockedUninstall.dll\",\"type\":\"Demo.UnlockedUninstallModule\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
+                File.WriteAllText(Path.Combine(unlockedUninstallDirectory, "modules.json"), "{\"schemaVersion\":\"1.0\",\"modules\":[{\"id\":\"unlocked-uninstall\",\"assembly\":\"UnlockedUninstall.dll\",\"type\":\"Demo.UnlockedUninstallModule\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
                 File.WriteAllText(Path.Combine(unlockedUninstallDuplicateDirectory, "UnlockedUninstallDuplicate.dll"), "duplicate");
-                File.WriteAllText(Path.Combine(unlockedUninstallDuplicateDirectory, "package.json"), "{\"schemaVersion\":\"1.0\",\"modules\":[{\"id\":\"unlocked-uninstall\",\"assembly\":\"UnlockedUninstallDuplicate.dll\",\"type\":\"Demo.UnlockedUninstallDuplicateModule\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
+                File.WriteAllText(Path.Combine(unlockedUninstallDuplicateDirectory, "modules.json"), "{\"schemaVersion\":\"1.0\",\"modules\":[{\"id\":\"unlocked-uninstall\",\"assembly\":\"UnlockedUninstallDuplicate.dll\",\"type\":\"Demo.UnlockedUninstallDuplicateModule\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
                 var unlockedUninstallDescriptor = new PlugHub.Framework.Packages.RepositoryPackageDescriptor
                 {
                     RepositoryId = "test-repository",
@@ -2012,11 +2069,11 @@ namespace PlugHub.StaticValidation
                 Directory.CreateDirectory(cancelUninstallDuplicateDirectory);
                 var cancelUninstallDll = Path.Combine(cancelUninstallDirectory, "CancelLockedUninstall.dll");
                 var cancelUninstallDuplicateDll = Path.Combine(cancelUninstallDuplicateDirectory, "CancelLockedUninstallDuplicate.dll");
-                var cancelUninstallManifest = Path.Combine(cancelUninstallDirectory, "package.json");
+                var cancelUninstallManifest = Path.Combine(cancelUninstallDirectory, "modules.json");
                 File.WriteAllText(cancelUninstallDll, "locked");
                 File.WriteAllText(cancelUninstallDuplicateDll, "duplicate");
                 File.WriteAllText(cancelUninstallManifest, "{\"schemaVersion\":\"1.0\",\"modules\":[{\"id\":\"cancel-locked-uninstall\",\"assembly\":\"CancelLockedUninstall.dll\",\"type\":\"Demo.CancelLockedUninstallModule\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
-                File.WriteAllText(Path.Combine(cancelUninstallDuplicateDirectory, "package.json"), "{\"schemaVersion\":\"1.0\",\"modules\":[{\"id\":\"cancel-locked-uninstall\",\"assembly\":\"CancelLockedUninstallDuplicate.dll\",\"type\":\"Demo.CancelLockedUninstallDuplicateModule\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
+                File.WriteAllText(Path.Combine(cancelUninstallDuplicateDirectory, "modules.json"), "{\"schemaVersion\":\"1.0\",\"modules\":[{\"id\":\"cancel-locked-uninstall\",\"assembly\":\"CancelLockedUninstallDuplicate.dll\",\"type\":\"Demo.CancelLockedUninstallDuplicateModule\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
                 var cancelUninstallDescriptor = new PlugHub.Framework.Packages.RepositoryPackageDescriptor
                 {
                     RepositoryId = "test-repository",
@@ -2036,7 +2093,7 @@ namespace PlugHub.StaticValidation
                     Require(cancelResult.Success, "cancel pending locked uninstall must succeed: " + cancelResult.Message);
                     Require(File.ReadAllText(cancelUninstallManifest).Contains("cancel-locked-uninstall"), "cancel pending locked uninstall must restore the original module manifest.");
                     Require(File.Exists(cancelUninstallDuplicateDll), "cancel pending locked uninstall must not leave duplicate package payload deleted.");
-                    Require(File.ReadAllText(Path.Combine(cancelUninstallDuplicateDirectory, "package.json")).Contains("cancel-locked-uninstall"), "cancel pending locked uninstall must restore duplicate module manifests.");
+                    Require(File.ReadAllText(Path.Combine(cancelUninstallDuplicateDirectory, "modules.json")).Contains("cancel-locked-uninstall"), "cancel pending locked uninstall must restore duplicate module manifests.");
                     Require(string.IsNullOrWhiteSpace(service.RefreshInstallState(tempRoot, cancelUninstallDescriptor).PendingOperation), "cancel pending locked uninstall must clear pending operation metadata.");
                 }
             }
@@ -2062,15 +2119,15 @@ namespace PlugHub.StaticValidation
                 File.WriteAllText(Path.Combine(repositoryRoot, "dist", "Duct.dll"), "duct");
                 File.WriteAllText(Path.Combine(repositoryRoot, "dist", "Family.dll"), "family");
                 File.WriteAllText(
-                    Path.Combine(repositoryRoot, "package.json"),
+                    Path.Combine(repositoryRoot, "modules.json"),
                     "{\"schemaVersion\":\"1.0\",\"modules\":[{\"id\":\"duct-package\",\"assembly\":\"dist/Duct.dll\",\"type\":\"Demo.DuctModule\",\"displayName\":\"Duct\",\"enabled\":true,\"visible\":true,\"features\":[{\"id\":\"duct.switch\",\"name\":\"Switch\",\"category\":\"mep\",\"group\":\"duct\",\"order\":1,\"defaultState\":\"Visible\",\"commandAssembly\":\"dist/Duct.dll\",\"commandType\":\"Demo.DuctCommand\"}]},{\"id\":\"family-package\",\"assembly\":\"dist/Family.dll\",\"type\":\"Demo.FamilyModule\",\"displayName\":\"Family\",\"enabled\":true,\"visible\":true,\"features\":[{\"id\":\"family.batch\",\"name\":\"Batch\",\"category\":\"family\",\"group\":\"family\",\"order\":1,\"defaultState\":\"Visible\",\"commandAssembly\":\"dist/Family.dll\",\"commandType\":\"Demo.FamilyCommand\"}]}]}");
 
                 var service = new PlugHub.Framework.Packages.PackageRepositoryService();
                 var packages = service.BrowseCached(tempRoot, "public-packages", repositoryRoot, out var diagnostics);
                 Require(!diagnostics.Any(), "cached repository package browse should not emit diagnostics: " + string.Join("; ", diagnostics.Select(item => item.Message)));
-                Require(packages.Count == 2, "repository root package.json with two modules must browse as two plugin rows.");
-                Require(packages.Select(package => package.PackageId).Distinct(StringComparer.OrdinalIgnoreCase).Count() == 2, "plugin rows from the same package.json must install independently by module id.");
-                Require(packages.Select(package => package.InstallDirectory).Distinct(StringComparer.OrdinalIgnoreCase).Count() == 2, "plugin rows from the same package.json must use independent install directories.");
+                Require(packages.Count == 2, "repository root modules.json with two modules must browse as two plugin rows.");
+                Require(packages.Select(package => package.PackageId).Distinct(StringComparer.OrdinalIgnoreCase).Count() == 2, "plugin rows from the same modules.json must install independently by module id.");
+                Require(packages.Select(package => package.InstallDirectory).Distinct(StringComparer.OrdinalIgnoreCase).Count() == 2, "plugin rows from the same modules.json must use independent install directories.");
 
                 var ductPackage = packages.Single(package => package.ModuleId == "duct-package");
                 var familyPackage = packages.Single(package => package.ModuleId == "family-package");
@@ -2080,9 +2137,9 @@ namespace PlugHub.StaticValidation
 
                 var ductInstallDirectory = Path.Combine(tempRoot, "packages", "duct-package");
                 var familyInstallDirectory = Path.Combine(tempRoot, "packages", "family-package");
-                Require(File.Exists(Path.Combine(ductInstallDirectory, "package.json")), "installed plugin must write a package-local manifest.");
+                Require(File.Exists(Path.Combine(ductInstallDirectory, "modules.json")), "installed plugin must write a package-local manifest.");
                 Require(!Directory.Exists(familyInstallDirectory), "installing one plugin must not install another module from the same repository manifest.");
-                Require(Directory.GetFiles(Path.Combine(tempRoot, "packages"), "package.json", SearchOption.AllDirectories).Length == 1, "installing one plugin must create only one package.json under packages.");
+                Require(Directory.GetFiles(Path.Combine(tempRoot, "packages"), "modules.json", SearchOption.AllDirectories).Length == 1, "installing one plugin must create only one modules.json under packages.");
                 Require(File.Exists(Path.Combine(ductInstallDirectory, "dist", "Duct.dll")), "installed plugin must copy its configured assembly.");
                 Require(!File.Exists(Path.Combine(ductInstallDirectory, "dist", "Family.dll")), "installed plugin must not copy another plugin assembly.");
                 Require(!File.Exists(Path.Combine(ductInstallDirectory, "README.md")), "installed plugin must not copy repository-level files.");
@@ -2106,7 +2163,7 @@ namespace PlugHub.StaticValidation
                 Directory.CreateDirectory(Path.Combine(familyInstallDirectory, "dist"));
                 File.Copy(Path.Combine(repositoryRoot, "dist", "Duct.dll"), Path.Combine(familyInstallDirectory, "dist", "Duct.dll"));
                 File.Copy(Path.Combine(repositoryRoot, "dist", "Family.dll"), Path.Combine(familyInstallDirectory, "dist", "Family.dll"));
-                File.Copy(Path.Combine(repositoryRoot, "package.json"), Path.Combine(familyInstallDirectory, "package.json"));
+                File.Copy(Path.Combine(repositoryRoot, "modules.json"), Path.Combine(familyInstallDirectory, "modules.json"));
 
                 var uninstallResult = service.Uninstall(tempRoot, ductPackage);
                 Require(uninstallResult.Success, "uninstalling an installed plugin should succeed: " + uninstallResult.Message);
@@ -2122,8 +2179,8 @@ namespace PlugHub.StaticValidation
                     });
                 Require(!resolvedAfterUninstall.Modules.Modules.Any(module => module.Id == "duct-package"), "uninstalled repository plugin must not load after restart even when an old package-level manifest also declared it.");
                 Require(resolvedAfterUninstall.Modules.Modules.Any(module => module.Id == "family-package"), "uninstalling one plugin from a legacy multi-plugin manifest must preserve the sibling plugin.");
-                Require(File.ReadAllText(Path.Combine(familyInstallDirectory, "package.json")).Contains("family-package"), "legacy sibling package manifest must keep the remaining module.");
-                Require(!File.ReadAllText(Path.Combine(familyInstallDirectory, "package.json")).Contains("duct-package"), "legacy sibling package manifest must remove the uninstalled module.");
+                Require(File.ReadAllText(Path.Combine(familyInstallDirectory, "modules.json")).Contains("family-package"), "sibling modules manifest must keep the remaining module.");
+                Require(!File.ReadAllText(Path.Combine(familyInstallDirectory, "modules.json")).Contains("duct-package"), "sibling modules manifest must remove the uninstalled module.");
 
                 var familyUninstallResult = service.Uninstall(tempRoot, familyPackage);
                 Require(familyUninstallResult.Success, "uninstalling the sibling plugin should succeed: " + familyUninstallResult.Message);
@@ -2141,7 +2198,7 @@ namespace PlugHub.StaticValidation
 
                 var familyInstallResult = service.Install(tempRoot, familyPackage);
                 Require(familyInstallResult.Success, "installing the sibling plugin should succeed: " + familyInstallResult.Message);
-                Require(File.Exists(Path.Combine(familyInstallDirectory, "package.json")), "sibling plugin install must write its own package-local manifest.");
+                Require(File.Exists(Path.Combine(familyInstallDirectory, "modules.json")), "sibling plugin install must write its own package-local manifest.");
             }
             finally
             {
@@ -2180,7 +2237,7 @@ namespace PlugHub.StaticValidation
                         }
                     }
                 };
-                File.WriteAllText(Path.Combine(packageDirectory, "package.json"), Json.Serialize(serializedModules));
+                File.WriteAllText(Path.Combine(packageDirectory, "modules.json"), Json.Serialize(serializedModules));
 
                 var resolved = new PlugHub.Framework.Sources.ModuleSourceResolver().Resolve(
                     tempRoot,
@@ -2193,7 +2250,7 @@ namespace PlugHub.StaticValidation
                         Modules = new List<PlugHub.Framework.Configuration.ModuleConfiguration>()
                     });
 
-                Require(resolved.Modules.Modules.Any(module => module.Id == "serialized-package"), "runtime must load installed package manifests after settings serialization rewrites JSON casing.");
+                Require(resolved.Modules.Modules.Any(module => module.Id == "serialized-package"), "runtime must load installed modules manifests after settings serialization rewrites JSON casing.");
             }
             finally
             {
@@ -2212,7 +2269,7 @@ namespace PlugHub.StaticValidation
                 var sourceDirectory = Path.Combine(tempRoot, "repository-cache", "broken-package");
                 Directory.CreateDirectory(sourceDirectory);
                 File.WriteAllText(
-                    Path.Combine(sourceDirectory, "package.json"),
+                    Path.Combine(sourceDirectory, "modules.json"),
                     "{\"schemaVersion\":\"1.0\",\"modules\":[{\"id\":\"broken-package\",\"assembly\":\"dist/Missing.dll\",\"type\":\"Demo.BrokenModule\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
 
                 var descriptor = new PlugHub.Framework.Packages.RepositoryPackageDescriptor
@@ -2221,7 +2278,7 @@ namespace PlugHub.StaticValidation
                     PackageId = "broken-package",
                     ModuleId = "broken-package",
                     DisplayName = "Broken Package",
-                    ManifestPath = Path.Combine(sourceDirectory, "package.json"),
+                    ManifestPath = Path.Combine(sourceDirectory, "modules.json"),
                     SourceDirectory = sourceDirectory,
                     InstallDirectory = Path.Combine(tempRoot, "packages", "broken-package")
                 };
@@ -2234,7 +2291,7 @@ namespace PlugHub.StaticValidation
                 Directory.CreateDirectory(descriptor.InstallDirectory);
                 File.WriteAllText(Path.Combine(descriptor.InstallDirectory, "Existing.dll"), "existing");
                 File.WriteAllText(
-                    Path.Combine(descriptor.InstallDirectory, "package.json"),
+                    Path.Combine(descriptor.InstallDirectory, "modules.json"),
                     "{\"schemaVersion\":\"1.0\",\"modules\":[{\"id\":\"broken-package\",\"assembly\":\"Existing.dll\",\"type\":\"Demo.BrokenModule\",\"enabled\":true,\"visible\":true,\"features\":[]}]}");
 
                 var updateResult = service.Update(tempRoot, descriptor);
@@ -2447,21 +2504,24 @@ namespace PlugHub.StaticValidation
             Require(service.Contains("PlugHub.Updater.exe") && service.Contains("StartUpdater"), "framework update service must start the silent updater instead of copying DLLs in-process.");
             Require(releaseClient.Contains("HttpWebRequest") && releaseClient.Contains("UserAgent") && releaseClient.Contains("JavaScriptSerializer"), "release client must use net48-compatible HTTP and JSON APIs.");
             Require(releaseClient.Contains("EnsureSecureTransport()") && releaseAssetDownloader.Contains("EnsureSecureTransport()") && releaseAssetDownloader.Contains("KeepAlive = false"), "framework update HTTP client and asset downloader must harden TLS transport before HTTPS requests.");
-            Require(validator.Contains("PlugHub.Revit2020.dll") && validator.Contains("PlugHub.Framework.dll") && validator.Contains("PlugHub.Contracts.dll"), "update package validator must require the core framework DLLs.");
+            Require(validator.Contains("PlugHub.Revit2020.dll") && validator.Contains("PlugHub.Framework.dll") && validator.Contains("PlugHub.Contracts.dll") && validator.Contains("PlugHub-Uninstall.exe"), "update package validator must require the core framework DLLs and installed uninstaller.");
             Require(validator.Contains("IsSafeZipEntry") && validator.Contains("Path.DirectorySeparatorChar"), "update package validator must reject unsafe zip paths.");
             Require(updaterArguments.Contains("/payloadZip") && updaterArguments.Contains("/installDir") && updaterArguments.Contains("/targetVersion") && updaterArguments.Contains("/revitProcessId"), "updater must accept the documented arguments.");
             Require(updaterProgram.Contains("FrameworkDllUpdater") && !updaterProgram.Contains("Application.Run"), "updater must run silently without a WinForms window.");
-            Require(updaterRunner.Contains("WaitForExit") && updaterRunner.Contains("CopyFrameworkDllsOnly"), "updater must wait for Revit exit before copying DLLs.");
-            Require(updaterRunner.Contains("PlugHub.addin") && updaterRunner.Contains("SkipNonDllEntry") && !updaterRunner.Contains("Directory.Delete(installDirectory"), "updater must avoid addin/config/packages replacement and install directory deletion.");
+            Require(updaterRunner.Contains("WaitForExit") && updaterRunner.Contains("CopyFrameworkFilesAndUninstaller"), "updater must wait for Revit exit before copying framework files.");
+            Require(updaterRunner.Contains("PlugHub-Uninstall.exe") && updaterRunner.Contains("ShouldCopyUpdateEntry"), "updater must replace the installed uninstaller from the update package.");
+            Require(updaterRunner.Contains("PlugHub.addin") && !updaterRunner.Contains("Directory.Delete(installDirectory"), "updater must avoid addin/config/packages replacement and install directory deletion.");
             Require(githubWorkflow.Contains("Build PlugHub updater") && githubWorkflow.Contains("PlugHub.Updater.csproj") && githubWorkflow.Contains("/p:PlugHubReleaseTag=\"$env:PLUGHUB_RELEASE_TAG\""), "GitHub release workflow must build the updater with the resolved release tag version.");
             Require(githubWorkflow.Contains("Publish Gitee release") && githubWorkflow.Contains("PlugHub-Revit2020-$tag.zip"), "GitHub release workflow must mirror the built updater package to Gitee release assets.");
             Require(buildScript.Contains("PlugHub.Updater.csproj") && buildScript.Contains("PlugHub.Updater.exe"), "local Revit 2020 build script must stage PlugHub.Updater.exe.");
+            Require(buildScript.Contains("PlugHub.Uninstaller.csproj") && buildScript.Contains("PlugHub-Uninstall.exe"), "local Revit 2020 build script must stage PlugHub-Uninstall.exe for update packages.");
             Require(buildScript.Contains("Resolve-PlugHubReleaseVersion") && buildScript.Contains("/p:PlugHubVersion=$($PlugHubReleaseVersion.Version)") && buildScript.Contains("/p:PlugHubReleaseTag=$($PlugHubReleaseVersion.ReleaseTag)"), "local and release builds must stamp PlugHub DLLs with the release tag version.");
-            Require(readme.Contains("检查更新小图标") && readme.Contains("自动弹出目标版本号") && readme.Contains("只覆盖框架 DLL"), "README must document framework auto-update behavior.");
+            Require(readme.Contains("检查更新小图标") && readme.Contains("自动弹出目标版本号") && readme.Contains("框架 DLL 和卸载程序"), "README must document framework auto-update behavior.");
             Require(readme.Contains("已是最新版本") && readme.Contains("关闭弹窗则退出更新") && !readme.Contains("Revit 实机测试成功"), "README must document updater behavior without claiming Revit real-machine validation.");
 
             ValidateReleaseClientParsesUpdatePackageAndNotes();
             ValidateFrameworkUpdatePackageRejectsUnsafeZip();
+            ValidateFrameworkUpdatePackageRequiresUninstaller();
         }
 
         private static void ValidateReleaseClientParsesUpdatePackageAndNotes()
@@ -2504,6 +2564,39 @@ namespace PlugHub.StaticValidation
                 }
 
                 Require(failed, "framework update validator must reject unsafe zip entry paths.");
+            }
+            finally
+            {
+                Directory.Delete(temp, true);
+            }
+        }
+
+        private static void ValidateFrameworkUpdatePackageRequiresUninstaller()
+        {
+            var validator = new PlugHub.Framework.Updates.FrameworkUpdatePackageValidator();
+            var temp = Path.Combine(Path.GetTempPath(), "PlugHubStaticValidation", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(temp);
+            try
+            {
+                var zip = Path.Combine(temp, "missing-uninstaller.zip");
+                using (var archive = ZipFile.Open(zip, ZipArchiveMode.Create))
+                {
+                    archive.CreateEntry("PlugHub.Revit2020.dll");
+                    archive.CreateEntry("PlugHub.Framework.dll");
+                    archive.CreateEntry("PlugHub.Contracts.dll");
+                }
+
+                var failed = false;
+                try
+                {
+                    validator.Validate(zip);
+                }
+                catch (InvalidDataException ex) when (ex.Message.Contains("PlugHub-Uninstall.exe"))
+                {
+                    failed = true;
+                }
+
+                Require(failed, "framework update validator must require PlugHub-Uninstall.exe in release packages.");
             }
             finally
             {
@@ -2701,8 +2794,8 @@ namespace PlugHub.StaticValidation
             var packagesDirectory = FullPath("packages");
             if (!Directory.Exists(packagesDirectory)) yield break;
 
-            foreach (var file in Directory.GetFiles(packagesDirectory, "package.json", SearchOption.AllDirectories)
-                         .Concat(Directory.GetFiles(packagesDirectory, "*.package.json", SearchOption.AllDirectories))
+            foreach (var file in Directory.GetFiles(packagesDirectory, "modules.json", SearchOption.AllDirectories)
+                         .Concat(Directory.GetFiles(packagesDirectory, "*.modules.json", SearchOption.AllDirectories))
                          .Distinct(StringComparer.OrdinalIgnoreCase))
             {
                 foreach (var module in Modules(Json.Deserialize<Dictionary<string, object>>(File.ReadAllText(file))))
@@ -2716,7 +2809,7 @@ namespace PlugHub.StaticValidation
         {
             return ArrayValue(root, "moduleSources")
                 .Cast<Dictionary<string, object>>()
-                .All(source => StringValue(source, "manifestPath") == "package.json");
+                .All(source => StringValue(source, "manifestPath") == "modules.json");
         }
 
         private static IEnumerable<Dictionary<string, object>> Repositories(Dictionary<string, object> root)

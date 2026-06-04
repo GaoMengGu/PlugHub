@@ -10,8 +10,8 @@ namespace PlugHub.Framework.Sources
 {
     public sealed class ModuleSourceResolver
     {
-        private const string DefaultPackageManifestName = "package.json";
-        private const string AdjacentPackageManifestPattern = "*.package.json";
+        private const string DefaultModulesManifestName = "modules.json";
+        private const string AdjacentModulesManifestPattern = "*.modules.json";
 
         private readonly JavaScriptSerializer _serializer = new JavaScriptSerializer();
 
@@ -77,14 +77,14 @@ namespace PlugHub.Framework.Sources
 
         private static IEnumerable<string> FindModuleManifests(string sourceDirectory)
         {
-            var rootManifest = Path.Combine(sourceDirectory, DefaultPackageManifestName);
+            var rootManifest = Path.Combine(sourceDirectory, DefaultModulesManifestName);
             if (File.Exists(rootManifest))
             {
                 yield return rootManifest;
             }
 
-            var manifests = Directory.GetFiles(sourceDirectory, DefaultPackageManifestName, SearchOption.AllDirectories)
-                .Concat(Directory.GetFiles(sourceDirectory, AdjacentPackageManifestPattern, SearchOption.AllDirectories))
+            var manifests = Directory.GetFiles(sourceDirectory, DefaultModulesManifestName, SearchOption.AllDirectories)
+                .Concat(Directory.GetFiles(sourceDirectory, AdjacentModulesManifestPattern, SearchOption.AllDirectories))
                 .Where(path => !string.Equals(path, rootManifest, StringComparison.OrdinalIgnoreCase))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(path => path, StringComparer.OrdinalIgnoreCase);
@@ -97,7 +97,7 @@ namespace PlugHub.Framework.Sources
 
         private bool AddModulesFromManifest(ModuleSourceConfiguration source, string sourceDirectory, ModulesConfiguration resolved, ICollection<DiagnosticMessage> diagnostics, bool ignoreNonPlugHubManifest = false)
         {
-            var manifestPath = Path.Combine(sourceDirectory, string.IsNullOrWhiteSpace(source.ManifestPath) ? DefaultPackageManifestName : source.ManifestPath);
+            var manifestPath = Path.Combine(sourceDirectory, string.IsNullOrWhiteSpace(source.ManifestPath) ? DefaultModulesManifestName : source.ManifestPath);
             if (!File.Exists(manifestPath))
             {
                 AddSourceDiagnostic(diagnostics, source.Id, "PH-SOURCE-MANIFEST", "Module source manifest was not found: " + manifestPath);
@@ -143,13 +143,42 @@ namespace PlugHub.Framework.Sources
             var root = _serializer.Deserialize<Dictionary<string, object>>(text);
             if (root == null || !ContainsKey(root, "schemaVersion") || !ContainsKey(root, "modules"))
             {
-                error = "Manifest is not a PlugHub package manifest: " + manifestPath;
+                error = "Manifest is not a PlugHub modules manifest: " + manifestPath;
                 return false;
             }
 
             modules = _serializer.Deserialize<ModulesConfiguration>(text) ?? new ModulesConfiguration();
+            NormalizeRepositoryModuleDefaults(root, modules);
             PushRootCompatibilityToModules(modules);
             return true;
+        }
+
+        private static void NormalizeRepositoryModuleDefaults(Dictionary<string, object> root, ModulesConfiguration modules)
+        {
+            var moduleObjects = ArrayValue(root, "modules")
+                .OfType<Dictionary<string, object>>()
+                .Select(item => new { Id = StringValue(item, "id"), Value = item })
+                .Where(item => !string.IsNullOrWhiteSpace(item.Id))
+                .GroupBy(item => item.Id, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.Last().Value, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var module in modules.Modules ?? new List<ModuleConfiguration>())
+            {
+                if (!moduleObjects.TryGetValue(module.Id ?? string.Empty, out var moduleObject))
+                {
+                    continue;
+                }
+
+                if (!ContainsKey(moduleObject, "enabled"))
+                {
+                    module.Enabled = true;
+                }
+
+                if (!ContainsKey(moduleObject, "visible"))
+                {
+                    module.Visible = true;
+                }
+            }
         }
 
         private static void PushRootCompatibilityToModules(ModulesConfiguration modules)
@@ -173,11 +202,9 @@ namespace PlugHub.Framework.Sources
             return new ModulesConfiguration
             {
                 SchemaVersion = modules.SchemaVersion,
-                Version = modules.Version,
+                IndexVersion = modules.IndexVersion,
                 RevitVersions = new List<string>(modules.RevitVersions ?? new List<string>()),
                 FrameworkVersionRange = modules.FrameworkVersionRange,
-                Sha256 = modules.Sha256,
-                Signature = modules.Signature,
                 PackageDirectories = new List<string>(modules.PackageDirectories ?? new List<string>()),
                 ModuleSources = (modules.ModuleSources ?? new List<ModuleSourceConfiguration>())
                     .Select(source => new ModuleSourceConfiguration
@@ -231,6 +258,33 @@ namespace PlugHub.Framework.Sources
         private static bool ContainsKey(Dictionary<string, object> source, string key)
         {
             return source.Keys.Any(item => string.Equals(item, key, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static IEnumerable<object> ArrayValue(Dictionary<string, object> root, string key)
+        {
+            return TryGetValue(root, key, out var value) && value is System.Collections.ArrayList list
+                ? list.Cast<object>()
+                : Enumerable.Empty<object>();
+        }
+
+        private static string StringValue(Dictionary<string, object> source, string key)
+        {
+            return TryGetValue(source, key, out var value) ? Convert.ToString(value) ?? string.Empty : string.Empty;
+        }
+
+        private static bool TryGetValue(Dictionary<string, object> source, string key, out object value)
+        {
+            foreach (var item in source)
+            {
+                if (string.Equals(item.Key, key, StringComparison.OrdinalIgnoreCase))
+                {
+                    value = item.Value;
+                    return true;
+                }
+            }
+
+            value = new object();
+            return false;
         }
     }
 

@@ -80,7 +80,7 @@ namespace PlugHub.Framework.Packages
 
             if (packages.Count == 0)
             {
-                AddDiagnostic(messages, repositoryId, "PH-REPOSITORY-MANIFEST", "No PlugHub package manifests were found in repository.");
+                AddDiagnostic(messages, repositoryId, "PH-REPOSITORY-MANIFEST", "No PlugHub modules.json manifests were found in repository.");
             }
 
             return packages

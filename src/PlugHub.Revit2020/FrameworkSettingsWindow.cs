@@ -28,7 +28,7 @@ namespace PlugHub.Revit2020
 {
     internal sealed class FrameworkSettingsWindow : Window
     {
-        private const string DefaultPackageManifestName = "package.json";
+        private const string DefaultPackageManifestName = "modules.json";
         private const string DefaultRepositoryProvider = "gitee";
         private const string DefaultPublicRepository = "https://gitee.com/GaoMengGu/PlugHub_Packages";
         private const string DefaultRibbonDesignerPanelId = "default";

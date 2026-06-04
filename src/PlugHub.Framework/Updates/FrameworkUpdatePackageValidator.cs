@@ -15,6 +15,11 @@ namespace PlugHub.Framework.Updates
             "PlugHub.Contracts.dll"
         };
 
+        private static readonly string[] RequiredRootFiles =
+        {
+            "PlugHub-Uninstall.exe"
+        };
+
         public void Validate(string zipPath)
         {
             if (string.IsNullOrWhiteSpace(zipPath) || !File.Exists(zipPath))
@@ -26,6 +31,7 @@ namespace PlugHub.Framework.Updates
             using (var archive = ZipFile.OpenRead(zipPath))
             {
                 var rootDlls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var rootFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var entry in archive.Entries)
                 {
                     if (!IsSafeZipEntry(entry.FullName))
@@ -37,6 +43,11 @@ namespace PlugHub.Framework.Updates
                     {
                         rootDlls.Add(Path.GetFileName(entry.FullName));
                     }
+
+                    if (IsRootFileEntry(entry.FullName))
+                    {
+                        rootFiles.Add(Path.GetFileName(entry.FullName));
+                    }
                 }
 
                 foreach (var dll in RequiredDlls)
@@ -44,6 +55,14 @@ namespace PlugHub.Framework.Updates
                     if (!rootDlls.Contains(dll))
                     {
                         throw new InvalidDataException("Update package is missing framework DLL: " + dll);
+                    }
+                }
+
+                foreach (var file in RequiredRootFiles)
+                {
+                    if (!rootFiles.Contains(file))
+                    {
+                        throw new InvalidDataException("Update package is missing required root file: " + file);
                     }
                 }
             }
@@ -78,6 +97,13 @@ namespace PlugHub.Framework.Updates
         {
             var normalized = (entryName ?? string.Empty).Replace('/', Path.DirectorySeparatorChar);
             return string.Equals(Path.GetExtension(normalized), ".dll", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(Path.GetFileName(normalized), normalized, StringComparison.OrdinalIgnoreCase);
+        }
+
+        public static bool IsRootFileEntry(string entryName)
+        {
+            var normalized = (entryName ?? string.Empty).Replace('/', Path.DirectorySeparatorChar);
+            return !string.IsNullOrWhiteSpace(normalized)
                 && string.Equals(Path.GetFileName(normalized), normalized, StringComparison.OrdinalIgnoreCase);
         }
     }

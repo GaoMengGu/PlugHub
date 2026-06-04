@@ -10,8 +10,8 @@ namespace PlugHub.Framework.Packages
 {
     public sealed class PackageManifestReader
     {
-        private const string DefaultPackageManifestName = "package.json";
-        private const string AdjacentPackageManifestPattern = "*.package.json";
+        private const string DefaultModulesManifestName = "modules.json";
+        private const string AdjacentModulesManifestPattern = "*.modules.json";
         private const string PackagesDirectoryName = "packages";
 
         private readonly JavaScriptSerializer _serializer = new JavaScriptSerializer();
@@ -30,7 +30,6 @@ namespace PlugHub.Framework.Packages
             }
 
             var sourceDirectory = Path.GetDirectoryName(manifestPath) ?? string.Empty;
-            var version = StringValue(root, "version");
             var moduleList = modules.Modules ?? new List<ModuleConfiguration>();
 
             return moduleList
@@ -38,6 +37,7 @@ namespace PlugHub.Framework.Packages
                 .Select(module =>
                 {
                     var packageId = module.Id;
+                    var version = module.Version ?? string.Empty;
                     var installedDirectory = InstalledPackageDirectory(baseDirectory, packageId);
                     var installedVersion = installedPackageVersion(baseDirectory, installedDirectory, module.Id);
                     var displayName = RepositoryPackageDisplayName(module, packageId);
@@ -58,7 +58,7 @@ namespace PlugHub.Framework.Packages
                         PendingOperation = pendingOperationFor(baseDirectory, packageId, module.Id),
                         Description = FirstNonEmpty(module.Description, features.Select(feature => feature.Description).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty),
                         Tags = DistinctText((module.Tags ?? new List<string>()).Concat(features.SelectMany(feature => feature.Tags ?? new List<string>()))),
-                        Categories = DistinctText(features.Select(feature => feature.Category))
+                        Categories = DistinctText(new[] { module.Category }.Concat(features.Select(feature => feature.Category)))
                     };
                 })
                 .ToList();
@@ -68,14 +68,14 @@ namespace PlugHub.Framework.Packages
         {
             if (!Directory.Exists(sourceDirectory)) yield break;
 
-            var rootManifest = Path.Combine(sourceDirectory, DefaultPackageManifestName);
+            var rootManifest = Path.Combine(sourceDirectory, DefaultModulesManifestName);
             if (File.Exists(rootManifest))
             {
                 yield return rootManifest;
             }
 
-            var manifests = Directory.GetFiles(sourceDirectory, DefaultPackageManifestName, SearchOption.AllDirectories)
-                .Concat(Directory.GetFiles(sourceDirectory, AdjacentPackageManifestPattern, SearchOption.AllDirectories))
+            var manifests = Directory.GetFiles(sourceDirectory, DefaultModulesManifestName, SearchOption.AllDirectories)
+                .Concat(Directory.GetFiles(sourceDirectory, AdjacentModulesManifestPattern, SearchOption.AllDirectories))
                 .Where(path => !string.Equals(path, rootManifest, StringComparison.OrdinalIgnoreCase))
                 .Where(path => path.IndexOf(Path.DirectorySeparatorChar + ".git" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) < 0)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -102,6 +102,7 @@ namespace PlugHub.Framework.Packages
                 }
 
                 modules = _serializer.Deserialize<ModulesConfiguration>(text) ?? new ModulesConfiguration();
+                NormalizeRepositoryModuleDefaults(root, modules);
                 return true;
             }
             catch (Exception)
@@ -189,6 +190,34 @@ namespace PlugHub.Framework.Packages
         private static string InstalledPackageDirectory(string baseDirectory, string packageId)
         {
             return Path.Combine(Path.GetFullPath(Path.Combine(baseDirectory, PackagesDirectoryName)), SafePathSegment(packageId));
+        }
+
+        private static void NormalizeRepositoryModuleDefaults(Dictionary<string, object> root, ModulesConfiguration modules)
+        {
+            var moduleObjects = ArrayValue(root, "modules")
+                .OfType<Dictionary<string, object>>()
+                .Select(item => new { Id = StringValue(item, "id"), Value = item })
+                .Where(item => !string.IsNullOrWhiteSpace(item.Id))
+                .GroupBy(item => item.Id, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.Last().Value, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var module in modules.Modules ?? new List<ModuleConfiguration>())
+            {
+                if (!moduleObjects.TryGetValue(module.Id ?? string.Empty, out var moduleObject))
+                {
+                    continue;
+                }
+
+                if (!ContainsKey(moduleObject, "enabled"))
+                {
+                    module.Enabled = true;
+                }
+
+                if (!ContainsKey(moduleObject, "visible"))
+                {
+                    module.Visible = true;
+                }
+            }
         }
 
         private static bool ContainsKey(Dictionary<string, object> source, string key)

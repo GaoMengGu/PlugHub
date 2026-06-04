@@ -121,11 +121,9 @@ namespace PlugHub.Framework.Configuration
             return new ModulesConfiguration
             {
                 SchemaVersion = modules.SchemaVersion,
-                Version = modules.Version,
+                IndexVersion = modules.IndexVersion,
                 RevitVersions = new List<string>(modules.RevitVersions ?? new List<string>()),
                 FrameworkVersionRange = modules.FrameworkVersionRange,
-                Sha256 = modules.Sha256,
-                Signature = modules.Signature,
                 PackageDirectories = new List<string>(modules.PackageDirectories ?? new List<string>()),
                 ModuleSources = (modules.ModuleSources ?? new List<ModuleSourceConfiguration>()).Select(source => new ModuleSourceConfiguration
                 {
@@ -191,11 +189,13 @@ namespace PlugHub.Framework.Configuration
             return new ModuleConfiguration
             {
                 Id = module.Id,
+                Version = module.Version,
                 Assembly = module.Assembly,
                 Type = module.Type,
                 Name = module.Name,
                 DisplayName = module.DisplayName,
                 Description = module.Description,
+                Category = module.Category,
                 SourceId = module.SourceId,
                 ResolvedBaseDirectory = module.ResolvedBaseDirectory,
                 RevitVersions = new List<string>(module.RevitVersions ?? new List<string>()),
@@ -211,9 +211,9 @@ namespace PlugHub.Framework.Configuration
                     Name = feature.Name,
                     DisplayName = feature.DisplayName,
                     Description = feature.Description,
-                    Category = feature.Category,
+                    Category = FirstNonEmpty(feature.Category, module.Category),
                     Group = feature.Group,
-                    Tags = new List<string>(feature.Tags ?? new List<string>()),
+                    Tags = MergeTags(module.Tags, feature.Tags),
                     Order = feature.Order,
                     DefaultState = feature.DefaultState,
                     CommandKey = feature.CommandKey,
@@ -233,9 +233,9 @@ namespace PlugHub.Framework.Configuration
                 ModuleId = module.Id,
                 Name = DisplayNameResolver.Resolve(feature.DisplayName, feature.Name, string.Empty, feature.Id),
                 Description = feature.Description,
-                Category = feature.Category,
+                Category = FirstNonEmpty(feature.Category, module.Category),
                 Group = feature.Group,
-                Tags = new List<string>(feature.Tags ?? new List<string>()),
+                Tags = MergeTags(module.Tags, feature.Tags),
                 Order = feature.Order,
                 DefaultState = ParseFeatureState(feature.DefaultState),
                 CommandKey = feature.CommandKey,
@@ -249,6 +249,21 @@ namespace PlugHub.Framework.Configuration
         private static FeatureState ParseFeatureState(string value)
         {
             return Enum.TryParse(value, true, out FeatureState state) ? state : FeatureState.Visible;
+        }
+
+        private static string FirstNonEmpty(params string[] values)
+        {
+            return values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
+        }
+
+        private static List<string> MergeTags(IEnumerable<string> moduleTags, IEnumerable<string> featureTags)
+        {
+            return (moduleTags ?? Enumerable.Empty<string>())
+                .Concat(featureTags ?? Enumerable.Empty<string>())
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => value.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
     }
 
