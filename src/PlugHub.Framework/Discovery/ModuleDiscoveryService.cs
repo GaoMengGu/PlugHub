@@ -73,11 +73,12 @@ namespace PlugHub.Framework.Discovery
                 {
                     Id = feature.Id,
                     ModuleId = module.Id,
+                    ModuleName = DisplayNameResolver.Resolve(module.DisplayName, module.Name, string.Empty, module.Id),
                     Name = DisplayNameResolver.Resolve(feature.DisplayName, feature.Name, string.Empty, feature.Id),
                     Description = feature.Description,
                     Category = FirstNonEmpty(feature.Category, module.Category),
                     Group = feature.Group,
-                    Tags = MergeTags(module.Tags, feature.Tags),
+                    Tags = MergeTags(module.Tags ?? new List<string>(), feature.Tags),
                     Order = feature.Order,
                     DefaultState = ParseFeatureState(feature.DefaultState),
                     CommandKey = feature.CommandKey,

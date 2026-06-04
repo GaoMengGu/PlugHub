@@ -118,11 +118,12 @@ namespace PlugHub.Framework.Composition
         {
             var groupId = FirstNonEmpty(feature.Group, feature.Category, feature.ModuleId);
             if (string.IsNullOrWhiteSpace(groupId)) return null;
+            var groupName = FirstNonEmpty(feature.Group, feature.ModuleName, feature.Category, feature.ModuleId);
 
             return new ViewGroupConfiguration
             {
                 Id = groupId,
-                Name = groupId,
+                Name = groupName,
                 Order = feature.Order,
                 IncludeTags = new List<string>(),
                 IncludeCategories = new List<string>(),

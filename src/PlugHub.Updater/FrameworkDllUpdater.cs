@@ -1,12 +1,15 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 
 namespace PlugHub.Updater
 {
     internal sealed class FrameworkDllUpdater
     {
+        private const int MaxBackupDirectoriesToKeep = 3;
         private const string InstalledUpdaterName = "PlugHub.Updater.exe";
         private const string InstalledUninstallerName = "PlugHub-Uninstall.exe";
 
@@ -48,6 +51,8 @@ namespace PlugHub.Updater
         {
             var backupDirectory = Path.Combine(installDirectory, "update-backup", SafeSegment(targetVersion) + "-" + DateTime.UtcNow.ToString("yyyyMMddHHmmss"));
             Directory.CreateDirectory(backupDirectory);
+            Directory.SetCreationTimeUtc(backupDirectory, DateTime.UtcNow);
+            Directory.SetLastWriteTimeUtc(backupDirectory, DateTime.UtcNow);
             try
             {
                 using (var archive = ZipFile.OpenRead(payloadZip))
@@ -70,11 +75,38 @@ namespace PlugHub.Updater
                 }
 
                 _logger.Info("Framework file update completed: " + targetVersion);
+                PruneOldBackups(Path.GetDirectoryName(backupDirectory) ?? installDirectory);
             }
             catch
             {
                 RestoreBackup(backupDirectory, installDirectory);
                 throw;
+            }
+        }
+
+        private void PruneOldBackups(string backupRoot)
+        {
+            if (!Directory.Exists(backupRoot)) return;
+
+            var keepSet = new HashSet<string>(Directory.GetDirectories(backupRoot)
+                .OrderByDescending(Directory.GetCreationTimeUtc)
+                .ThenByDescending(Path.GetFileName, StringComparer.OrdinalIgnoreCase)
+                .Take(MaxBackupDirectoriesToKeep)
+                .Select(Path.GetFullPath), StringComparer.OrdinalIgnoreCase);
+            foreach (var directory in Directory.GetDirectories(backupRoot))
+            {
+                var fullPath = Path.GetFullPath(directory);
+                if (keepSet.Contains(fullPath)) continue;
+
+                try
+                {
+                    Directory.Delete(fullPath, true);
+                    _logger.Info("Deleted old framework update backup: " + fullPath);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Info("Failed to delete old framework update backup: " + fullPath + " - " + ex.Message);
+                }
             }
         }
 

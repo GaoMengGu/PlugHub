@@ -52,6 +52,7 @@ namespace PlugHub.StaticValidation
                 ValidateRevit2025AlcReadinessSpecification();
                 ValidateManifestAuthoritativeDiscoverySpecification();
                 ValidateRuntimeConfigurationLoader();
+                ValidateRuntimeLoadsPackagesWhenConfigFilesAreMissing();
                 ValidateFrameworkRuntimeLoadIsolation();
                 ValidateExternalModuleCommandResolution();
                 ValidateFrameworkContainsNoBundledModules();
@@ -461,6 +462,9 @@ namespace PlugHub.StaticValidation
             var models = ReadText("src/PlugHub.Framework/Configuration/ConfigurationModels.cs");
             Require(models.Contains("IndexVersion") && models.Contains("public string Version") && models.Contains("public string Author") && models.Contains("public string Category") && models.Contains("RevitVersions") && models.Contains("FrameworkVersionRange"), "configuration models must expose packages manifest author, version, and compatibility fields.");
 
+            var featureDescriptor = ReadText("src/PlugHub.Contracts/Features/FeatureDescriptor.cs");
+            Require(featureDescriptor.Contains("ModuleName"), "feature descriptors must carry module display names so framework-owned default layouts can avoid technical panel names.");
+
             var sourceResolver = ReadText("src/PlugHub.Framework/Sources/ModuleSourceResolver.cs");
             Require(sourceResolver.Contains("DefaultPackageManifestName = \"packages.json\""), "module source resolver must use packages.json as the only default module manifest.");
             Require(sourceResolver.Contains("AdjacentPackageManifestPattern = \"*.packages.json\""), "module source resolver must scan adjacent *.packages.json manifests.");
@@ -479,6 +483,7 @@ namespace PlugHub.StaticValidation
             Require(discovery.Contains("RT-MODULE-COMPATIBILITY") && discovery.Contains("continue;"), "module discovery must warn and skip packages incompatible with the active runtime.");
             Require(discovery.Contains("CurrentRevitVersion") && discovery.Contains(".Trim()") && discovery.Contains("StringComparer.OrdinalIgnoreCase"), "module discovery must normalize declared Revit versions before comparing with the current runtime.");
             Require(discovery.Contains("FrameworkVersionRange") && discovery.Contains("metadata"), "frameworkVersionRange must be explicitly preserved as metadata and not treated as runtime compatibility logic yet.");
+            Require(discovery.Contains("ModuleName = DisplayNameResolver.Resolve(module.DisplayName, module.Name, string.Empty, module.Id)"), "module discovery must project module display names onto feature descriptors.");
 
             var packageInstallService = ReadText("src/PlugHub.Framework/Packages/PackageInstallService.cs");
             Require(packageInstallService.Contains("DefaultPackageManifestName = \"packages.json\""), "repository installs must write packages.json as the local module manifest.");
@@ -489,6 +494,7 @@ namespace PlugHub.StaticValidation
             ValidateRuntimeSkipsPresetOverriddenIncompatiblePackage();
             ValidateInstalledRepositoryPackagePreservesCompatibilityAndSkips();
             ValidateRepositoryModulesManifestVersionAndDefaults();
+            ValidateRuntimeDefaultLayoutUsesModuleDisplayNames();
         }
 
         private static void ValidateRuntimeAcceptsWhitespacePaddedRevitVersion()
@@ -636,6 +642,43 @@ namespace PlugHub.StaticValidation
                 var snapshot = new PlugHub.Framework.Runtime.FrameworkRuntime().Load(configDirectory);
                 Require(snapshot.Features.Any(feature => feature.Id == "minimal-module.run"), "runtime must load installed packages.json even when enabled, visible, group, order, defaultState, buttonSize, and commandAssembly are omitted.");
                 Require(snapshot.Features.Any(feature => feature.Id == "minimal-module.run" && feature.Category == "view" && feature.CommandAssembly.EndsWith("Minimal.dll", StringComparison.OrdinalIgnoreCase)), "runtime must inherit module category and command assembly defaults for features.");
+                Require(snapshot.Features.Any(feature => feature.Id == "minimal-module.run" && feature.ModuleName == "Minimal Module"), "runtime feature descriptors must preserve module displayName for framework default layout naming.");
+            }
+            finally
+            {
+                if (Directory.Exists(tempRoot))
+                {
+                    Directory.Delete(tempRoot, true);
+                }
+            }
+        }
+
+        private static void ValidateRuntimeDefaultLayoutUsesModuleDisplayNames()
+        {
+            var tempRoot = Path.Combine(Path.GetTempPath(), "PlugHub.StaticValidation", Guid.NewGuid().ToString("N"));
+            try
+            {
+                var configDirectory = Path.Combine(tempRoot, "config");
+                var packageDirectory = Path.Combine(tempRoot, "packages", "view-tools");
+                Directory.CreateDirectory(configDirectory);
+                Directory.CreateDirectory(packageDirectory);
+
+                WriteRuntimeIsolationConfiguration(configDirectory);
+                File.WriteAllText(
+                    Path.Combine(packageDirectory, "packages.json"),
+                    "{\"schemaVersion\":\"1.1\",\"revitVersions\":[\"2020\"],\"modules\":[{\"id\":\"view-grid\",\"version\":\"V1.0.0\",\"displayName\":\"View Tools\",\"assembly\":\"Grid.dll\",\"category\":\"view\",\"features\":[{\"id\":\"view-grid.toggle\",\"displayName\":\"Toggle Grid\"}]},{\"id\":\"view-level\",\"version\":\"V1.0.0\",\"displayName\":\"View Tools\",\"assembly\":\"Level.dll\",\"category\":\"view\",\"features\":[{\"id\":\"view-level.toggle\",\"displayName\":\"Toggle Level\"}]},{\"id\":\"duct-tools\",\"version\":\"V1.0.0\",\"displayName\":\"Duct Tools\",\"assembly\":\"Duct.dll\",\"category\":\"mep\",\"features\":[{\"id\":\"duct-tools.switch\",\"displayName\":\"Switch Duct\"}]}]}");
+
+                var snapshot = new PlugHub.Framework.Runtime.FrameworkRuntime().Load(tempRoot, configDirectory);
+                var panelNames = snapshot.Composition.Features
+                    .Select(feature => feature.GroupName)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                Require(panelNames.Contains("View Tools"), "runtime default layout must use module displayName as the fallback panel display name.");
+                Require(panelNames.Contains("Duct Tools"), "runtime default layout must use each module displayName for package-derived fallback panels.");
+                Require(!panelNames.Contains("view") && !panelNames.Contains("mep") && !panelNames.Any(name => name.StartsWith("view-", StringComparison.OrdinalIgnoreCase)), "runtime default layout must not expose category codes or module ids as package fallback panel names.");
+                Require(snapshot.Composition.Features.Count(feature => feature.GroupName == "View Tools") == 2, "runtime default layout must merge modules that intentionally share a module displayName.");
             }
             finally
             {
@@ -1009,6 +1052,46 @@ namespace PlugHub.StaticValidation
             }
         }
 
+        private static void ValidateRuntimeLoadsPackagesWhenConfigFilesAreMissing()
+        {
+            var tempRoot = Path.Combine(Path.GetTempPath(), "PlugHub.StaticValidation", Guid.NewGuid().ToString("N"));
+            try
+            {
+                var baseDirectory = tempRoot;
+                var configDirectory = Path.Combine(baseDirectory, "config");
+                var packageDirectory = Path.Combine(baseDirectory, "packages", "missing-config-module");
+                Directory.CreateDirectory(configDirectory);
+                Directory.CreateDirectory(packageDirectory);
+
+                File.WriteAllText(
+                    Path.Combine(packageDirectory, "packages.json"),
+                    "{\"schemaVersion\":\"1.1\",\"modules\":[{\"id\":\"missing-config-module\",\"version\":\"V1.0.0\",\"displayName\":\"Missing Config Module\",\"assembly\":\"MissingConfig.dll\",\"category\":\"view\",\"features\":[{\"id\":\"missing-config-module.run\",\"displayName\":\"Run Missing Config\"}]}]}");
+
+                PlugHub.Framework.Runtime.FrameworkRuntimeSnapshot snapshot;
+                try
+                {
+                    snapshot = new PlugHub.Framework.Runtime.FrameworkRuntime().Load(baseDirectory, configDirectory);
+                }
+                catch (Exception ex)
+                {
+                    Require(false, "runtime must load installed packages when config JSON files are missing: " + ex.Message);
+                    return;
+                }
+
+                Require(snapshot.Features.Any(feature => feature.Id == "missing-config-module.run"), "runtime must load package features when sources.json, views.json, and feature-combinations.json are missing.");
+                Require(snapshot.Composition.Features.Any(feature => feature.FeatureId == "missing-config-module.run"), "runtime must compose package features with an internal default view when views.json is missing.");
+                Require(snapshot.Configuration.Configuration.Modules.PackageDirectories.SequenceEqual(new[] { "packages" }), "missing sources.json must default runtime discovery to the packages directory.");
+                Require(snapshot.Configuration.ActiveView.Ribbon != null && !string.IsNullOrWhiteSpace(snapshot.Configuration.ActiveView.Ribbon.TabName), "missing views.json must provide a usable default ribbon view.");
+            }
+            finally
+            {
+                if (Directory.Exists(tempRoot))
+                {
+                    Directory.Delete(tempRoot, true);
+                }
+            }
+        }
+
         private static void WriteRuntimeIsolationConfiguration(string configDirectory)
         {
             File.WriteAllText(
@@ -1276,6 +1359,7 @@ namespace PlugHub.StaticValidation
             Require(!settingsStore.Contains("Save(configuration, LoadModuleDocuments(configuration))"), "SettingsConfigurationStore must not expose a Save overload that reloads module documents from disk.");
             Require(settingsStore.Contains("foreach (var document in moduleDocuments)") && settingsStore.Contains("SaveJson(document.Path, document.Modules)"), "SettingsConfigurationStore Save must persist the provided moduleDocuments.");
             Require(settingsStore.Contains("AdjacentPackageManifestPattern = \"*.packages.json\""), "settings configuration store must discover adjacent *.packages.json manifests.");
+            Require(settingsWindow.Contains("Name = DefaultGroupDisplayName(module, feature)") && settingsWindow.Contains("GroupIdForFeature(module, feature)") && settingsWindow.Contains("module.Category"), "settings layout defaults must derive stable group ids from module category and display panel names from module displayName.");
             Require(!settingsWindow.Contains("nameof(FeatureRow.Panel)") && !settingsWindow.Contains("feature.Group = row.Panel"), "feature settings must not expose user-editable panel ownership.");
             Require(!settingsWindow.Contains("点击 Ribbon 的「刷新配置」"), "settings UI must not point users to the removed refresh Ribbon button.");
 
@@ -1524,13 +1608,21 @@ namespace PlugHub.StaticValidation
             var primaryActionBackground = MethodBody(settingsWindow, "RepositoryPackageActionBackground");
             var primaryActionForeground = MethodBody(settingsWindow, "RepositoryPackageActionForeground");
             var primaryActionBorder = MethodBody(settingsWindow, "RepositoryPackageActionBorder");
+            var primaryActionStyle = MethodBody(settingsWindow, "BuildRepositoryPackagePrimaryActionButton");
+            var primaryActionRunner = MethodBody(settingsWindow, "RunRepositoryPackagePrimaryAction");
+            var uninstallActionRunner = MethodBody(settingsWindow, "RunRepositoryPackageUninstallAction");
             Require(primaryActionBackground.Contains("RepositoryPackageAction.Install.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.SuccessBrush") && primaryActionForeground.Contains("RepositoryPackageAction.Install.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.AccentForegroundBrush"), "uninstalled repository packages must show install as white text on green.");
             Require(primaryActionBackground.Contains("RepositoryPackageAction.Update.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.UpdateBrush") && primaryActionForeground.Contains("RepositoryPackageAction.Update.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.AccentForegroundBrush"), "updatable repository packages must show update as white text on blue.");
-            Require(primaryActionBackground.Contains("RepositoryPackageAction.Uninstall.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.ControlBackground") && primaryActionForeground.Contains("RepositoryPackageAction.Uninstall.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.TextBrush") && primaryActionBorder.Contains("RepositoryPackageAction.Uninstall.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.BorderBrush"), "installed repository packages must show the primary status as dark text on a white/themed background.");
+            Require(primaryActionBackground.Contains("RepositoryPackageAction.Reinstall.ToString(), StringComparison.OrdinalIgnoreCase)") && primaryActionBackground.Contains("isMouseOver") && primaryActionBackground.Contains("theme.SuccessBrush") && primaryActionForeground.Contains("RepositoryPackageAction.Reinstall.ToString(), StringComparison.OrdinalIgnoreCase)") && primaryActionForeground.Contains("theme.AccentForegroundBrush") && primaryActionBorder.Contains("RepositoryPackageAction.Reinstall.ToString(), StringComparison.OrdinalIgnoreCase)") && primaryActionBorder.Contains("theme.SuccessBrush"), "installed repository packages must switch the primary installed status to green background with white text on hover.");
+            Require(primaryActionBackground.Contains("RepositoryPackageAction.Reinstall.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.ControlBackground") && primaryActionForeground.Contains("RepositoryPackageAction.Reinstall.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.TextBrush") && primaryActionBorder.Contains("RepositoryPackageAction.Reinstall.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.BorderBrush"), "installed repository packages must default to a passive installed label before hover.");
+            Require(primaryActionStyle.Contains("RepositoryPackagePrimaryActionLabelBinding") && settingsWindow.Contains("RepositoryPackagePrimaryActionLabelConverter") && settingsWindow.Contains("\"重安装\""), "installed repository package primary action must change the button label to reinstall while hovered.");
+            Require(primaryActionRunner.Contains("RepositoryPackageAction.Reinstall.ToString()") && primaryActionRunner.Contains("_packageRepositoryService.Update(BaseDirectory(), package)"), "clicking hovered installed package status must reinstall by reusing the package update replacement path.");
+            Require(uninstallActionRunner.Contains("RepositoryPackageAction.Reinstall.ToString()"), "installed packages with reinstall as primary action must still allow the separate uninstall button.");
             var uninstallButtonStyle = MethodBody(settingsWindow, "RepositoryPackageUninstallButtonStyle");
             Require(uninstallButtonStyle.Contains("UIElement.IsMouseOverProperty") && uninstallButtonStyle.Contains("Control.BackgroundProperty, RevitUiTheme.Current.DangerBrush") && uninstallButtonStyle.Contains("Control.ForegroundProperty, RevitUiTheme.Current.AccentForegroundBrush"), "repository package uninstall hover must switch to red background with white text.");
             Require(repositoryPackageRow.Contains("Take(3)") && repositoryPackageRow.Contains("TagBadges"), "repository package row must expose at most three key chip-ready tag badges when four cannot fit.");
             Require(repositorySettingsController.Contains("return \"已安装\";"), "installed repository packages must default to a passive installed label instead of a visible uninstall label.");
+            Require(repositorySettingsController.Contains("RepositoryPackageAction.Reinstall.ToString()"), "installed repository packages without updates must expose reinstall as the primary hover action.");
             Require(repositorySettingsController.Contains("return \"有更新\";"), "updatable repository packages must show a distinct update label.");
 
             foreach (var forbiddenGrid in new[] { "_repositoriesGrid", "_repositoryPackagesGrid", "_pendingPackageOperationsGrid" })
@@ -2513,6 +2605,7 @@ namespace PlugHub.StaticValidation
             Require(updaterProgram.Contains("FrameworkDllUpdater") && !updaterProgram.Contains("Application.Run"), "updater must run silently without a WinForms window.");
             Require(updaterRunner.Contains("WaitForExit") && updaterRunner.Contains("CopyFrameworkFilesAndUninstaller"), "updater must wait for Revit exit before copying framework files.");
             Require(updaterRunner.Contains("PlugHub.Updater.exe") && updaterRunner.Contains("PlugHub-Uninstall.exe") && updaterRunner.Contains("ShouldCopyUpdateEntry"), "updater must replace the installed updater and uninstaller from the update package.");
+            Require(updaterRunner.Contains("MaxBackupDirectoriesToKeep = 3") && updaterRunner.Contains("PruneOldBackups") && updaterRunner.Contains("GetCreationTimeUtc"), "updater must keep only the latest three update backup directories.");
             Require(updaterRunner.Contains("PlugHub.addin") && !updaterRunner.Contains("Directory.Delete(installDirectory"), "updater must avoid addin/config/packages replacement and install directory deletion.");
             Require(githubWorkflow.Contains("Build PlugHub updater") && githubWorkflow.Contains("PlugHub.Updater.csproj") && githubWorkflow.Contains("/p:PlugHubReleaseTag=\"$env:PLUGHUB_RELEASE_TAG\""), "GitHub release workflow must build the updater with the resolved release tag version.");
             Require(githubWorkflow.Contains("Publish Gitee release") && githubWorkflow.Contains("PlugHub-Revit2020-$tag.zip"), "GitHub release workflow must mirror the built updater package to Gitee release assets.");

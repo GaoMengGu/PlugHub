@@ -863,17 +863,30 @@ namespace PlugHub.Revit2020
         {
             var action = new FrameworkElementFactory(typeof(Button));
             action.SetValue(Button.StyleProperty, RepositoryPackageActionButtonStyle());
-            action.SetBinding(ContentControl.ContentProperty, new Binding(nameof(RepositoryPackageRow.PrimaryActionLabel)));
+            action.SetBinding(ContentControl.ContentProperty, RepositoryPackagePrimaryActionLabelBinding());
             action.SetValue(FrameworkElement.WidthProperty, RepositoryPackageActionWidth);
             action.SetValue(Button.MinWidthProperty, RepositoryPackageActionWidth);
             action.SetValue(Button.HeightProperty, RepositoryPackageActionHeight);
             action.SetValue(FrameworkElement.MarginProperty, new Thickness(0, 0, 0, 6));
             action.SetValue(Button.BorderThicknessProperty, new Thickness(1));
-            action.SetBinding(Button.BackgroundProperty, new Binding(nameof(RepositoryPackageRow.PrimaryAction)) { Converter = new RepositoryPackageActionBrushConverter() });
-            action.SetBinding(Button.ForegroundProperty, new Binding(nameof(RepositoryPackageRow.PrimaryAction)) { Converter = new RepositoryPackageActionForegroundConverter() });
-            action.SetBinding(Button.BorderBrushProperty, new Binding(nameof(RepositoryPackageRow.PrimaryAction)) { Converter = new RepositoryPackageActionBorderConverter() });
+            action.SetBinding(Button.BackgroundProperty, RepositoryPackagePrimaryActionBinding(new RepositoryPackageActionBrushConverter()));
+            action.SetBinding(Button.ForegroundProperty, RepositoryPackagePrimaryActionBinding(new RepositoryPackageActionForegroundConverter()));
+            action.SetBinding(Button.BorderBrushProperty, RepositoryPackagePrimaryActionBinding(new RepositoryPackageActionBorderConverter()));
             action.AddHandler(Button.ClickEvent, new RoutedEventHandler(RunRepositoryPackagePrimaryAction));
             return action;
+        }
+
+        private static MultiBinding RepositoryPackagePrimaryActionLabelBinding()
+        {
+            return RepositoryPackagePrimaryActionBinding(new RepositoryPackagePrimaryActionLabelConverter());
+        }
+
+        private static MultiBinding RepositoryPackagePrimaryActionBinding(IMultiValueConverter converter)
+        {
+            var binding = new MultiBinding { Converter = converter };
+            binding.Bindings.Add(new Binding(nameof(RepositoryPackageRow.PrimaryAction)));
+            binding.Bindings.Add(new Binding("IsMouseOver") { RelativeSource = RelativeSource.Self });
+            return binding;
         }
 
         private FrameworkElementFactory BuildRepositoryPackageUninstallButton()
@@ -1196,6 +1209,7 @@ namespace PlugHub.Revit2020
                 .SelectMany(module => (module.Features ?? new List<FeatureConfiguration>()).Select(feature => new
                 {
                     Id = GroupIdForFeature(module, feature),
+                    Name = DefaultGroupDisplayName(module, feature),
                     Feature = feature
                 }))
                 .Where(item => !string.IsNullOrWhiteSpace(item.Id))
@@ -1206,7 +1220,7 @@ namespace PlugHub.Revit2020
                     return new GroupRow
                     {
                         Id = group.Key,
-                        Name = DisplayName(viewGroup?.Name ?? string.Empty, group.Key, group.Key),
+                        Name = DisplayName(viewGroup?.Name ?? string.Empty, group.Select(item => item.Name).FirstOrDefault(name => !string.IsNullOrWhiteSpace(name)) ?? string.Empty, group.Key),
                         Order = viewGroup?.Order > 0 ? viewGroup.Order : group.Min(item => item.Feature.Order),
                         FeatureCount = group.Count()
                     };
@@ -4307,6 +4321,12 @@ namespace PlugHub.Revit2020
                 return;
             }
 
+            if (string.Equals(row.PrimaryAction, RepositoryPackageAction.Reinstall.ToString(), StringComparison.OrdinalIgnoreCase))
+            {
+                RunRepositoryPackageOperation(row, package => _packageRepositoryService.Update(BaseDirectory(), package));
+                return;
+            }
+
             if (string.Equals(row.PrimaryAction, RepositoryPackageAction.Uninstall.ToString(), StringComparison.OrdinalIgnoreCase))
             {
                 RefreshStatus(row.DisplayName + " 已安装，可使用下方卸载按钮。");
@@ -4321,7 +4341,8 @@ namespace PlugHub.Revit2020
             if (!(RowFromSender<RepositoryPackageRow>(sender) is RepositoryPackageRow row)) return;
             _warehousePackageList.SelectedItem = row;
 
-            if (!string.Equals(row.PrimaryAction, RepositoryPackageAction.Uninstall.ToString(), StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(row.PrimaryAction, RepositoryPackageAction.Uninstall.ToString(), StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(row.PrimaryAction, RepositoryPackageAction.Reinstall.ToString(), StringComparison.OrdinalIgnoreCase))
             {
                 RefreshStatus("未安装插件无需卸载。");
                 return;
@@ -4455,7 +4476,7 @@ namespace PlugHub.Revit2020
                     .SelectMany(module => (module.Features ?? new List<FeatureConfiguration>()).Select(feature => new GroupRow
                     {
                         Id = GroupIdForFeature(module, feature),
-                        Name = GroupIdForFeature(module, feature)
+                        Name = DefaultGroupDisplayName(module, feature)
                     }))
                     .Where(row => !string.IsNullOrWhiteSpace(row.Id))
                     .GroupBy(row => row.Id, StringComparer.OrdinalIgnoreCase)
@@ -4722,7 +4743,14 @@ namespace PlugHub.Revit2020
         {
             if (!string.IsNullOrWhiteSpace(feature.Group)) return feature.Group.Trim();
             if (!string.IsNullOrWhiteSpace(feature.Category)) return feature.Category.Trim();
+            if (!string.IsNullOrWhiteSpace(module.Category)) return module.Category.Trim();
             return module.Id ?? string.Empty;
+        }
+
+        private static string DefaultGroupDisplayName(ModuleConfiguration module, FeatureConfiguration feature)
+        {
+            if (!string.IsNullOrWhiteSpace(feature.Group)) return feature.Group.Trim();
+            return DisplayName(module.DisplayName, module.Name, module.Id);
         }
 
         private void RemoveSelectedRepository()
@@ -5434,29 +5462,45 @@ namespace PlugHub.Revit2020
             public string DisplayText { get; }
         }
 
-        private static Brush RepositoryPackageActionBackground(string action)
+        private static string RepositoryPackagePrimaryActionLabel(string action, bool isMouseOver)
+        {
+            if (string.Equals(action, RepositoryPackageAction.Install.ToString(), StringComparison.OrdinalIgnoreCase)) return "安装";
+            if (string.Equals(action, RepositoryPackageAction.Update.ToString(), StringComparison.OrdinalIgnoreCase)) return "有更新";
+            if (string.Equals(action, RepositoryPackageAction.Reinstall.ToString(), StringComparison.OrdinalIgnoreCase) && isMouseOver) return "重安装";
+            if (string.Equals(action, RepositoryPackageAction.Reinstall.ToString(), StringComparison.OrdinalIgnoreCase)) return "已安装";
+            if (string.Equals(action, RepositoryPackageAction.Uninstall.ToString(), StringComparison.OrdinalIgnoreCase)) return "已安装";
+            return "需重启";
+        }
+
+        private static Brush RepositoryPackageActionBackground(string action, bool isMouseOver)
         {
             var theme = RevitUiTheme.Current;
             if (string.Equals(action, RepositoryPackageAction.Install.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.SuccessBrush;
             if (string.Equals(action, RepositoryPackageAction.Update.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.UpdateBrush;
+            if (string.Equals(action, RepositoryPackageAction.Reinstall.ToString(), StringComparison.OrdinalIgnoreCase) && isMouseOver) return theme.SuccessBrush;
+            if (string.Equals(action, RepositoryPackageAction.Reinstall.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.ControlBackground;
             if (string.Equals(action, RepositoryPackageAction.Uninstall.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.ControlBackground;
             return theme.SurfaceBackground;
         }
 
-        private static Brush RepositoryPackageActionForeground(string action)
+        private static Brush RepositoryPackageActionForeground(string action, bool isMouseOver)
         {
             var theme = RevitUiTheme.Current;
             if (string.Equals(action, RepositoryPackageAction.Install.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.AccentForegroundBrush;
             if (string.Equals(action, RepositoryPackageAction.Update.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.AccentForegroundBrush;
+            if (string.Equals(action, RepositoryPackageAction.Reinstall.ToString(), StringComparison.OrdinalIgnoreCase) && isMouseOver) return theme.AccentForegroundBrush;
+            if (string.Equals(action, RepositoryPackageAction.Reinstall.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.TextBrush;
             if (string.Equals(action, RepositoryPackageAction.Uninstall.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.TextBrush;
             return theme.MutedTextBrush;
         }
 
-        private static Brush RepositoryPackageActionBorder(string action)
+        private static Brush RepositoryPackageActionBorder(string action, bool isMouseOver)
         {
             var theme = RevitUiTheme.Current;
             if (string.Equals(action, RepositoryPackageAction.Install.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.SuccessBrush;
             if (string.Equals(action, RepositoryPackageAction.Update.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.UpdateBrush;
+            if (string.Equals(action, RepositoryPackageAction.Reinstall.ToString(), StringComparison.OrdinalIgnoreCase) && isMouseOver) return theme.SuccessBrush;
+            if (string.Equals(action, RepositoryPackageAction.Reinstall.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.BorderBrush;
             if (string.Equals(action, RepositoryPackageAction.Uninstall.ToString(), StringComparison.OrdinalIgnoreCase)) return theme.BorderBrush;
             return theme.BorderBrush;
         }
@@ -5523,43 +5567,73 @@ namespace PlugHub.Revit2020
             }
         }
 
-        private sealed class RepositoryPackageActionBrushConverter : IValueConverter
+        private sealed class RepositoryPackagePrimaryActionLabelConverter : IMultiValueConverter
         {
-            public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+            public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
             {
-                return RepositoryPackageActionBackground(System.Convert.ToString(value) ?? string.Empty);
+                return RepositoryPackagePrimaryActionLabel(ActionValue(values), IsMouseOverValue(values));
             }
 
-            public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+            public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
             {
-                return Binding.DoNothing;
+                return NoMultiBindingWriteback(targetTypes);
             }
         }
 
-        private sealed class RepositoryPackageActionForegroundConverter : IValueConverter
+        private sealed class RepositoryPackageActionBrushConverter : IMultiValueConverter
         {
-            public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+            public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
             {
-                return RepositoryPackageActionForeground(System.Convert.ToString(value) ?? string.Empty);
+                return RepositoryPackageActionBackground(ActionValue(values), IsMouseOverValue(values));
             }
 
-            public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+            public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
             {
-                return Binding.DoNothing;
+                return NoMultiBindingWriteback(targetTypes);
             }
         }
 
-        private sealed class RepositoryPackageActionBorderConverter : IValueConverter
+        private sealed class RepositoryPackageActionForegroundConverter : IMultiValueConverter
         {
-            public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+            public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
             {
-                return RepositoryPackageActionBorder(System.Convert.ToString(value) ?? string.Empty);
+                return RepositoryPackageActionForeground(ActionValue(values), IsMouseOverValue(values));
             }
 
-            public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+            public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
             {
-                return Binding.DoNothing;
+                return NoMultiBindingWriteback(targetTypes);
             }
+        }
+
+        private sealed class RepositoryPackageActionBorderConverter : IMultiValueConverter
+        {
+            public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+            {
+                return RepositoryPackageActionBorder(ActionValue(values), IsMouseOverValue(values));
+            }
+
+            public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+            {
+                return NoMultiBindingWriteback(targetTypes);
+            }
+        }
+
+        private static string ActionValue(object[] values)
+        {
+            return values != null && values.Length > 0
+                ? System.Convert.ToString(values[0]) ?? string.Empty
+                : string.Empty;
+        }
+
+        private static bool IsMouseOverValue(object[] values)
+        {
+            return values != null && values.Length > 1 && values[1] is bool isMouseOver && isMouseOver;
+        }
+
+        private static object[] NoMultiBindingWriteback(Type[] targetTypes)
+        {
+            return Enumerable.Repeat(Binding.DoNothing, targetTypes == null ? 0 : targetTypes.Length).ToArray();
         }
 
     }

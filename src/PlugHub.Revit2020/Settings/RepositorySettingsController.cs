@@ -41,7 +41,7 @@ namespace PlugHub.Revit2020.Settings
             if (ContainsText(state, "待重启")) return RepositoryPackageAction.None.ToString();
             if (ContainsText(state, "可更新")) return RepositoryPackageAction.Update.ToString();
             if (ContainsText(state, "未安装")) return RepositoryPackageAction.Install.ToString();
-            if (ContainsText(state, "已安装")) return RepositoryPackageAction.Uninstall.ToString();
+            if (ContainsText(state, "已安装")) return RepositoryPackageAction.Reinstall.ToString();
             return RepositoryPackageAction.None.ToString();
         }
 
@@ -49,6 +49,7 @@ namespace PlugHub.Revit2020.Settings
         {
             if (string.Equals(action, RepositoryPackageAction.Install.ToString(), StringComparison.OrdinalIgnoreCase)) return "安装";
             if (string.Equals(action, RepositoryPackageAction.Update.ToString(), StringComparison.OrdinalIgnoreCase)) return "有更新";
+            if (string.Equals(action, RepositoryPackageAction.Reinstall.ToString(), StringComparison.OrdinalIgnoreCase)) return "已安装";
             if (string.Equals(action, RepositoryPackageAction.Uninstall.ToString(), StringComparison.OrdinalIgnoreCase)) return "已安装";
             return "需重启";
         }
@@ -123,6 +124,7 @@ namespace PlugHub.Revit2020.Settings
         None,
         Install,
         Update,
+        Reinstall,
         Uninstall
     }
 }

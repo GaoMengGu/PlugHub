@@ -22,9 +22,9 @@ namespace PlugHub.Framework.Configuration
 
             return new FrameworkConfiguration
             {
-                Modules = ReadJson<ModulesConfiguration>(Path.Combine(configDirectory, "sources.json")),
-                Views = ReadJson<ViewsConfiguration>(Path.Combine(configDirectory, "views.json")),
-                FeatureCombinations = ReadOptionalJson<FeatureCombinationsConfiguration>(Path.Combine(configDirectory, "feature-combinations.json"))
+                Modules = ReadOptionalJson(Path.Combine(configDirectory, "sources.json"), DefaultModulesConfiguration()),
+                Views = ReadOptionalJson(Path.Combine(configDirectory, "views.json"), DefaultViewsConfiguration()),
+                FeatureCombinations = ReadOptionalJson(Path.Combine(configDirectory, "feature-combinations.json"), DefaultFeatureCombinationsConfiguration())
             };
         }
 
@@ -161,16 +161,57 @@ namespace PlugHub.Framework.Configuration
             };
         }
 
-        private T ReadJson<T>(string path)
+        private T ReadOptionalJson<T>(string path, T fallback)
         {
-            if (!File.Exists(path)) throw new FileNotFoundException("Required PlugHub configuration file was not found.", path);
-            return _serializer.Deserialize<T>(File.ReadAllText(path));
+            if (!File.Exists(path)) return fallback;
+            return _serializer.Deserialize<T>(File.ReadAllText(path)) ?? fallback;
         }
 
-        private T ReadOptionalJson<T>(string path) where T : new()
+        private static ModulesConfiguration DefaultModulesConfiguration()
         {
-            if (!File.Exists(path)) return new T();
-            return _serializer.Deserialize<T>(File.ReadAllText(path));
+            return new ModulesConfiguration
+            {
+                SchemaVersion = "1.0",
+                PackageDirectories = new List<string> { "packages" },
+                ModuleSources = new List<ModuleSourceConfiguration>(),
+                Repositories = new List<PackageRepositoryConfiguration>(),
+                ConflictPolicy = new ConflictPolicyConfiguration(),
+                Modules = new List<ModuleConfiguration>()
+            };
+        }
+
+        private static ViewsConfiguration DefaultViewsConfiguration()
+        {
+            return new ViewsConfiguration
+            {
+                SchemaVersion = "1.0",
+                DefaultView = "workspace",
+                Views = new List<ViewConfiguration>
+                {
+                    new ViewConfiguration
+                    {
+                        Id = "workspace",
+                        Name = "PlugHub",
+                        Ribbon = new RibbonConfiguration
+                        {
+                            TabName = "PlugHub",
+                            FallbackPanelName = "External"
+                        },
+                        Groups = new List<ViewGroupConfiguration>(),
+                        Sort = new List<string> { "group.order", "feature.order", "feature.name", "feature.id" }
+                    }
+                }
+            };
+        }
+
+        private static FeatureCombinationsConfiguration DefaultFeatureCombinationsConfiguration()
+        {
+            return new FeatureCombinationsConfiguration
+            {
+                SchemaVersion = "1.0",
+                DefaultPreset = string.Empty,
+                Presets = new List<FeatureCombinationPresetConfiguration>()
+            };
         }
 
         private IReadOnlyList<ModuleConfiguration> ResolveModules(ModulesConfiguration modules, FeatureCombinationPresetConfiguration? preset)
@@ -214,7 +255,7 @@ namespace PlugHub.Framework.Configuration
                     Description = feature.Description,
                     Category = FirstNonEmpty(feature.Category, module.Category),
                     Group = feature.Group,
-                    Tags = MergeTags(module.Tags, feature.Tags),
+                    Tags = MergeTags(module.Tags ?? new List<string>(), feature.Tags),
                     Order = feature.Order,
                     DefaultState = feature.DefaultState,
                     CommandKey = feature.CommandKey,
@@ -232,6 +273,7 @@ namespace PlugHub.Framework.Configuration
             {
                 Id = feature.Id,
                 ModuleId = module.Id,
+                ModuleName = DisplayNameResolver.Resolve(module.DisplayName, module.Name, string.Empty, module.Id),
                 Name = DisplayNameResolver.Resolve(feature.DisplayName, feature.Name, string.Empty, feature.Id),
                 Description = feature.Description,
                 Category = FirstNonEmpty(feature.Category, module.Category),

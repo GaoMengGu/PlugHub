@@ -51,6 +51,7 @@ namespace PlugHub.Framework.Registry
             {
                 Id = feature.Id,
                 ModuleId = string.IsNullOrWhiteSpace(feature.ModuleId) ? module.Id : feature.ModuleId,
+                ModuleName = feature.ModuleName,
                 Name = feature.Name,
                 Description = feature.Description,
                 Category = feature.Category,
