@@ -46,10 +46,6 @@
       <Link>PlugHub.addin.template</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="Resources\Icons\*.svg">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <PlugHubSvgIcon Include="Resources\Icons\*.svg" />
   </ItemGroup>
 
   <Target Name="EnsureRevitApiReferenceMode" BeforeTargets="ResolveReferences">
@@ -72,7 +68,6 @@
     <Copy SourceFiles="..\..\config\sources.example.json" DestinationFiles="$(PlugHubOutputDir)\config\sources.json" />
     <Copy SourceFiles="..\..\config\views.example.json" DestinationFiles="$(PlugHubOutputDir)\config\views.json" />
     <Copy SourceFiles="..\..\config\feature-combinations.example.json" DestinationFiles="$(PlugHubOutputDir)\config\feature-combinations.json" />
-    <Copy SourceFiles="@(PlugHubSvgIcon)" DestinationFolder="$(PlugHubOutputDir)\Resources\Icons\" SkipUnchangedFiles="true" />
     <WriteLinesToFile File="$(PlugHubOutputDir)\packages\README.md" Lines="Put installed plugin module folders with packages.json manifests here to let PlugHub discover them during startup." Overwrite="true" />
   </Target>
 </Project>

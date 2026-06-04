@@ -22,7 +22,7 @@ namespace PlugHub.Framework.Configuration
 
             return new FrameworkConfiguration
             {
-                Modules = ReadOptionalJson(Path.Combine(configDirectory, "sources.json"), DefaultModulesConfiguration()),
+                Modules = NormalizeModulesConfiguration(ReadOptionalJson(Path.Combine(configDirectory, "sources.json"), DefaultModulesConfiguration())),
                 Views = ReadOptionalJson(Path.Combine(configDirectory, "views.json"), DefaultViewsConfiguration()),
                 FeatureCombinations = ReadOptionalJson(Path.Combine(configDirectory, "feature-combinations.json"), DefaultFeatureCombinationsConfiguration())
             };
@@ -165,6 +165,21 @@ namespace PlugHub.Framework.Configuration
         {
             if (!File.Exists(path)) return fallback;
             return _serializer.Deserialize<T>(File.ReadAllText(path)) ?? fallback;
+        }
+
+        private static ModulesConfiguration NormalizeModulesConfiguration(ModulesConfiguration modules)
+        {
+            if (modules.PackageDirectories == null)
+            {
+                modules.PackageDirectories = new List<string>();
+            }
+
+            if (!modules.PackageDirectories.Any())
+            {
+                modules.PackageDirectories.Add("packages");
+            }
+
+            return modules;
         }
 
         private static ModulesConfiguration DefaultModulesConfiguration()

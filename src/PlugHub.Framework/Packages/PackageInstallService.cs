@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Web.Script.Serialization;
 using PlugHub.Contracts.Modules;
 using PlugHub.Framework.Configuration;
 
@@ -12,8 +11,8 @@ namespace PlugHub.Framework.Packages
     {
         private const string DefaultPackageManifestName = "packages.json";
 
-        private readonly JavaScriptSerializer _serializer = new JavaScriptSerializer();
         private readonly PackageManifestReader _manifestReader;
+        private readonly PackageManifestWriter _manifestWriter = new PackageManifestWriter();
 
         public PackageInstallService(PackageManifestReader manifestReader)
         {
@@ -30,7 +29,7 @@ namespace PlugHub.Framework.Packages
 
         private PackageRepositoryOperationResult CopyPackagePayload(RepositoryPackageDescriptor package, string installDirectory)
         {
-            if (!_manifestReader.TryReadManifest(package.ManifestPath, out var root, out var modules))
+            if (!_manifestReader.TryReadManifest(package.ManifestPath, out _, out var modules))
             {
                 return PackageRepositoryOperationResult.Failed("Packages manifest could not be read: " + package.ManifestPath);
             }
@@ -41,14 +40,8 @@ namespace PlugHub.Framework.Packages
                 return PackageRepositoryOperationResult.Failed("Package module was not found in manifest: " + package.ModuleId);
             }
 
-            var moduleObject = _manifestReader.FindModuleObject(root, module.Id);
-            if (moduleObject == null)
-            {
-                return PackageRepositoryOperationResult.Failed("Package module was not found in manifest: " + package.ModuleId);
-            }
-
             Directory.CreateDirectory(installDirectory);
-            WriteSingleModuleManifest(root, moduleObject, Path.Combine(installDirectory, DefaultPackageManifestName));
+            WriteSingleModuleManifest(modules, module, Path.Combine(installDirectory, DefaultPackageManifestName));
             foreach (var relativePath in PayloadPaths(module))
             {
                 if (!CopyPayloadFile(package.SourceDirectory, installDirectory, relativePath, out var error))
@@ -60,25 +53,16 @@ namespace PlugHub.Framework.Packages
             return PackageRepositoryOperationResult.Succeeded("Package payload installed.");
         }
 
-        private void WriteSingleModuleManifest(Dictionary<string, object> root, Dictionary<string, object> moduleObject, string targetManifestPath)
+        private void WriteSingleModuleManifest(ModulesConfiguration sourceManifest, ModuleConfiguration module, string targetManifestPath)
         {
-            var manifest = new Dictionary<string, object>
+            var manifest = new ModulesConfiguration
             {
-                ["schemaVersion"] = FirstNonEmpty(PackageManifestReader.StringValue(root, "schemaVersion"), "1.0"),
-                ["modules"] = new object[] { moduleObject }
+                SchemaVersion = FirstNonEmpty(sourceManifest.SchemaVersion, "1.0"),
+                RevitVersions = new List<string>(sourceManifest.RevitVersions ?? new List<string>()),
+                FrameworkVersionRange = sourceManifest.FrameworkVersionRange ?? string.Empty,
+                Modules = new List<ModuleConfiguration> { module }
             };
-            CopyOptionalManifestValue(root, manifest, "revitVersions");
-            CopyOptionalManifestValue(root, manifest, "frameworkVersionRange");
-
-            File.WriteAllText(targetManifestPath, _serializer.Serialize(manifest));
-        }
-
-        private static void CopyOptionalManifestValue(Dictionary<string, object> source, Dictionary<string, object> target, string key)
-        {
-            if (PackageManifestReader.TryGetValue(source, key, out var value))
-            {
-                target[key] = value;
-            }
+            _manifestWriter.WritePackageManifest(targetManifestPath, manifest, false);
         }
 
         private static IEnumerable<string> PayloadPaths(ModuleConfiguration module)

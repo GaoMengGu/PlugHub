@@ -53,6 +53,7 @@ namespace PlugHub.StaticValidation
                 ValidateManifestAuthoritativeDiscoverySpecification();
                 ValidateRuntimeConfigurationLoader();
                 ValidateRuntimeLoadsPackagesWhenConfigFilesAreMissing();
+                ValidateRuntimeToleratesStaleConfigurationFiles();
                 ValidateFrameworkRuntimeLoadIsolation();
                 ValidateExternalModuleCommandResolution();
                 ValidateFrameworkContainsNoBundledModules();
@@ -232,6 +233,7 @@ namespace PlugHub.StaticValidation
                 "src/PlugHub.Framework/Packages/RepositoryBrowser.cs",
                 "src/PlugHub.Framework/Packages/RepositoryArchiveSynchronizer.cs",
                 "src/PlugHub.Framework/Packages/PackageManifestReader.cs",
+                "src/PlugHub.Framework/Packages/PackageManifestWriter.cs",
                 "src/PlugHub.Framework/Packages/PackageInstallService.cs",
                 "src/PlugHub.Framework/Diagnostics/PlugHubLogEntry.cs",
                 "src/PlugHub.Framework/Diagnostics/PlugHubLogger.cs",
@@ -466,9 +468,11 @@ namespace PlugHub.StaticValidation
             Require(featureDescriptor.Contains("ModuleName"), "feature descriptors must carry module display names so framework-owned default layouts can avoid technical panel names.");
 
             var sourceResolver = ReadText("src/PlugHub.Framework/Sources/ModuleSourceResolver.cs");
+            var packageDefaults = ReadText("src/PlugHub.Framework/Configuration/PackageManifestDefaults.cs");
             Require(sourceResolver.Contains("DefaultPackageManifestName = \"packages.json\""), "module source resolver must use packages.json as the only default module manifest.");
             Require(sourceResolver.Contains("AdjacentPackageManifestPattern = \"*.packages.json\""), "module source resolver must scan adjacent *.packages.json manifests.");
-            Require(sourceResolver.Contains("NormalizeRepositoryModuleDefaults") && sourceResolver.Contains("module.Enabled = true") && sourceResolver.Contains("module.Visible = true"), "module source resolver must default repository modules to enabled and visible when packages.json omits layout state.");
+            Require(sourceResolver.Contains("NormalizeRepositoryModuleDefaults") && sourceResolver.Contains("PackageManifestDefaults.NormalizeModuleState"), "module source resolver must default repository modules through the shared package manifest default normalizer.");
+            Require(packageDefaults.Contains("ContainsExactKey") && packageDefaults.Contains("module.Enabled = true") && packageDefaults.Contains("module.Visible = true"), "package manifest defaults must treat omitted lowercase enabled/visible as enabled and visible.");
             Require(sourceResolver.Contains("PushRootCompatibilityToModules") && sourceResolver.Contains("module.RevitVersions = new List<string>(modules.RevitVersions)") && sourceResolver.Contains("module.FrameworkVersionRange = modules.FrameworkVersionRange"), "module source resolver must push root compatibility fields down to modules.");
 
             var configurationLoader = ReadText("src/PlugHub.Framework/Configuration/FrameworkConfigurationLoader.cs");
@@ -487,13 +491,15 @@ namespace PlugHub.StaticValidation
 
             var packageInstallService = ReadText("src/PlugHub.Framework/Packages/PackageInstallService.cs");
             Require(packageInstallService.Contains("DefaultPackageManifestName = \"packages.json\""), "repository installs must write packages.json as the local module manifest.");
-            Require(packageInstallService.Contains("\"revitVersions\"") && packageInstallService.Contains("\"frameworkVersionRange\""), "single-module installed manifests must preserve root compatibility metadata.");
+            Require(packageInstallService.Contains("PackageManifestWriter") && packageInstallService.Contains("WritePackageManifest(targetManifestPath, manifest, false)"), "repository installs must use the current package manifest writer and omit repository index metadata.");
+            Require(packageInstallService.Contains("RevitVersions = new List<string>(sourceManifest.RevitVersions") && packageInstallService.Contains("FrameworkVersionRange = sourceManifest.FrameworkVersionRange"), "single-module installed manifests must preserve root compatibility metadata.");
             Require(!packageInstallService.Contains("CopyOptionalManifestValue(root, manifest, \"version\")") && !packageInstallService.Contains("CopyOptionalManifestValue(root, manifest, \"indexVersion\")") && !packageInstallService.Contains("CopyOptionalManifestValue(root, manifest, \"sha256\")") && !packageInstallService.Contains("CopyOptionalManifestValue(root, manifest, \"signature\")"), "single-module installed manifests must not copy root index or signature metadata after rewriting the manifest.");
 
             ValidateRuntimeAcceptsWhitespacePaddedRevitVersion();
             ValidateRuntimeSkipsPresetOverriddenIncompatiblePackage();
             ValidateInstalledRepositoryPackagePreservesCompatibilityAndSkips();
             ValidateRepositoryModulesManifestVersionAndDefaults();
+            ValidatePackageManifestWriterProducesCurrentSchema();
             ValidateRuntimeDefaultLayoutUsesModuleDisplayNames();
         }
 
@@ -650,6 +656,103 @@ namespace PlugHub.StaticValidation
                 {
                     Directory.Delete(tempRoot, true);
                 }
+            }
+        }
+
+        private static void ValidatePackageManifestWriterProducesCurrentSchema()
+        {
+            var manifest = new PlugHub.Framework.Configuration.ModulesConfiguration
+            {
+                SchemaVersion = "1.1",
+                IndexVersion = "V9.9.9",
+                RevitVersions = new List<string> { "2020" },
+                FrameworkVersionRange = ">=1.3.0",
+                PackageDirectories = new List<string> { "packages" },
+                ModuleSources = new List<PlugHub.Framework.Configuration.ModuleSourceConfiguration>
+                {
+                    new PlugHub.Framework.Configuration.ModuleSourceConfiguration { Id = "local", Enabled = true }
+                },
+                Repositories = new List<PlugHub.Framework.Configuration.PackageRepositoryConfiguration>
+                {
+                    new PlugHub.Framework.Configuration.PackageRepositoryConfiguration { Id = "repo", Enabled = true }
+                },
+                ConflictPolicy = new PlugHub.Framework.Configuration.ConflictPolicyConfiguration(),
+                Modules = new List<PlugHub.Framework.Configuration.ModuleConfiguration>
+                {
+                    new PlugHub.Framework.Configuration.ModuleConfiguration
+                    {
+                        Id = "writer-module",
+                        Version = "V1.2.3",
+                        Author = "GAOMENGGU",
+                        Assembly = "dist/Writer.dll",
+                        Type = "Legacy.ModuleType",
+                        Name = "legacy-name",
+                        DisplayName = "Writer Module",
+                        Description = "Writer schema validation module.",
+                        Category = "view",
+                        SourceId = "runtime-source",
+                        ResolvedBaseDirectory = "runtime-base",
+                        Enabled = false,
+                        Visible = false,
+                        Order = 42,
+                        Tags = new List<string> { "view", "writer" },
+                        DependsOn = new List<string> { "old-module" },
+                        Features = new List<PlugHub.Framework.Configuration.FeatureConfiguration>
+                        {
+                            new PlugHub.Framework.Configuration.FeatureConfiguration
+                            {
+                                Id = "writer-module.run",
+                                Name = "legacy-feature-name",
+                                DisplayName = "Run Writer",
+                                Description = "Runs writer validation.",
+                                Category = "runtime-category",
+                                Group = "runtime-group",
+                                Tags = new List<string> { "feature-tag" },
+                                Order = 10,
+                                DefaultState = "Hidden",
+                                CommandKey = "legacy-key",
+                                CommandAssembly = "Other.dll",
+                                CommandType = "Demo.WriterCommand",
+                                ButtonSize = "small",
+                                IconPath = "icons/writer.png"
+                            }
+                        }
+                    }
+                }
+            };
+
+            var text = new PlugHub.Framework.Packages.PackageManifestWriter().SerializePackageManifest(manifest);
+            var root = Json.Deserialize<Dictionary<string, object>>(text);
+            var module = Modules(root).Single();
+            var feature = Features(module).Single();
+
+            Require(StringValue(root, "schemaVersion") == "1.1", "package manifest writer must preserve schemaVersion.");
+            Require(StringValue(root, "indexVersion") == "V9.9.9", "repository package manifest writer must preserve indexVersion when writing repository-style manifests.");
+            Require(SequenceValue(root, "revitVersions").SequenceEqual(new[] { "2020" }), "package manifest writer must preserve root revitVersions.");
+            Require(StringValue(root, "frameworkVersionRange") == ">=1.3.0", "package manifest writer must preserve root frameworkVersionRange.");
+            foreach (var forbiddenRoot in new[] { "PackageDirectories", "ModuleSources", "Repositories", "ConflictPolicy", "packageDirectories", "moduleSources", "repositories", "conflictPolicy" })
+            {
+                Require(!root.ContainsKey(forbiddenRoot), "package manifest writer must omit framework root field: " + forbiddenRoot);
+            }
+
+            foreach (var token in new[] { "id", "version", "author", "displayName", "description", "assembly", "category", "tags", "features" })
+            {
+                Require(module.ContainsKey(token), "package manifest writer must emit module field: " + token);
+            }
+
+            foreach (var forbiddenModule in new[] { "Id", "Version", "Author", "Enabled", "Visible", "Order", "Type", "Name", "SourceId", "ResolvedBaseDirectory", "DependsOn", "enabled", "visible", "order", "type", "name", "sourceId", "resolvedBaseDirectory", "dependsOn" })
+            {
+                Require(!module.ContainsKey(forbiddenModule), "package manifest writer must omit runtime module field: " + forbiddenModule);
+            }
+
+            foreach (var token in new[] { "id", "displayName", "description", "iconPath", "commandType" })
+            {
+                Require(feature.ContainsKey(token), "package manifest writer must emit feature field: " + token);
+            }
+
+            foreach (var forbiddenFeature in new[] { "Id", "DisplayName", "Category", "Group", "Order", "DefaultState", "CommandKey", "CommandAssembly", "ButtonSize", "Name", "Tags", "category", "group", "order", "defaultState", "commandKey", "commandAssembly", "buttonSize", "name", "tags" })
+            {
+                Require(!feature.ContainsKey(forbiddenFeature), "package manifest writer must omit runtime feature field: " + forbiddenFeature);
             }
         }
 
@@ -1092,6 +1195,127 @@ namespace PlugHub.StaticValidation
             }
         }
 
+        private static void ValidateRuntimeToleratesStaleConfigurationFiles()
+        {
+            ValidateRuntimeLoadsPackagesWhenExistingSourcesOmitPackageDirectories();
+            ValidateRuntimeComposesPackagesWhenExistingViewFiltersAreStale();
+            ValidateRuntimeLoadsPackagesRewrittenBySettingsSerializer();
+        }
+
+        private static void ValidateRuntimeLoadsPackagesWhenExistingSourcesOmitPackageDirectories()
+        {
+            var tempRoot = Path.Combine(Path.GetTempPath(), "PlugHub.StaticValidation", Guid.NewGuid().ToString("N"));
+            try
+            {
+                var baseDirectory = tempRoot;
+                var configDirectory = Path.Combine(baseDirectory, "config");
+                var packageDirectory = Path.Combine(baseDirectory, "packages", "stale-sources-module");
+                Directory.CreateDirectory(configDirectory);
+                Directory.CreateDirectory(packageDirectory);
+
+                File.WriteAllText(
+                    Path.Combine(configDirectory, "sources.json"),
+                    "{\"schemaVersion\":\"1.0\",\"packageDirectories\":[],\"moduleSources\":[],\"repositories\":[],\"conflictPolicy\":{\"duplicateFeatureId\":\"fail-feature\",\"duplicateModuleId\":\"fail-module\",\"missingModuleType\":\"warn\"},\"modules\":[]}");
+                File.WriteAllText(
+                    Path.Combine(configDirectory, "views.json"),
+                    "{\"schemaVersion\":\"1.0\",\"defaultView\":\"workspace\",\"views\":[{\"id\":\"workspace\",\"name\":\"PlugHub\",\"ribbon\":{\"tabName\":\"PlugHub\",\"fallbackPanelName\":\"External\"},\"groups\":[],\"sort\":[\"group.order\",\"feature.order\",\"feature.name\",\"feature.id\"]}]}");
+                File.WriteAllText(
+                    Path.Combine(configDirectory, "feature-combinations.json"),
+                    "{\"schemaVersion\":\"1.0\",\"defaultPreset\":\"\",\"presets\":[]}");
+                File.WriteAllText(
+                    Path.Combine(packageDirectory, "packages.json"),
+                    "{\"schemaVersion\":\"1.1\",\"modules\":[{\"id\":\"stale-sources-module\",\"version\":\"V1.0.0\",\"displayName\":\"Stale Sources Module\",\"assembly\":\"StaleSources.dll\",\"category\":\"view\",\"features\":[{\"id\":\"stale-sources-module.run\",\"displayName\":\"Run Stale Sources\"}]}]}");
+
+                var snapshot = new PlugHub.Framework.Runtime.FrameworkRuntime().Load(baseDirectory, configDirectory);
+                Require(snapshot.Features.Any(feature => feature.Id == "stale-sources-module.run"), "runtime must keep discovering installed packages when an existing old sources.json omits packageDirectories.");
+                Require(snapshot.Configuration.Configuration.Modules.PackageDirectories.Contains("packages"), "existing old sources.json must be normalized to include the packages directory.");
+            }
+            finally
+            {
+                if (Directory.Exists(tempRoot))
+                {
+                    Directory.Delete(tempRoot, true);
+                }
+            }
+        }
+
+        private static void ValidateRuntimeComposesPackagesWhenExistingViewFiltersAreStale()
+        {
+            var tempRoot = Path.Combine(Path.GetTempPath(), "PlugHub.StaticValidation", Guid.NewGuid().ToString("N"));
+            try
+            {
+                var baseDirectory = tempRoot;
+                var configDirectory = Path.Combine(baseDirectory, "config");
+                var packageDirectory = Path.Combine(baseDirectory, "packages", "stale-view-module");
+                Directory.CreateDirectory(configDirectory);
+                Directory.CreateDirectory(packageDirectory);
+
+                File.WriteAllText(
+                    Path.Combine(configDirectory, "sources.json"),
+                    "{\"schemaVersion\":\"1.0\",\"packageDirectories\":[\"packages\"],\"moduleSources\":[],\"repositories\":[],\"conflictPolicy\":{\"duplicateFeatureId\":\"fail-feature\",\"duplicateModuleId\":\"fail-module\",\"missingModuleType\":\"warn\"},\"modules\":[]}");
+                File.WriteAllText(
+                    Path.Combine(configDirectory, "views.json"),
+                    "{\"schemaVersion\":\"1.0\",\"defaultView\":\"workspace\",\"views\":[{\"id\":\"workspace\",\"name\":\"PlugHub\",\"includeCategories\":[\"legacy-only\"],\"ribbon\":{\"tabName\":\"PlugHub\",\"fallbackPanelName\":\"Framework\"},\"groups\":[{\"id\":\"legacy\",\"name\":\"Legacy\",\"includeCategories\":[\"legacy-only\"],\"order\":0}],\"sort\":[\"group.order\",\"feature.order\",\"feature.name\",\"feature.id\"]}]}");
+                File.WriteAllText(
+                    Path.Combine(configDirectory, "feature-combinations.json"),
+                    "{\"schemaVersion\":\"1.0\",\"defaultPreset\":\"\",\"presets\":[]}");
+                File.WriteAllText(
+                    Path.Combine(packageDirectory, "packages.json"),
+                    "{\"schemaVersion\":\"1.1\",\"modules\":[{\"id\":\"stale-view-module\",\"version\":\"V1.0.0\",\"displayName\":\"Stale View Module\",\"assembly\":\"StaleView.dll\",\"category\":\"view\",\"features\":[{\"id\":\"stale-view-module.run\",\"displayName\":\"Run Stale View\"}]}]}");
+
+                var snapshot = new PlugHub.Framework.Runtime.FrameworkRuntime().Load(baseDirectory, configDirectory);
+                Require(snapshot.Features.Any(feature => feature.Id == "stale-view-module.run"), "stale view filter setup must still discover the installed package feature.");
+                Require(snapshot.Composition.Features.Any(feature => feature.FeatureId == "stale-view-module.run"), "runtime must compose installed package features when an existing old views.json include filter no longer matches any package feature.");
+                Require(snapshot.Composition.Features.Any(feature => feature.FeatureId == "stale-view-module.run" && feature.GroupName == "Stale View Module"), "stale view filter fallback must use package module displayName for the panel name.");
+            }
+            finally
+            {
+                if (Directory.Exists(tempRoot))
+                {
+                    Directory.Delete(tempRoot, true);
+                }
+            }
+        }
+
+        private static void ValidateRuntimeLoadsPackagesRewrittenBySettingsSerializer()
+        {
+            var tempRoot = Path.Combine(Path.GetTempPath(), "PlugHub.StaticValidation", Guid.NewGuid().ToString("N"));
+            try
+            {
+                var baseDirectory = tempRoot;
+                var configDirectory = Path.Combine(baseDirectory, "config");
+                var packageDirectory = Path.Combine(baseDirectory, "packages", "settings-rewritten-module");
+                Directory.CreateDirectory(configDirectory);
+                Directory.CreateDirectory(packageDirectory);
+
+                File.WriteAllText(
+                    Path.Combine(configDirectory, "sources.json"),
+                    "{\"schemaVersion\":\"1.0\",\"packageDirectories\":[\"packages\"],\"moduleSources\":[],\"repositories\":[],\"conflictPolicy\":{\"duplicateFeatureId\":\"fail-feature\",\"duplicateModuleId\":\"fail-module\",\"missingModuleType\":\"warn\"},\"modules\":[]}");
+                File.WriteAllText(
+                    Path.Combine(configDirectory, "views.json"),
+                    "{\"schemaVersion\":\"1.0\",\"defaultView\":\"workspace\",\"views\":[{\"id\":\"workspace\",\"name\":\"PlugHub\",\"ribbon\":{\"tabName\":\"PlugHub\",\"fallbackPanelName\":\"External\"},\"groups\":[],\"sort\":[\"group.order\",\"feature.order\",\"feature.name\",\"feature.id\"]}]}");
+                File.WriteAllText(
+                    Path.Combine(configDirectory, "feature-combinations.json"),
+                    "{\"schemaVersion\":\"1.0\",\"defaultPreset\":\"\",\"presets\":[]}");
+                File.WriteAllText(
+                    Path.Combine(packageDirectory, "packages.json"),
+                    "{\"SchemaVersion\":\"1.1\",\"RevitVersions\":[\"2020\"],\"FrameworkVersionRange\":\">=1.3.0\",\"PackageDirectories\":[],\"ModuleSources\":[],\"Repositories\":[],\"ConflictPolicy\":{\"DuplicateFeatureId\":\"fail-feature\",\"DuplicateModuleId\":\"fail-module\",\"MissingModuleType\":\"warn\"},\"Modules\":[{\"Id\":\"settings-rewritten-module\",\"Version\":\"V1.0.0\",\"Author\":\"GAOMENGGU\",\"Assembly\":\"SettingsRewritten.dll\",\"DisplayName\":\"Settings Rewritten Module\",\"Category\":\"view\",\"Enabled\":false,\"Visible\":false,\"Features\":[{\"Id\":\"settings-rewritten-module.run\",\"DisplayName\":\"Run Settings Rewritten\",\"Group\":\"view\",\"Order\":10,\"DefaultState\":\"Visible\",\"CommandAssembly\":\"Other.dll\",\"ButtonSize\":\"small\",\"CommandType\":\"Demo.SettingsCommand\",\"IconPath\":\"icons/settings.png\"}]}]}");
+
+                var snapshot = new PlugHub.Framework.Runtime.FrameworkRuntime().Load(baseDirectory, configDirectory);
+                Require(snapshot.Features.Any(feature => feature.Id == "settings-rewritten-module.run"), "runtime must recover installed packages whose manifests were rewritten with PascalCase Enabled=false and Visible=false defaults by settings serialization.");
+                Require(snapshot.Composition.Features.Any(feature => feature.FeatureId == "settings-rewritten-module.run"), "runtime must compose features from settings-rewritten installed package manifests.");
+                Require(snapshot.Composition.Features.Any(feature => feature.FeatureId == "settings-rewritten-module.run" && feature.GroupName == "Settings Rewritten Module"), "runtime must ignore stale PascalCase feature Group values from settings-rewritten package manifests.");
+                Require(snapshot.Features.Any(feature => feature.Id == "settings-rewritten-module.run" && feature.CommandAssembly.EndsWith("SettingsRewritten.dll", StringComparison.OrdinalIgnoreCase)), "runtime must ignore stale PascalCase feature CommandAssembly values and inherit the module assembly.");
+            }
+            finally
+            {
+                if (Directory.Exists(tempRoot))
+                {
+                    Directory.Delete(tempRoot, true);
+                }
+            }
+        }
+
         private static void WriteRuntimeIsolationConfiguration(string configDirectory)
         {
             File.WriteAllText(
@@ -1357,7 +1581,10 @@ namespace PlugHub.StaticValidation
             Require(settingsWindow.Contains("LoadModuleDocuments") && !settingsWindow.Contains(RemovedSamplesDirectory()), "settings must not reference removed sample module manifests.");
             Require(settingsStore.Contains("Save(") && settingsStore.Contains("ModuleManifestDocument"), "settings must save edits back to their owning module manifest through SettingsConfigurationStore.");
             Require(!settingsStore.Contains("Save(configuration, LoadModuleDocuments(configuration))"), "SettingsConfigurationStore must not expose a Save overload that reloads module documents from disk.");
-            Require(settingsStore.Contains("foreach (var document in moduleDocuments)") && settingsStore.Contains("SaveJson(document.Path, document.Modules)"), "SettingsConfigurationStore Save must persist the provided moduleDocuments.");
+            Require(settingsStore.Contains("foreach (var document in moduleDocuments)") && settingsStore.Contains("SaveModuleDocument(document)"), "SettingsConfigurationStore Save must persist the provided moduleDocuments through the document-aware save path.");
+            Require(settingsStore.Contains("IsModulesManifestFileName(Path.GetFileName(document.Path))") && settingsStore.Contains("SavePackageManifest(document.Path, document.Modules)") && settingsStore.Contains("SaveJson(document.Path, document.Modules)"), "SettingsConfigurationStore must write package manifests through the package writer while preserving sources.json as full runtime configuration.");
+            Require(settingsStore.Contains("PackageManifestWriter"), "SettingsConfigurationStore must use the current package manifest writer for packages.json and adjacent package manifests.");
+            Require(settingsStore.Contains("NormalizePackageManifestDefaults"), "SettingsConfigurationStore must normalize package manifests before saving so omitted module state is not serialized as disabled.");
             Require(settingsStore.Contains("AdjacentPackageManifestPattern = \"*.packages.json\""), "settings configuration store must discover adjacent *.packages.json manifests.");
             Require(settingsWindow.Contains("Name = DefaultGroupDisplayName(module, feature)") && settingsWindow.Contains("GroupIdForFeature(module, feature)") && settingsWindow.Contains("module.Category"), "settings layout defaults must derive stable group ids from module category and display panel names from module displayName.");
             Require(!settingsWindow.Contains("nameof(FeatureRow.Panel)") && !settingsWindow.Contains("feature.Group = row.Panel"), "feature settings must not expose user-editable panel ownership.");
@@ -1461,7 +1688,7 @@ namespace PlugHub.StaticValidation
             var settingsWindow = ReadText("src/PlugHub.Revit2020/FrameworkSettingsWindow.cs");
             var statusWindow = ReadText("src/PlugHub.Revit2020/FrameworkStatusWindow.cs");
             var iconProvider = ReadText("src/PlugHub.Revit2020/DefaultRibbonIconProvider.cs");
-            var revitProject = ReadText("src/PlugHub.Revit2020/PlugHub.Revit2020.csproj");
+            var buildScript = ReadText("scripts/build-revit2020.ps1");
 
             Require(theme.Contains("class RevitUiPalette") && theme.Contains("class RevitUiTheme"), "Revit WPF UI must centralize theme tokens in RevitUiTheme.");
             Require(theme.Contains("UIThemeManager") && theme.Contains("AppsUseLightTheme"), "Revit WPF UI theme detection must prefer Revit host theme and fall back to Windows app theme.");
@@ -1472,14 +1699,8 @@ namespace PlugHub.StaticValidation
             Require(settingsWindow.Contains("BuildAboutMetric") && settingsWindow.Contains("BuildAboutInfoRow") && settingsWindow.Contains("Revit 2020"), "About tab must show concise project/runtime metadata.");
             Require(settingsWindow.Contains("BuildButtonContent") && settingsWindow.Contains("IconKeyForButtonText"), "settings window buttons must use consistent vector icon content where appropriate.");
             Require(iconProvider.Contains("\"about\"") && iconProvider.Contains("\"repository\"") && iconProvider.Contains("\"layout\""), "built-in icon suite must include common settings/about/repository/layout icons.");
-            Require(revitProject.Contains("Resources\\Icons\\*.svg") && revitProject.Contains("CopyToOutputDirectory"), "common SVG icons must be copied to the Revit adapter output.");
-            Require(revitProject.Contains("PlugHubSvgIcon") && revitProject.Contains("$(PlugHubOutputDir)\\Resources\\Icons\\"), "staged Revit output must include common SVG icons.");
-
-            foreach (var icon in new[] { "about", "batch", "diagnostics", "document", "duct", "family", "feature", "group", "install", "layout", "module", "package", "refresh", "repository", "save", "settings", "tool", "uninstall", "update", "upgrade", "warning" })
-            {
-                var path = "src/PlugHub.Revit2020/Resources/Icons/" + icon + ".svg";
-                Require(File.Exists(FullPath(path)) && ReadText(path).Contains("<svg"), "missing common SVG icon asset: " + path);
-            }
+            Require(!Directory.Exists(FullPath("src/PlugHub.Revit2020/Resources")), "Revit adapter must not keep obsolete file-based icon resources.");
+            Require(buildScript.Contains("(Join-Path $OutputDir \"Resources\")"), "Revit build must remove stale generated Resources output after file-based icons are removed.");
         }
 
         private static void ValidateSettingsGroupFeatureEditingBehavior()

@@ -194,30 +194,7 @@ namespace PlugHub.Framework.Packages
 
         private static void NormalizeRepositoryModuleDefaults(Dictionary<string, object> root, ModulesConfiguration modules)
         {
-            var moduleObjects = ArrayValue(root, "modules")
-                .OfType<Dictionary<string, object>>()
-                .Select(item => new { Id = StringValue(item, "id"), Value = item })
-                .Where(item => !string.IsNullOrWhiteSpace(item.Id))
-                .GroupBy(item => item.Id, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(group => group.Key, group => group.Last().Value, StringComparer.OrdinalIgnoreCase);
-
-            foreach (var module in modules.Modules ?? new List<ModuleConfiguration>())
-            {
-                if (!moduleObjects.TryGetValue(module.Id ?? string.Empty, out var moduleObject))
-                {
-                    continue;
-                }
-
-                if (!ContainsKey(moduleObject, "enabled"))
-                {
-                    module.Enabled = true;
-                }
-
-                if (!ContainsKey(moduleObject, "visible"))
-                {
-                    module.Visible = true;
-                }
-            }
+            PackageManifestDefaults.NormalizeModuleState(root, modules);
         }
 
         private static bool ContainsKey(Dictionary<string, object> source, string key)

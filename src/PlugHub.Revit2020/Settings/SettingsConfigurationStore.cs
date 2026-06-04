@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Web.Script.Serialization;
 using PlugHub.Framework.Configuration;
+using PlugHub.Framework.Packages;
 
 namespace PlugHub.Revit2020.Settings
 {
@@ -14,6 +15,7 @@ namespace PlugHub.Revit2020.Settings
         private const string AdjacentPackageManifestPattern = "*.packages.json";
 
         private readonly JavaScriptSerializer _serializer = new JavaScriptSerializer { MaxJsonLength = int.MaxValue, RecursionLimit = 128 };
+        private readonly PackageManifestWriter _packageManifestWriter = new PackageManifestWriter();
 
         public SettingsConfigurationStore(string configDirectory)
         {
@@ -91,7 +93,7 @@ namespace PlugHub.Revit2020.Settings
             Directory.CreateDirectory(ConfigDirectory);
             foreach (var document in moduleDocuments)
             {
-                SaveJson(document.Path, document.Modules);
+                SaveModuleDocument(document);
             }
 
             SaveJson(Path.Combine(ConfigDirectory, "views.json"), configuration.Views);
@@ -106,6 +108,22 @@ namespace PlugHub.Revit2020.Settings
         private void SaveJson(string path, object value)
         {
             File.WriteAllText(path, _serializer.Serialize(value));
+        }
+
+        private void SaveModuleDocument(ModuleManifestDocument document)
+        {
+            if (IsModulesManifestFileName(Path.GetFileName(document.Path)))
+            {
+                SavePackageManifest(document.Path, document.Modules);
+                return;
+            }
+
+            SaveJson(document.Path, document.Modules);
+        }
+
+        private void SavePackageManifest(string path, ModulesConfiguration modules)
+        {
+            _packageManifestWriter.WritePackageManifest(path, modules);
         }
 
         private ModulesConfiguration? TryReadModulesConfiguration(string path)
@@ -124,7 +142,16 @@ namespace PlugHub.Revit2020.Settings
 
             if (root == null || !ContainsKey(root, "schemaVersion") || !ContainsKey(root, "modules")) return null;
 
-            return _serializer.Deserialize<ModulesConfiguration>(File.ReadAllText(path));
+            var modules = _serializer.Deserialize<ModulesConfiguration>(File.ReadAllText(path));
+            NormalizePackageManifestDefaults(root, modules);
+            return modules;
+        }
+
+        private static void NormalizePackageManifestDefaults(Dictionary<string, object> root, ModulesConfiguration? modules)
+        {
+            if (modules == null) return;
+
+            PackageManifestDefaults.NormalizeModuleState(root, modules);
         }
 
         private static bool ContainsKey(Dictionary<string, object> source, string key)

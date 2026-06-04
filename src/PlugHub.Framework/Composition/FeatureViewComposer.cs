@@ -8,6 +8,8 @@ namespace PlugHub.Framework.Composition
 {
     public sealed class FeatureViewComposer
     {
+        private const string ViewIncludeFilterSkipReason = "feature not included by view filters";
+
         public IReadOnlyList<FeatureViewModel> Compose(IReadOnlyList<FeatureDescriptor> features, ViewConfiguration view)
         {
             return ComposeDetailed(features, view).Features;
@@ -17,9 +19,12 @@ namespace PlugHub.Framework.Composition
         {
             if (view == null) throw new ArgumentNullException(nameof(view));
 
-            var included = (features ?? new List<FeatureDescriptor>())
-                .Select(feature => Project(feature, view))
-                .ToList();
+            var sourceFeatures = features ?? new List<FeatureDescriptor>();
+            var included = ProjectAll(sourceFeatures, view);
+            if (ShouldRetryWithoutStaleIncludeFilters(included, view))
+            {
+                included = ProjectAll(sourceFeatures, CreateIncludeFilterFallbackView(view));
+            }
 
             var visible = included
                 .Where(result => result.Model != null)
@@ -34,6 +39,45 @@ namespace PlugHub.Framework.Composition
                 .ToList();
 
             return new FeatureViewCompositionResult(visible, skipped, view.EmptyStateText);
+        }
+
+        private static List<ProjectedFeature> ProjectAll(IReadOnlyList<FeatureDescriptor> features, ViewConfiguration view)
+        {
+            return (features ?? new List<FeatureDescriptor>())
+                .Select(feature => Project(feature, view))
+                .ToList();
+        }
+
+        private static bool ShouldRetryWithoutStaleIncludeFilters(IReadOnlyList<ProjectedFeature> included, ViewConfiguration view)
+        {
+            return HasIncludeFilters(view)
+                && included.Any()
+                && included.All(result => result.Model == null)
+                && included.Any(result => result.SkipReason.IndexOf(ViewIncludeFilterSkipReason, StringComparison.OrdinalIgnoreCase) >= 0);
+        }
+
+        private static bool HasIncludeFilters(ViewConfiguration view)
+        {
+            return (view.IncludeTags ?? new List<string>()).Any()
+                || (view.IncludeCategories ?? new List<string>()).Any();
+        }
+
+        private static ViewConfiguration CreateIncludeFilterFallbackView(ViewConfiguration view)
+        {
+            return new ViewConfiguration
+            {
+                Id = view.Id,
+                Name = view.Name,
+                Description = view.Description,
+                Ribbon = view.Ribbon,
+                IncludeTags = new List<string>(),
+                ExcludeTags = new List<string>(view.ExcludeTags ?? new List<string>()),
+                IncludeCategories = new List<string>(),
+                ExcludeCategories = new List<string>(view.ExcludeCategories ?? new List<string>()),
+                Groups = new List<ViewGroupConfiguration>(view.Groups ?? new List<ViewGroupConfiguration>()),
+                Sort = new List<string>(view.Sort ?? new List<string>()),
+                EmptyStateText = view.EmptyStateText
+            };
         }
 
         private static ProjectedFeature Project(FeatureDescriptor feature, ViewConfiguration view)
@@ -66,7 +110,7 @@ namespace PlugHub.Framework.Composition
                 var includedByView = includeTags.Any(tag => Contains(feature.Tags, tag)) || Contains(includeCategories, feature.Category);
                 if (!includedByView)
                 {
-                    return ProjectedFeature.Hidden(feature.Id, "feature not included by view filters");
+                    return ProjectedFeature.Hidden(feature.Id, ViewIncludeFilterSkipReason);
                 }
             }
 
