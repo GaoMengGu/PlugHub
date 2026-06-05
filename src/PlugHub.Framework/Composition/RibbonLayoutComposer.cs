@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using PlugHub.Framework.Configuration;
 
@@ -216,11 +217,37 @@ namespace PlugHub.Framework.Composition
                 RibbonItemViewModel.PushButton,
                 SafeId(feature.FeatureId, feature.DisplayName),
                 SafeText(textOverride, feature.DisplayName),
-                string.IsNullOrWhiteSpace(iconPathOverride) ? feature.IconPath : iconPathOverride,
+                SelectFeatureIconPath(feature, iconPathOverride),
                 string.IsNullOrWhiteSpace(size) ? feature.ButtonSize : size,
                 feature,
                 string.Empty,
                 new List<RibbonItemViewModel>());
+        }
+
+        private static string SelectFeatureIconPath(FeatureViewModel feature, string? iconPathOverride)
+        {
+            if (feature == null) return iconPathOverride ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(iconPathOverride)) return feature.IconPath;
+            if (IsManifestRelativeDefaultIcon(iconPathOverride!, feature.IconPath)) return feature.IconPath;
+            return iconPathOverride!;
+        }
+
+        private static bool IsManifestRelativeDefaultIcon(string iconPathOverride, string featureIconPath)
+        {
+            if (string.IsNullOrWhiteSpace(iconPathOverride) || string.IsNullOrWhiteSpace(featureIconPath)) return false;
+            if (Path.IsPathRooted(iconPathOverride) || !Path.IsPathRooted(featureIconPath)) return false;
+            if (iconPathOverride.IndexOf(':') >= 0) return false;
+
+            var normalizedOverride = NormalizePath(iconPathOverride).TrimStart('/');
+            if (string.IsNullOrWhiteSpace(normalizedOverride)) return false;
+
+            var normalizedFeatureIcon = NormalizePath(featureIconPath);
+            return normalizedFeatureIcon.EndsWith("/" + normalizedOverride, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string NormalizePath(string path)
+        {
+            return (path ?? string.Empty).Replace('\\', '/');
         }
 
         private static string SafeText(string? value, string? fallback)

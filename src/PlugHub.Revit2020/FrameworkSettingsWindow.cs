@@ -1756,7 +1756,9 @@ namespace PlugHub.Revit2020
 
         private ImageSource LoadRibbonDesignerIcon(RibbonDesignerNodeRow row, bool large)
         {
-            return LoadConfiguredRibbonDesignerIcon(RibbonDesignerIconPath(row), large)
+            var iconPath = RibbonDesignerIconPath(row);
+            return LoadConfiguredRibbonDesignerIcon(iconPath, large)
+                ?? LoadConfiguredRibbonDesignerIcon(ResolveRibbonDesignerPackageIconPath(row, iconPath), large)
                 ?? LoadDllSiblingRibbonDesignerIcon(row, large)
                 ?? (large ? DefaultRibbonIconProvider.CreateLargeIcon() : DefaultRibbonIconProvider.CreateSmallIcon());
         }
@@ -1771,6 +1773,38 @@ namespace PlugHub.Revit2020
             return _viewModel.RibbonDesignerFeatures
                 .FirstOrDefault(feature => string.Equals(feature.FeatureId, row.FeatureId, StringComparison.OrdinalIgnoreCase))
                 ?.IconPath ?? string.Empty;
+        }
+
+        private string ResolveRibbonDesignerPackageIconPath(RibbonDesignerNodeRow row, string iconPath)
+        {
+            if (row == null || string.IsNullOrWhiteSpace(row.FeatureId) || string.IsNullOrWhiteSpace(iconPath)) return string.Empty;
+            if (!RibbonDesignerMapper.IsType(row, RibbonDesignerNodeRow.PushButton)) return string.Empty;
+            if (Path.IsPathRooted(iconPath) || iconPath.IndexOf(':') >= 0) return string.Empty;
+
+            var feature = _viewModel.Features
+                .FirstOrDefault(item => string.Equals(item.FeatureId, row.FeatureId, StringComparison.OrdinalIgnoreCase));
+            if (feature == null || string.IsNullOrWhiteSpace(feature.ModuleId)) return string.Empty;
+
+            var moduleDirectory = ModuleManifestDirectory(feature.ModuleId);
+            if (string.IsNullOrWhiteSpace(moduleDirectory)) return string.Empty;
+
+            var resolvedPath = Path.GetFullPath(Path.Combine(moduleDirectory, iconPath));
+            return File.Exists(resolvedPath) ? resolvedPath : string.Empty;
+        }
+
+        private string ModuleManifestDirectory(string moduleId)
+        {
+            if (string.IsNullOrWhiteSpace(moduleId)) return string.Empty;
+            foreach (var document in _moduleDocuments)
+            {
+                if ((document.Modules.Modules ?? new List<ModuleConfiguration>())
+                    .Any(module => string.Equals(module.Id, moduleId, StringComparison.OrdinalIgnoreCase)))
+                {
+                    return Path.GetDirectoryName(document.Path) ?? string.Empty;
+                }
+            }
+
+            return string.Empty;
         }
 
         private ImageSource? LoadDllSiblingRibbonDesignerIcon(RibbonDesignerNodeRow row, bool large)
@@ -3286,7 +3320,7 @@ namespace PlugHub.Revit2020
             }
 
             view.Ribbon.LayoutVersion = "1.0";
-            view.Ribbon.Panels = _ribbonDesignerMapper.ToPanels(_viewModel.RibbonDesignerTabs);
+            view.Ribbon.Panels = _ribbonDesignerMapper.ToPanels(_viewModel.RibbonDesignerTabs, _viewModel.Features);
             InitializeRibbonDesignerContainerExpansionState();
             RefreshRibbonDesignerCanvas();
             SyncSelectedRibbonDesignerEditor();

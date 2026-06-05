@@ -38,7 +38,17 @@ namespace PlugHub.Revit2020.Settings.RibbonDesigner
 
         public List<RibbonPanelLayoutConfiguration> ToPanels(IEnumerable<RibbonDesignerNodeRow> tabs)
         {
+            return ToPanels(tabs, new List<FeatureRow>());
+        }
+
+        public List<RibbonPanelLayoutConfiguration> ToPanels(IEnumerable<RibbonDesignerNodeRow> tabs, IEnumerable<FeatureRow> features)
+        {
             var index = 0;
+            var featuresById = (features ?? new List<FeatureRow>())
+                .Where(feature => !string.IsNullOrWhiteSpace(feature.FeatureId))
+                .GroupBy(feature => feature.FeatureId, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+
             return (tabs ?? new List<RibbonDesignerNodeRow>())
                 .Where(node => IsType(node, RibbonDesignerNodeRow.Tab))
                 .SelectMany(tab => tab.Children)
@@ -48,7 +58,7 @@ namespace PlugHub.Revit2020.Settings.RibbonDesigner
                     index++;
                     panel.Order = index * 100;
                     AssignOrders(panel.Children);
-                    return ToPanel(panel);
+                    return ToPanel(panel, featuresById);
                 })
                 .ToList();
         }
@@ -213,19 +223,20 @@ namespace PlugHub.Revit2020.Settings.RibbonDesigner
             return row;
         }
 
-        private static RibbonPanelLayoutConfiguration ToPanel(RibbonDesignerNodeRow panel)
+        private static RibbonPanelLayoutConfiguration ToPanel(RibbonDesignerNodeRow panel, IReadOnlyDictionary<string, FeatureRow> featuresById)
         {
             return new RibbonPanelLayoutConfiguration
             {
                 Id = panel.Id ?? string.Empty,
                 Name = panel.Text ?? string.Empty,
                 Order = panel.Order,
-                Items = panel.Children.Select(ToItem).ToList()
+                Items = panel.Children.Select(child => ToItem(child, featuresById)).ToList()
             };
         }
 
-        private static RibbonItemLayoutConfiguration ToItem(RibbonDesignerNodeRow item)
+        private static RibbonItemLayoutConfiguration ToItem(RibbonDesignerNodeRow item, IReadOnlyDictionary<string, FeatureRow> featuresById)
         {
+            var iconPath = IconPathForSave(item, featuresById);
             return new RibbonItemLayoutConfiguration
             {
                 Type = item.NodeType ?? string.Empty,
@@ -234,12 +245,36 @@ namespace PlugHub.Revit2020.Settings.RibbonDesigner
                 FeatureId = item.FeatureId ?? string.Empty,
                 DefaultFeatureId = item.DefaultFeatureId ?? string.Empty,
                 Size = item.Size ?? string.Empty,
-                IconPath = item.IconPath ?? string.Empty,
+                IconPath = iconPath,
                 TextOverride = item.Text ?? string.Empty,
-                IconPathOverride = item.IconPath ?? string.Empty,
+                IconPathOverride = IsType(item, RibbonDesignerNodeRow.PushButton) ? iconPath : string.Empty,
                 Order = item.Order,
-                Items = item.Children.Select(ToItem).ToList()
+                Items = item.Children.Select(child => ToItem(child, featuresById)).ToList()
             };
+        }
+
+        private static string IconPathForSave(RibbonDesignerNodeRow item, IReadOnlyDictionary<string, FeatureRow> featuresById)
+        {
+            var iconPath = item.IconPath ?? string.Empty;
+            if (!IsType(item, RibbonDesignerNodeRow.PushButton) || string.IsNullOrWhiteSpace(item.FeatureId))
+            {
+                return iconPath;
+            }
+
+            return featuresById.TryGetValue(item.FeatureId, out var feature)
+                && SameIconPath(iconPath, feature.IconPath)
+                ? string.Empty
+                : iconPath;
+        }
+
+        private static bool SameIconPath(string left, string right)
+        {
+            return string.Equals(NormalizeIconPath(left), NormalizeIconPath(right), StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string NormalizeIconPath(string value)
+        {
+            return (value ?? string.Empty).Trim().Replace('\\', '/');
         }
 
         private static RibbonDesignerNodeRow CloneNode(RibbonDesignerNodeRow source)

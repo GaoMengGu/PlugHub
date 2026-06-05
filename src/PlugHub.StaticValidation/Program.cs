@@ -235,6 +235,11 @@ namespace PlugHub.StaticValidation
                 "src/PlugHub.Framework/Packages/PackageManifestReader.cs",
                 "src/PlugHub.Framework/Packages/PackageManifestWriter.cs",
                 "src/PlugHub.Framework/Packages/PackageInstallService.cs",
+                "src/PlugHub.Framework/Packages/RepositoryPackageDescriptor.cs",
+                "src/PlugHub.Framework/Packages/PendingPackageOperationsDocument.cs",
+                "src/PlugHub.Framework/Packages/PendingPackageOperation.cs",
+                "src/PlugHub.Framework/Packages/PendingManifestBackup.cs",
+                "src/PlugHub.Framework/Packages/PackageRepositoryOperationResult.cs",
                 "src/PlugHub.Framework/Diagnostics/PlugHubLogEntry.cs",
                 "src/PlugHub.Framework/Diagnostics/PlugHubLogger.cs",
                 "src/PlugHub.Framework/Diagnostics/PlugHubLogExporter.cs",
@@ -298,8 +303,8 @@ namespace PlugHub.StaticValidation
         {
             var ignore = ReadText(".gitignore");
             var readme = ReadText("README.md");
-            Require(ignore.Contains("docs/"), "docs directory must be ignored for future commits.");
-            Require(!readme.Contains("[docs/README.md]"), "root README must not point users at ignored docs content.");
+            Require(ignore.Contains("docs/"), "docs directory must stay local-only for internal architecture, progress, review, and planning records.");
+            Require(!readme.Contains("[docs/README.md]"), "root README must not point users at local-only internal docs content.");
             Require(!readme.Contains("D:\\AI\\code\\PlugHub_Modules"), "root README must not expose local external module paths.");
             Require(readme.Contains("面向建模用户") && readme.Contains("框架概览") && readme.Contains("能做什么"), "root README must introduce PlugHub for modeling users.");
             Require(readme.Contains("安装") && readme.Contains("文件夹权限") && readme.Contains(@"D:\Program Files\PlugHub"), "root README must document installation and folder permission guidance.");
@@ -501,6 +506,7 @@ namespace PlugHub.StaticValidation
             ValidateRepositoryModulesManifestVersionAndDefaults();
             ValidatePackageManifestWriterProducesCurrentSchema();
             ValidateRuntimeDefaultLayoutUsesModuleDisplayNames();
+            ValidateRibbonLayoutUsesResolvedPackageIconWhenOverrideIsManifestRelative();
         }
 
         private static void ValidateRuntimeAcceptsWhitespacePaddedRevitVersion()
@@ -782,6 +788,44 @@ namespace PlugHub.StaticValidation
                 Require(panelNames.Contains("Duct Tools"), "runtime default layout must use each module displayName for package-derived fallback panels.");
                 Require(!panelNames.Contains("view") && !panelNames.Contains("mep") && !panelNames.Any(name => name.StartsWith("view-", StringComparison.OrdinalIgnoreCase)), "runtime default layout must not expose category codes or module ids as package fallback panel names.");
                 Require(snapshot.Composition.Features.Count(feature => feature.GroupName == "View Tools") == 2, "runtime default layout must merge modules that intentionally share a module displayName.");
+            }
+            finally
+            {
+                if (Directory.Exists(tempRoot))
+                {
+                    Directory.Delete(tempRoot, true);
+                }
+            }
+        }
+
+        private static void ValidateRibbonLayoutUsesResolvedPackageIconWhenOverrideIsManifestRelative()
+        {
+            var tempRoot = Path.Combine(Path.GetTempPath(), "PlugHub.StaticValidation", Guid.NewGuid().ToString("N"));
+            try
+            {
+                var configDirectory = Path.Combine(tempRoot, "config");
+                var packageDirectory = Path.Combine(tempRoot, "packages", "icon-package");
+                Directory.CreateDirectory(configDirectory);
+                Directory.CreateDirectory(Path.Combine(packageDirectory, "icons"));
+
+                WriteRuntimeConfig(configDirectory);
+                File.WriteAllText(Path.Combine(packageDirectory, "icons", "package.png"), "icon");
+                File.WriteAllText(
+                    Path.Combine(packageDirectory, "packages.json"),
+                    "{\"schemaVersion\":\"1.1\",\"revitVersions\":[\"2020\"],\"modules\":[{\"id\":\"icon-package\",\"version\":\"V1.0.0\",\"displayName\":\"Icon Package\",\"assembly\":\"IconPackage.dll\",\"category\":\"test\",\"features\":[{\"id\":\"icon-package.run\",\"displayName\":\"Run Icon Package\",\"iconPath\":\"icons/package.png\"}]}]}");
+                File.WriteAllText(
+                    Path.Combine(configDirectory, "views.json"),
+                    "{\"schemaVersion\":\"1.0\",\"defaultView\":\"workspace\",\"views\":[{\"id\":\"workspace\",\"name\":\"Workspace\",\"ribbon\":{\"tabName\":\"PlugHub\",\"fallbackPanelName\":\"Framework\",\"panels\":[{\"id\":\"test\",\"name\":\"Test\",\"order\":100,\"items\":[{\"type\":\"pushButton\",\"id\":\"icon-package.run\",\"featureId\":\"icon-package.run\",\"size\":\"large\",\"textOverride\":\"Run Icon Package\",\"iconPathOverride\":\"icons/package.png\",\"order\":100}]}]},\"groups\":[{\"id\":\"test\",\"name\":\"Test\",\"includeCategories\":[\"test\"],\"order\":0}],\"sort\":[\"group.order\",\"feature.order\",\"feature.name\",\"feature.id\"]}]}");
+
+                var snapshot = new PlugHub.Framework.Runtime.FrameworkRuntime().Load(tempRoot, configDirectory);
+                var layout = new PlugHub.Framework.Composition.RibbonLayoutComposer().Compose(
+                    snapshot.Configuration.ActiveView,
+                    snapshot.Composition.Features);
+                var item = layout.Panels.SelectMany(panel => panel.Items).SingleOrDefault();
+                var expectedIconPath = Path.Combine(packageDirectory, "icons", "package.png");
+
+                Require(item != null, "runtime ribbon layout must include the icon-package feature.");
+                Require(string.Equals(Path.GetFullPath(item!.IconPath), Path.GetFullPath(expectedIconPath), StringComparison.OrdinalIgnoreCase), "ribbon layout must resolve package-relative default icon overrides to the installed package icon path. actual=" + item.IconPath + "; expected=" + expectedIconPath);
             }
             finally
             {
@@ -1891,7 +1935,8 @@ namespace PlugHub.StaticValidation
             Require(packageManifestReader.Contains("ReadPackagesFromManifest") && packageManifestReader.Contains("RepositoryPackageDisplayName"), "repository manifest reading must live in PackageManifestReader.");
             Require(packageManifestReader.Contains("AdjacentPackageManifestPattern = \"*.packages.json\""), "repository manifest reader must discover adjacent *.packages.json manifests.");
             Require(packageInstallService.Contains("InstallPackagePayload") && packageInstallService.Contains("CopyPackagePayload") && packageInstallService.Contains("WriteSingleModuleManifest") && !packageInstallService.Contains("CopyDirectory("), "repository install must split selected plugins and must not copy the whole repository directory.");
-            Require(packageRepositoryService.Contains("ApplyPendingOperations") && packageRepositoryService.Contains("pending-operations.json") && packageRepositoryService.Contains("PendingPackageOperation.Restart"), "repository package operations must defer locked DLL deletion and replacement and mark normal installs as restart-required.");
+            Require(packageRepositoryService.Contains("ApplyPendingOperations") && packageRepositoryService.Contains("PendingPackageOperation.Restart"), "repository package operations must defer locked DLL deletion and replacement and mark normal installs as restart-required.");
+            Require(!packageRepositoryService.Contains("PendingOperationsPath(") && !packageRepositoryService.Contains("PendingOperationsFileName"), "PackageRepositoryService must not duplicate pending operation store path ownership.");
             Require(packageRepositoryService.Contains("ListPendingOperations"), "package repository service must expose pending operation listing.");
             Require(packageRepositoryService.Contains("CancelPendingOperation"), "package repository service must expose pending operation cancellation.");
             Require(credentialService.Contains("ProtectedData.Protect") && credentialService.Contains("ProtectedData.Unprotect"), "repository credential service must use DPAPI.");
@@ -1909,6 +1954,7 @@ namespace PlugHub.StaticValidation
             Require(sourceResolver.Contains("EncryptedApiKey = repository.EncryptedApiKey") && sourceResolver.Contains("ApiKeyProtection = repository.ApiKeyProtection"), "module source resolver must preserve encrypted repository credentials.");
             ValidateRepositoryCredentialAndRedactionBehavior();
             var pendingStore = ReadText("src/PlugHub.Framework/Packages/PendingPackageOperationStore.cs");
+            Require(pendingStore.Contains("pending-operations.json"), "pending operation store must own the pending operation file name.");
             Require(pendingStore.Contains("AddOrReplace") && pendingStore.Contains("Remove") && pendingStore.Contains("Read"), "pending operation store must read, add, and remove operations.");
             Require(repositoryPackageRow.Contains("已安装待重启") && repositoryPackageRow.Contains("PendingOperation") && settingsWindow.Contains("IsLoadedInCurrentRuntime"), "repository package status must distinguish installed from installed-pending-restart.");
             Require(ReadText("src/PlugHub.Framework/Runtime/FrameworkRuntime.cs").Contains("ApplyPendingOperations"), "runtime startup must apply deferred package operations before module discovery.");

@@ -12,7 +12,6 @@ namespace PlugHub.Framework.Packages
     {
         private const string DefaultPackageManifestName = "packages.json";
         private const string PackagesDirectoryName = "packages";
-        private const string PendingOperationsFileName = "pending-operations.json";
 
         private readonly PendingPackageOperationStore _pendingOperations = new PendingPackageOperationStore();
         private readonly RepositoryCredentialService _credentialService = new RepositoryCredentialService();
@@ -561,11 +560,6 @@ namespace PlugHub.Framework.Packages
             _pendingOperations.Write(baseDirectory, operations);
         }
 
-        private static string PendingOperationsPath(string baseDirectory)
-        {
-            return Path.Combine(TemporaryPackageRoot(baseDirectory), PendingOperationsFileName);
-        }
-
         private bool TryRemoveModuleFromInstalledManifests(string installRoot, string moduleId, string excludedDirectory, out int cleanedManifests, out string error)
         {
             return TryRemoveModuleFromInstalledManifests(installRoot, moduleId, excludedDirectory, null, out cleanedManifests, out error);
@@ -878,105 +872,6 @@ namespace PlugHub.Framework.Packages
                 Code = code ?? string.Empty,
                 Message = SensitiveTextRedactor.Redact(message ?? string.Empty)
             });
-        }
-    }
-
-    public sealed class RepositoryPackageDescriptor
-    {
-        public string RepositoryId { get; set; } = string.Empty;
-        public string PackageId { get; set; } = string.Empty;
-        public string ModuleId { get; set; } = string.Empty;
-        public string DisplayName { get; set; } = string.Empty;
-        public string Version { get; set; } = string.Empty;
-        public string ManifestPath { get; set; } = string.Empty;
-        public string SourceDirectory { get; set; } = string.Empty;
-        public string InstallDirectory { get; set; } = string.Empty;
-        public string InstalledVersion { get; set; } = string.Empty;
-        public string PendingOperation { get; set; } = string.Empty;
-        public string Description { get; set; } = string.Empty;
-        public List<string> Tags { get; set; } = new List<string>();
-        public List<string> Categories { get; set; } = new List<string>();
-        public bool IsInstalled { get; set; }
-    }
-
-    public sealed class PendingPackageOperationsDocument
-    {
-        public List<PendingPackageOperation> Operations { get; set; } = new List<PendingPackageOperation>();
-    }
-
-    public sealed class PendingPackageOperation
-    {
-        public string Operation { get; set; } = string.Empty;
-        public string PackageId { get; set; } = string.Empty;
-        public string ModuleId { get; set; } = string.Empty;
-        public string InstallDirectory { get; set; } = string.Empty;
-        public string StagingDirectory { get; set; } = string.Empty;
-        public string CreatedAtUtc { get; set; } = string.Empty;
-        public List<PendingManifestBackup> ManifestBackups { get; set; } = new List<PendingManifestBackup>();
-
-        public static PendingPackageOperation Delete(string packageId, string moduleId, string installDirectory)
-        {
-            return new PendingPackageOperation
-            {
-                Operation = "delete",
-                PackageId = packageId ?? string.Empty,
-                ModuleId = moduleId ?? string.Empty,
-                InstallDirectory = installDirectory ?? string.Empty,
-                CreatedAtUtc = DateTime.UtcNow.ToString("o")
-            };
-        }
-
-        public static PendingPackageOperation Update(string packageId, string moduleId, string installDirectory, string stagingDirectory)
-        {
-            return new PendingPackageOperation
-            {
-                Operation = "update",
-                PackageId = packageId ?? string.Empty,
-                ModuleId = moduleId ?? string.Empty,
-                InstallDirectory = installDirectory ?? string.Empty,
-                StagingDirectory = stagingDirectory ?? string.Empty,
-                CreatedAtUtc = DateTime.UtcNow.ToString("o")
-            };
-        }
-
-        public static PendingPackageOperation Restart(string packageId, string moduleId, string installDirectory)
-        {
-            return new PendingPackageOperation
-            {
-                Operation = "restart",
-                PackageId = packageId ?? string.Empty,
-                ModuleId = moduleId ?? string.Empty,
-                InstallDirectory = installDirectory ?? string.Empty,
-                CreatedAtUtc = DateTime.UtcNow.ToString("o")
-            };
-        }
-    }
-
-    public sealed class PendingManifestBackup
-    {
-        public string ManifestPath { get; set; } = string.Empty;
-        public string Content { get; set; } = string.Empty;
-    }
-
-    public sealed class PackageRepositoryOperationResult
-    {
-        private PackageRepositoryOperationResult(bool success, string message)
-        {
-            Success = success;
-            Message = message ?? string.Empty;
-        }
-
-        public bool Success { get; }
-        public string Message { get; }
-
-        public static PackageRepositoryOperationResult Succeeded(string message)
-        {
-            return new PackageRepositoryOperationResult(true, message);
-        }
-
-        public static PackageRepositoryOperationResult Failed(string message)
-        {
-            return new PackageRepositoryOperationResult(false, message);
         }
     }
 }
