@@ -235,8 +235,7 @@ namespace PlugHub.Framework.Packages
             EnsureUnderDirectory(installRoot, installDirectory);
 
             var targetDirectoryExists = Directory.Exists(installDirectory);
-            var moduleInstalled = IsModuleInstalled(baseDirectory, installDirectory, moduleId);
-            if (targetDirectoryExists || moduleInstalled)
+            if (targetDirectoryExists)
             {
                 if (!replaceExisting)
                 {

@@ -59,6 +59,7 @@ namespace PlugHub.StaticValidation
                 ValidateFrameworkContainsNoBundledModules();
                 ValidatePlugHubV2Specification();
                 ValidateSettingsPaneV21Specification();
+                ValidateFrameworkSettingsWindowSectionBoundaries();
                 ValidateSettingsRibbonCleanupSpecification();
                 ValidateBuiltinOnlySpecification();
                 ValidateSettingsCreationAndSortingSpecification();
@@ -216,6 +217,8 @@ namespace PlugHub.StaticValidation
                 "src/PlugHub.Uninstaller/PlugHub.Uninstaller.csproj",
                 "src/PlugHub.Uninstaller/Program.cs",
                 "src/PlugHub.Uninstaller/UninstallerForm.cs",
+                "src/PlugHub.Tests/PlugHub.Tests.csproj",
+                "src/PlugHub.Tests/Program.cs",
                 "src/PlugHub.StaticValidation/PlugHub.StaticValidation.csproj",
                 "src/PlugHub.StaticValidation/Validation/ValidationSeverity.cs",
                 "src/PlugHub.StaticValidation/Validation/ValidationIssue.cs",
@@ -274,6 +277,9 @@ namespace PlugHub.StaticValidation
 
             var missing = required.Where(path => !File.Exists(FullPath(path))).ToList();
             Require(!missing.Any(), "missing required files: " + string.Join(", ", missing));
+            ValidateInternalDocsIfPresent();
+            var solutionX = ReadText("PlugHub.slnx");
+            Require(solutionX.Contains("src/PlugHub.Tests/PlugHub.Tests.csproj"), "independent behavior test project must be included in PlugHub.slnx.");
             var validationProgram = ReadText("src/PlugHub.StaticValidation/Program.cs");
             Require(validationProgram.Contains("string[] args"), "Static validation entrypoint must accept command-line arguments.");
             Require(validationProgram.Contains("--report-json") && validationProgram.Contains("--report-html"), "Static validation must support JSON and HTML report arguments.");
@@ -297,6 +303,22 @@ namespace PlugHub.StaticValidation
                 var testProjects = Directory.GetFiles(FullPath("tests"), "*.csproj", SearchOption.AllDirectories);
                 Require(testProjects.Length > 0, "tests directory must contain real test projects; move validation notes into README.md instead of keeping a placeholder tests folder.");
             }
+        }
+
+        private static void ValidateInternalDocsIfPresent()
+        {
+            if (!Directory.Exists(FullPath("docs"))) return;
+
+            var required = new[]
+            {
+                "docs/TODO.md",
+                "docs/development.md",
+                "docs/icon-spec.md",
+                "docs/revit-2020-acceptance-template.md"
+            };
+
+            var missing = required.Where(path => !File.Exists(FullPath(path))).ToList();
+            Require(!missing.Any(), "missing internal docs: " + string.Join(", ", missing));
         }
 
         private static void ValidateDocumentationStructure()
@@ -1611,6 +1633,83 @@ namespace PlugHub.StaticValidation
             Require(!revitProject.Contains("System.Windows.Forms") && !revitProject.Contains("WindowsFormsIntegration"), "Revit adapter should not reference WinForms after moving settings and feature UI to WPF.");
             Require(!revitProject.Contains("PlugHubModuleFiles"), "Revit build must not depend on a source modules folder.");
             Require(revitProject.Contains("packages\\README.md"), "Revit build must create the runtime packages folder.");
+        }
+
+        private static void ValidateFrameworkSettingsWindowSectionBoundaries()
+        {
+            var settingsWindow = ReadText("src/PlugHub.Revit2020/FrameworkSettingsWindow.cs");
+
+            var repositoriesTab = MethodBody(settingsWindow, "BuildRepositoriesTab");
+            foreach (var token in new[] { "BuildRepositoryToolbar", "BuildRepositorySourceCards", "BuildRepositoryPackageToolbar", "BuildRepositoryPackageList", "Grid.SetRow" })
+            {
+                Require(repositoriesTab.Contains(token), "repositories tab must own its section composition: " + token);
+            }
+
+            var repositoryToolbar = MethodBody(settingsWindow, "BuildRepositoryToolbar");
+            foreach (var token in new[] { "CheckRepositoryUpdates", "AddRepository", "BuildToolbarHeader" })
+            {
+                Require(repositoryToolbar.Contains(token), "repository toolbar must expose repository source actions: " + token);
+            }
+
+            var repositorySources = MethodBody(settingsWindow, "BuildRepositorySourceCards");
+            foreach (var token in new[] { "_repositorySourcesList", "BuildRepositoryMenu", "BuildRepositorySourceCardTemplate", "BuildRepositorySourceScrollViewer" })
+            {
+                Require(repositorySources.Contains(token), "repository source cards must keep source list controls together: " + token);
+            }
+
+            var packageToolbar = MethodBody(settingsWindow, "BuildRepositoryPackageToolbar");
+            foreach (var token in new[] { "_repositoryPackageSearchText", "_repositoryPackageStateFilter", "_repositoryPackageTagFilter", "RepositoryPackageFilterChanged" })
+            {
+                Require(packageToolbar.Contains(token), "repository package toolbar must keep package filters together: " + token);
+            }
+
+            var packageList = MethodBody(settingsWindow, "BuildRepositoryPackageList");
+            foreach (var token in new[] { "_warehousePackageList", "BuildRepositoryPackageMenu", "BuildRepositoryPackageTemplate", "BuildRepositoryPackageItemsPanel" })
+            {
+                Require(packageList.Contains(token), "repository package list must own package browsing controls: " + token);
+            }
+
+            var designerTab = MethodBody(settingsWindow, "BuildVisualRibbonDesignerTab");
+            Require(designerTab.Contains("BuildRibbonDesignerEditorBody") && designerTab.Contains("SyncSelectedRibbonDesignerEditor"), "visual ribbon designer tab must build and sync the editor.");
+
+            var designerBody = MethodBody(settingsWindow, "BuildRibbonDesignerEditorBody");
+            Require(designerBody.Contains("BuildRibbonDesignerCanvas") && designerBody.Contains("BuildRibbonDesignerPropertyPanel"), "visual ribbon designer body must keep canvas and property editor as distinct sections.");
+
+            var designerCanvas = MethodBody(settingsWindow, "BuildRibbonDesignerCanvas");
+            Require(designerCanvas.Contains("_ribbonDesignerCanvas") && designerCanvas.Contains("BuildRibbonDesignerCanvasMenu") && designerCanvas.Contains("ScrollViewer"), "visual ribbon designer canvas must expose a scrollable canvas with its context menu.");
+
+            var designerMenu = MethodBody(settingsWindow, "BuildRibbonDesignerCanvasMenu");
+            foreach (var token in new[] { "RibbonDesignerNodeRow.Panel", "RibbonDesignerNodeRow.PulldownButton", "RibbonDesignerNodeRow.SplitButton", "RibbonDesignerNodeRow.Stack", "RemoveSelectedRibbonDesignerNode", "ResetDefaultRibbonLayout" })
+            {
+                Require(designerMenu.Contains(token), "visual ribbon designer context menu must keep layout operations discoverable: " + token);
+            }
+
+            var designerProperties = MethodBody(settingsWindow, "BuildRibbonDesignerPropertyPanel");
+            foreach (var token in new[] { "_selectedRibbonDesignerText", "_selectedRibbonDesignerType", "BuildRibbonDesignerIconSelector", "_selectedRibbonDesignerDefaultFeature", "SelectedRibbonDesignerPropertySelectionChanged" })
+            {
+                Require(designerProperties.Contains(token), "visual ribbon designer property panel must keep selected-node editors together: " + token);
+            }
+
+            var aboutTab = MethodBody(settingsWindow, "BuildAboutTab");
+            foreach (var token in new[] { "BuildAboutHeader", "BuildAboutMetric", "BuildAboutSection", "BuildAboutInfoRow", "ListPendingOperations", "ScrollViewer" })
+            {
+                Require(aboutTab.Contains(token), "about tab must keep framework metadata and diagnostics together: " + token);
+            }
+
+            var aboutHeader = MethodBody(settingsWindow, "BuildAboutHeader");
+            Require(aboutHeader.Contains("AssemblyVersionText") && aboutHeader.Contains("CreateIconButton(\"refresh\"") && aboutHeader.Contains("CheckFrameworkUpdate"), "about header must expose framework version and the compact update action.");
+
+            var checkUpdate = MethodBody(settingsWindow, "CheckFrameworkUpdate");
+            foreach (var token in new[] { "_frameworkUpdateService.Check", "AssemblyVersionText", "ShowFrameworkUpdateDialog", "UpdateFramework", "_checkFrameworkIconButton.IsEnabled" })
+            {
+                Require(checkUpdate.Contains(token), "check-update flow must keep metadata query, prompt, and button state together: " + token);
+            }
+
+            var updateFramework = MethodBody(settingsWindow, "UpdateFramework");
+            Require(updateFramework.Contains("_frameworkUpdateService.Download") && updateFramework.Contains("_frameworkUpdateService.StartUpdater") && updateFramework.Contains("Process.GetCurrentProcess().Id"), "update flow must download and hand off to the external updater.");
+
+            var updateDialog = MethodBody(settingsWindow, "ShowFrameworkUpdateDialog");
+            Require(updateDialog.Contains("ReleaseNotesText") && updateDialog.Contains("LatestVersion") && updateDialog.Contains("DialogResult"), "update dialog must show target version, release notes, and return a user decision.");
         }
 
         private static void ValidateSettingsRibbonCleanupSpecification()

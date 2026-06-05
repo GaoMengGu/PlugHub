@@ -115,17 +115,26 @@ namespace PlugHub.Framework.Composition
                 SafeId(firstPanel == null ? string.Empty : firstPanel.Id, panelName),
                 panelName,
                 order,
-                BuildConfiguredItems(items, featuresById, placedFeatureIds));
+                BuildConfiguredItems(string.Empty, items, featuresById, placedFeatureIds));
         }
 
         private static List<RibbonItemViewModel> BuildConfiguredItems(
+            string parentType,
             IEnumerable<RibbonItemLayoutConfiguration>? items,
             IReadOnlyDictionary<string, FeatureViewModel> featuresById,
             ISet<string> placedFeatureIds)
         {
-            return (items ?? new List<RibbonItemLayoutConfiguration>())
+            var orderedItems = (items ?? new List<RibbonItemLayoutConfiguration>())
                 .OrderBy(item => item.Order)
                 .ThenBy(item => SafeText(item.Text, item.Id), StringComparer.OrdinalIgnoreCase)
+                .Where(item => CanContainItem(parentType, item));
+
+            if (IsRibbonItemType(parentType, RibbonItemViewModel.Stack))
+            {
+                orderedItems = orderedItems.Take(3);
+            }
+
+            return orderedItems
                 .Select(item => BuildConfiguredItem(item, featuresById, placedFeatureIds))
                 .Where(item => item != null)
                 .Cast<RibbonItemViewModel>()
@@ -137,15 +146,17 @@ namespace PlugHub.Framework.Composition
             IReadOnlyDictionary<string, FeatureViewModel> featuresById,
             ISet<string> placedFeatureIds)
         {
-            var type = string.IsNullOrWhiteSpace(item.Type) ? RibbonItemViewModel.PushButton : item.Type.Trim();
-            if (string.Equals(type, RibbonItemViewModel.PushButton, StringComparison.OrdinalIgnoreCase))
+            var type = NormalizedItemType(item.Type);
+            if (IsRibbonItemType(type, RibbonItemViewModel.PushButton))
             {
                 if (!featuresById.TryGetValue(item.FeatureId ?? string.Empty, out var feature)) return null;
                 if (!placedFeatureIds.Add(feature.FeatureId)) return null;
                 return PushItem(feature, item.Size, item.TextOverride, item.IconPathOverride);
             }
 
-            var children = BuildConfiguredItems(item.Items, featuresById, placedFeatureIds);
+            if (!IsContainerType(type)) return null;
+
+            var children = BuildConfiguredItems(type, item.Items, featuresById, placedFeatureIds);
             return new RibbonItemViewModel(
                 type,
                 SafeId(item.Id, item.Text),
@@ -155,6 +166,50 @@ namespace PlugHub.Framework.Composition
                 null,
                 item.DefaultFeatureId,
                 OrderDefaultFeatureFirst(type, item.DefaultFeatureId, children));
+        }
+
+        private static bool CanContainItem(string parentType, RibbonItemLayoutConfiguration item)
+        {
+            var itemType = NormalizedItemType(item == null ? string.Empty : item.Type);
+            if (IsRibbonItemType(itemType, RibbonItemViewModel.PushButton))
+            {
+                return true;
+            }
+
+            if (!IsContainerType(itemType))
+            {
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(parentType))
+            {
+                return true;
+            }
+
+            if (IsRibbonItemType(parentType, RibbonItemViewModel.Stack))
+            {
+                return IsRibbonItemType(itemType, RibbonItemViewModel.PulldownButton)
+                    || IsRibbonItemType(itemType, RibbonItemViewModel.SplitButton);
+            }
+
+            return false;
+        }
+
+        private static bool IsContainerType(string type)
+        {
+            return IsRibbonItemType(type, RibbonItemViewModel.PulldownButton)
+                || IsRibbonItemType(type, RibbonItemViewModel.SplitButton)
+                || IsRibbonItemType(type, RibbonItemViewModel.Stack);
+        }
+
+        private static string NormalizedItemType(string? type)
+        {
+            return string.IsNullOrWhiteSpace(type) ? RibbonItemViewModel.PushButton : type!.Trim();
+        }
+
+        private static bool IsRibbonItemType(string? actual, string expected)
+        {
+            return string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase);
         }
 
         private static List<RibbonItemViewModel> OrderDefaultFeatureFirst(string type, string? defaultFeatureId, List<RibbonItemViewModel> children)

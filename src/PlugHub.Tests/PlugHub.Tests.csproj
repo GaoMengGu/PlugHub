@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="..\..\build\Directory.Build.props" />
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>PlugHub.Tests</AssemblyName>
+    <RootNamespace>PlugHub.Tests</RootNamespace>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
+    <Reference Include="System.Web.Extensions" />
+    <ProjectReference Include="..\PlugHub.Contracts\PlugHub.Contracts.csproj" />
+    <ProjectReference Include="..\PlugHub.Framework\PlugHub.Framework.csproj" />
+  </ItemGroup>
+</Project>
