@@ -6,9 +6,9 @@ using System.Web.Script.Serialization;
 using PlugHub.Framework.Configuration;
 using PlugHub.Framework.Packages;
 
-namespace PlugHub.Revit2020.Settings
+namespace PlugHub.Framework.Settings
 {
-    internal sealed class SettingsConfigurationStore
+    public sealed class SettingsConfigurationStore
     {
         private const string SourcesFileName = "sources.json";
         private const string DefaultPackageManifestName = "packages.json";
@@ -45,7 +45,6 @@ namespace PlugHub.Revit2020.Settings
             var baseDirectory = BaseDirectory();
             foreach (var packageDirectory in configuration.Modules.PackageDirectories ?? new List<string>())
             {
-                // Configured packageDirectories are editable manifests too.
                 foreach (var manifestPath in FindModuleManifests(ResolvePath(baseDirectory, packageDirectory)))
                 {
                     var manifest = TryReadModulesConfiguration(manifestPath);
@@ -216,7 +215,7 @@ namespace PlugHub.Revit2020.Settings
                 || string.Equals(manifestPath.Trim(), DefaultPackageManifestName, StringComparison.OrdinalIgnoreCase);
         }
 
-        internal sealed class ModuleManifestDocument
+        public sealed class ModuleManifestDocument
         {
             public ModuleManifestDocument(string path, ModulesConfiguration modules)
             {

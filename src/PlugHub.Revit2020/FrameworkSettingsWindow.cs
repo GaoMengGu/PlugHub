@@ -19,6 +19,7 @@ using PlugHub.Framework.Configuration;
 using PlugHub.Framework.Diagnostics;
 using PlugHub.Framework.Packages;
 using PlugHub.Framework.Runtime;
+using PlugHub.Framework.Settings;
 using PlugHub.Framework.Updates;
 using PlugHub.Revit2020.Settings;
 using PlugHub.Revit2020.Settings.RibbonDesigner;
