@@ -3,7 +3,6 @@ using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using PlugHub.Contracts.Modules;
-using PlugHub.Framework.Configuration;
 using PlugHub.Framework.Runtime;
 
 namespace PlugHub.Revit2020
@@ -34,9 +33,26 @@ namespace PlugHub.Revit2020
 
             try
             {
-                var configuration = FrameworkConfigurationLoader.LoadFromDirectory(configDirectory);
-                RevitWindowOwner.ShowDialog(new FrameworkSettingsWindow(configDirectory, configuration));
-                return Result.Succeeded;
+                if (new ExternalSettingsAppLauncher().TryLaunch(configDirectory, out var diagnostic))
+                {
+                    return Result.Succeeded;
+                }
+
+                message = diagnostic;
+                FrameworkStatusWindow.ShowLogs(
+                    "PlugHub 设置",
+                    "打开 Windows 设置程序失败：" + diagnostic,
+                    new[]
+                    {
+                        new DiagnosticMessage
+                        {
+                            Severity = DiagnosticSeverity.Error,
+                            Code = "PH-SETTINGS-APP",
+                            ModuleId = "runtime",
+                            Message = diagnostic
+                        }
+                    });
+                return Result.Failed;
             }
             catch (Exception ex)
             {

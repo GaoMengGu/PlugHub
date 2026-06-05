@@ -252,10 +252,9 @@ namespace PlugHub.StaticValidation
                 "src/PlugHub.Revit2020/ExternalApplicationEntry.cs",
                 "src/PlugHub.Revit2020/ExternalSettingsAppLauncher.cs",
                 "src/PlugHub.Revit2020/FeatureRibbonBuilder.cs",
-                "src/PlugHub.Revit2020/FrameworkExternalSettingsCommand.cs",
                 "src/PlugHub.Revit2020/FrameworkFeatureCommand.cs",
-                "src/PlugHub.Revit2020/FrameworkRefreshCommand.cs",
                 "src/PlugHub.Revit2020/FrameworkSettingsWindow.cs",
+                "src/PlugHub.Revit2020/FrameworkStatusCommand.cs",
                 "src/PlugHub.Revit2020/Settings/FrameworkSettingsViewModel.cs",
                 "src/PlugHub.Revit2020/Settings/RepositorySettingsController.cs",
                 "src/PlugHub.Revit2020/Settings/Rows/ModuleRow.cs",
@@ -1471,15 +1470,15 @@ namespace PlugHub.StaticValidation
             var settingsWindow = ReadText("src/PlugHub.Revit2020/FrameworkSettingsWindow.cs");
             var settingsViewModel = ReadText("src/PlugHub.Revit2020/Settings/FrameworkSettingsViewModel.cs");
             var settingsCommand = ReadText("src/PlugHub.Revit2020/FrameworkSettingsCommand.cs");
-            var externalSettingsCommand = ReadText("src/PlugHub.Revit2020/FrameworkExternalSettingsCommand.cs");
             var externalSettingsLauncher = ReadText("src/PlugHub.Revit2020/ExternalSettingsAppLauncher.cs");
             var externalSettingsProject = ReadText("src/PlugHub.SettingsApp/PlugHub.SettingsApp.csproj");
             var settingsAppProgram = ReadText("src/PlugHub.SettingsApp/Program.cs");
             var settingsStore = ReadText("src/PlugHub.Framework/Settings/SettingsConfigurationStore.cs");
-            var refreshCommand = ReadText("src/PlugHub.Revit2020/FrameworkRefreshCommand.cs");
+            var statusCommand = ReadText("src/PlugHub.Revit2020/FrameworkStatusCommand.cs");
             var statusWindow = ReadText("src/PlugHub.Revit2020/FrameworkStatusWindow.cs");
             var featureCommand = ReadText("src/PlugHub.Revit2020/FrameworkFeatureCommand.cs");
             var ribbonBuilder = ReadText("src/PlugHub.Revit2020/FeatureRibbonBuilder.cs");
+            var runtime = ReadText("src/PlugHub.Framework/Runtime/FrameworkRuntime.cs");
             var ribbonDesignerDropService = ReadText("src/PlugHub.Revit2020/Settings/RibbonDesigner/RibbonDesignerDropService.cs");
             var sourceResolver = ReadText("src/PlugHub.Framework/Sources/ModuleSourceResolver.cs");
             var configurationModels = ReadText("src/PlugHub.Framework/Configuration/ConfigurationModels.cs");
@@ -1488,8 +1487,9 @@ namespace PlugHub.StaticValidation
             Require(!File.Exists(FullPath("src/PlugHub.Revit2020/FrameworkSettingsForm.cs")), "legacy WinForms settings form must be removed.");
             Require(!File.Exists(FullPath("src/PlugHub.Revit2020/FrameworkSettingsPane.cs")), "legacy DockablePane settings provider must be removed.");
             Require(!ReadAllCSharp("src/PlugHub.Revit2020").Contains("System.Windows.Forms") && !ReadAllCSharp("src/PlugHub.Revit2020").Contains("WindowsFormsHost"), "Revit settings/feature UI must not reference WinForms hosting.");
-            Require(settingsCommand.Contains("FrameworkSettingsWindow") && settingsCommand.Contains("ShowDialog") && !settingsCommand.Contains("ExternalSettingsAppLauncher"), "settings ribbon command must keep opening the full Revit WPF settings dialog during the parallel external-app stage.");
-            Require(externalSettingsCommand.Contains("ExternalSettingsAppLauncher") && externalSettingsCommand.Contains("TryLaunch") && externalSettingsCommand.Contains("FrameworkStatusWindow"), "external settings ribbon command must launch the Windows settings app and report failures through WPF status.");
+            Require(settingsCommand.Contains("ExternalSettingsAppLauncher") && settingsCommand.Contains("TryLaunch") && settingsCommand.Contains("FrameworkStatusWindow"), "settings ribbon command must launch the Windows settings app and report failures through WPF status.");
+            Require(!settingsCommand.Contains("FrameworkSettingsWindow") && !settingsCommand.Contains("ShowDialog") && !settingsCommand.Contains("FrameworkConfigurationLoader.LoadFromDirectory"), "Revit settings ribbon command must not host the full settings window or load editable settings in-process.");
+            Require(!File.Exists(FullPath("src/PlugHub.Revit2020/FrameworkExternalSettingsCommand.cs")), "parallel Windows settings command must be removed after settings becomes the external-app entry.");
             Require(!settingsCommand.Contains("GetDockablePane") && !settingsCommand.Contains("pane.Hide") && !settingsCommand.Contains("pane.Show"), "settings command must not toggle a DockablePane.");
             Require(externalSettingsLauncher.Contains("PlugHub.SettingsApp.exe") && externalSettingsLauncher.Contains("--config") && externalSettingsLauncher.Contains("FrameworkRuntimeState.BaseDirectory"), "external settings launcher must locate PlugHub.SettingsApp.exe and pass the runtime config directory.");
             Require(externalSettingsProject.Contains("<TargetFramework>net48</TargetFramework>") && externalSettingsProject.Contains("<OutputType>WinExe</OutputType>") && externalSettingsProject.Contains("PresentationFramework"), "external settings app must be a net48 WPF Windows executable.");
@@ -1497,13 +1497,14 @@ namespace PlugHub.StaticValidation
             Require(externalSettingsProject.Contains("FrameworkSettingsWindow.cs") && externalSettingsProject.Contains("Settings\\**\\*.cs") && externalSettingsProject.Contains("SharedSettings"), "external settings app must compile the same WPF settings window sources for 1:1 behavior.");
             Require(settingsAppProgram.Contains("FrameworkSettingsWindow") && settingsAppProgram.Contains("FrameworkConfigurationLoader.LoadFromDirectory") && !File.Exists(FullPath("src/PlugHub.SettingsApp/SettingsMainWindow.cs")), "external settings app must host the existing FrameworkSettingsWindow instead of a separate settings UI.");
             Require(settingsStore.Contains("namespace PlugHub.Framework.Settings") && settingsStore.Contains("public sealed class SettingsConfigurationStore") && !settingsStore.Contains("Autodesk.Revit"), "shared settings store must live in PlugHub.Framework.Settings and stay Revit-independent.");
-            Require(refreshCommand.Contains("FrameworkRuntimeState.Refresh") && refreshCommand.Contains("FrameworkStatusWindow"), "runtime refresh must be an explicit Ribbon command with WPF feedback.");
-            Require(refreshCommand.Contains("ShowRefreshResult") && !refreshCommand.Contains("BuildRuntimeSummary"), "refresh command must show a focused refresh result instead of repeating runtime status.");
+            Require(statusCommand.Contains("FrameworkRuntimeState.Current") && statusCommand.Contains("ShowRuntimeStatus") && !statusCommand.Contains("FrameworkRuntimeState.Refresh"), "status ribbon command must display the current runtime status without reloading configuration in-process.");
             Require(featureCommand.Contains("ShowRuntimeStatus"), "status command must use the focused runtime status view.");
             Require(featureCommand.Contains("FrameworkStatusWindow") && !featureCommand.Contains("TaskDialog.Show"), "framework fallback feature feedback must use WPF.");
             Require(ribbonBuilder.Contains("LoadFeatureIcon") && ribbonBuilder.Contains("LargeImage"), "configured feature icons must be applied to Revit ribbon buttons.");
             Require(ribbonBuilder.Contains("FrameworkSettingsCommand"), "framework Ribbon panel must expose settings command.");
-            Require(ribbonBuilder.Contains("FrameworkExternalSettingsCommand") && ribbonBuilder.Contains("PlugHub_Framework_ExternalSettings"), "framework Ribbon panel must expose the external Windows settings entry as a parallel command.");
+            Require(ribbonBuilder.Contains("FrameworkStatusCommand") && ribbonBuilder.Contains("PlugHub_Framework_Status"), "framework Ribbon panel must expose a lightweight status entry.");
+            Require(!ribbonBuilder.Contains("FrameworkExternalSettingsCommand") && !ribbonBuilder.Contains("PlugHub_Framework_ExternalSettings") && !ribbonBuilder.Contains("Windows设置"), "framework Ribbon panel must not expose a duplicate Windows settings entry.");
+            Require(!runtime.Contains(".Browse(") && !runtime.Contains("RepositoryBrowser") && !runtime.Contains("RepositoryArchiveSynchronizer") && !runtime.Contains("FrameworkUpdateService"), "Revit startup runtime must not access remote repositories or framework update services.");
 
             foreach (var token in new[] { "class FrameworkSettingsWindow", ": Window", "TabControl", "DataGrid", "BuildRibbonLayoutTab", "BuildRepositoriesTab", "RepositoryRow", "RepositoryPackageRow", "GroupRow", "ReloadFromDisk", "ContextMenu", "DragDrop", "Microsoft.Win32.OpenFileDialog" })
             {
@@ -1642,9 +1643,9 @@ namespace PlugHub.StaticValidation
             }
 
             Require(statusWindow.Contains("class FrameworkStatusWindow") && statusWindow.Contains(": Window"), "status and feature fallback UI must use a WPF status window.");
-            foreach (var token in new[] { "ShowRefreshResult", "ShowRuntimeStatus", "ShowLogs", "showLogs" })
+            foreach (var token in new[] { "ShowRuntimeStatus", "ShowLogs", "showLogs" })
             {
-                Require(statusWindow.Contains(token), "status window must separate refresh, status, and log concerns: " + token);
+                Require(statusWindow.Contains(token), "status window must separate status and log concerns: " + token);
             }
             Require(configurationModels.Contains("PackageRepositoryConfiguration"), "module configuration must expose repository catalog settings.");
             Require(sourceResolver.Contains("AddPackageDirectoryModules"), "package directories must be scanned for drop-in packages manifests.");
@@ -1755,8 +1756,8 @@ namespace PlugHub.StaticValidation
             Require(!settingsWindow.Contains("点击 Ribbon 的「刷新配置」"), "settings UI must not point users to the removed refresh Ribbon button.");
 
             Require(ribbonBuilder.Contains("\"PlugHub_Framework_Settings\""), "Ribbon must keep the settings entry.");
-            Require(!ribbonBuilder.Contains("\"PlugHub_Framework_Refresh\"") && !ribbonBuilder.Contains("\"刷新配置\""), "Ribbon must not expose refresh configuration.");
-            Require(!ribbonBuilder.Contains("\"PlugHub_Framework_Status\"") && !ribbonBuilder.Contains("\"状态\""), "Ribbon must not expose status.");
+            Require(!ribbonBuilder.Contains("\"PlugHub_Framework_Refresh\"") && !ribbonBuilder.Contains("\"刷新配置\""), "Ribbon must not expose refresh configuration as a full settings substitute.");
+            Require(ribbonBuilder.Contains("\"PlugHub_Framework_Status\"") && ribbonBuilder.Contains("\"状态\""), "Ribbon must expose a lightweight runtime status entry.");
 
             Require(addinTemplate.Contains("<VendorDescription>GAOMENGGU</VendorDescription>"), "addin publisher description must be GAOMENGGU.");
             Require(buildProps.Contains("<Company>GAOMENGGU</Company>") && buildProps.Contains("<Authors>GAOMENGGU</Authors>"), "assembly metadata publisher must be GAOMENGGU.");
@@ -1831,7 +1832,8 @@ namespace PlugHub.StaticValidation
             var modulesText = ReadText("config/sources.example.json");
 
             Require(ribbonBuilder.Contains("DefaultRibbonIconProvider") && ribbonBuilder.Contains("CreateSmallIcon") && ribbonBuilder.Contains("CreateLargeIcon"), "Ribbon builder must apply built-in default small/large icons.");
-            Require(ribbonBuilder.Contains("CreateSmallIcon(\"settings\")") && ribbonBuilder.Contains("CreateLargeIcon(\"settings\")"), "settings ribbon button must use a built-in settings icon.");
+            Require(ribbonBuilder.Contains("\"PlugHub_Framework_Settings\"") && ribbonBuilder.Contains("\"settings\""), "settings ribbon button must use a built-in settings icon.");
+            Require(ribbonBuilder.Contains("\"PlugHub_Framework_Status\"") && ribbonBuilder.Contains("\"diagnostics\""), "status ribbon button must use a built-in diagnostics icon.");
             Require(ribbonBuilder.Contains("LoadConfiguredIcon"), "Ribbon builder must resolve configured file icons and built-in icon keys.");
             Require(ribbonBuilder.Contains("LoadDllSiblingIcon") && ribbonBuilder.Contains("SameNameIconExtensions"), "Ribbon builder must auto-load same-name icons beside feature DLLs before falling back to defaults.");
             Require(ribbonBuilder.Contains("AddSingleStackChildFallback"), "Ribbon builder must render a single-item stack as its child instead of dropping the feature.");

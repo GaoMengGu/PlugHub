@@ -1,6 +1,6 @@
 # PlugHub Revit 2020 用户指南
 
-PlugHub 是面向建模用户的 Revit 2020 插件管理框架。它把多个插件集中到一个 `PlugHub` Ribbon 页签里，让用户可以在同一套设置窗口中管理功能按钮、插件包、仓库源和框架更新。Revit 内设置窗口和 Windows 设置程序使用一致的界面。
+PlugHub 是面向建模用户的 Revit 2020 插件管理框架。它把多个插件集中到一个 `PlugHub` Ribbon 页签里，让用户可以在 Windows 设置程序中管理功能按钮、插件包、仓库源和框架更新。Revit 中只保留设置启动、状态查看和插件命令入口。
 
 ## 框架概览
 
@@ -39,7 +39,7 @@ C:\ProgramData\Autodesk\Revit\Addins\2020\PlugHub.addin
 D:\Program Files\PlugHub
 ```
 
-安装完成后，目录中会包含 `PlugHub.SettingsApp.exe` 和 `PlugHub-Uninstall.exe`。前者用于在 Windows 下打开与 Revit 内一致的 PlugHub 设置窗口，后者用于卸载 PlugHub。
+安装完成后，目录中会包含 `PlugHub.SettingsApp.exe` 和 `PlugHub-Uninstall.exe`。前者用于在 Windows 下打开 PlugHub 设置窗口，后者用于卸载 PlugHub。
 
 ### 文件夹权限
 
@@ -53,7 +53,7 @@ D:\Program Files\PlugHub
 
 ## 更新
 
-打开 Revit 后，进入 `PlugHub` 页签，点击「设置」。PlugHub 会打开 Revit 内完整设置窗口。进入「关于」页签后：
+打开 Revit 后，进入 `PlugHub` 页签，点击「设置」。PlugHub 会启动 Windows 设置程序。进入「关于」页签后：
 
 - 左上角会显示 `PlugHub` 和当前框架版本。
 - 版本后方有一个检查更新小图标。
@@ -77,7 +77,7 @@ D:\Program Files\PlugHub
 
 常见操作：
 
-- 点击 `PlugHub` 页签中的「设置」，进入「布局」页签。
+- 点击 `PlugHub` 页签中的「设置」，在 Windows 设置程序中进入「布局」页签。
 - 在可用功能列表中选择插件功能。
 - 将功能拖拽到目标分组或面板中。
 - 选中已有按钮后，可以修改显示名、分组、按钮大小和图标。
@@ -101,7 +101,7 @@ https://gitee.com/GaoMengGu/PlugHub_Packages
 
 设置方法：
 
-1. 打开设置窗口，进入「仓库源」或「仓库」相关页面。
+1. 打开 Windows 设置程序，进入「仓库源」或「仓库」相关页面。
 2. 新增或编辑仓库源，填写名称、地址和分支。
 3. 私有仓库需要填写 Token；公开仓库通常不需要。
 4. 保存后点击「同步仓库源」。
@@ -127,7 +127,7 @@ PlugHub 通过 HTTP archive 同步仓库源，普通建模用户不需要安装 
 
 ### 手动放入 packages
 
-如果插件包由团队内部直接提供，也可以手动放入安装目录下的 `packages` 文件夹。手动安装后需要重新打开 Revit，或在设置窗口中重新加载配置。
+如果插件包由团队内部直接提供，也可以手动放入安装目录下的 `packages` 文件夹。手动安装后需要重新打开 Revit，或在 Windows 设置程序中重新加载配置。
 
 注意：
 

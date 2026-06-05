@@ -98,22 +98,6 @@ namespace PlugHub.Revit2020
             ShowLogs(title, summary, diagnostics);
         }
 
-        public static void ShowRefreshResult(FrameworkRuntimeSnapshot snapshot)
-        {
-            if (snapshot == null) throw new ArgumentNullException(nameof(snapshot));
-
-            var diagnostics = snapshot.Diagnostics ?? Array.Empty<DiagnosticMessage>();
-            var summary =
-                "刷新完成。\n\n" +
-                "已重新读取配置、已安装插件包和执行拦截状态。\n" +
-                "模块数: " + snapshot.Configuration.EffectiveModules.Modules.Count + "\n" +
-                "工作台功能数: " + snapshot.Composition.Features.Count + "\n" +
-                "日志消息: " + diagnostics.Count + "\n\n" +
-                "Ribbon 布局和图标仍需重启 Revit 重绘。";
-
-            RevitWindowOwner.ShowDialog(new FrameworkStatusWindow("PlugHub 刷新配置", summary, diagnostics, diagnostics.Any()));
-        }
-
         public static void ShowRuntimeStatus(FrameworkRuntimeSnapshot? snapshot)
         {
             RevitWindowOwner.ShowDialog(new FrameworkStatusWindow("PlugHub 状态", BuildRuntimeStatus(snapshot), Array.Empty<DiagnosticMessage>(), false));
@@ -141,7 +125,8 @@ namespace PlugHub.Revit2020
                 "Modules: " + snapshot.Configuration.EffectiveModules.Modules.Count + "\n" +
                 "Features in workspace: " + snapshot.Composition.Features.Count + "\n" +
                 "Logs: " + snapshot.Diagnostics.Count + "\n\n" +
-                "需要排障时，请在设置窗口中打开日志目录或导出日志。";
+                "Windows 设置程序写入的仓库、插件和布局配置会在下次启动时重新读取；Ribbon 布局和图标变更需要重启 Revit 后重绘。\n" +
+                "需要排障时，请在 Windows 设置程序中打开日志目录或导出日志。";
         }
 
         private static DataGridTextColumn TextColumn(string propertyName, string header, double width, bool star = false)

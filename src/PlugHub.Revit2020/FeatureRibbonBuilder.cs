@@ -65,18 +65,20 @@ namespace PlugHub.Revit2020
                 "PlugHub_Framework_Settings",
                 "设置",
                 typeof(FrameworkSettingsCommand),
-                "打开 PlugHub Revit 设置窗口。",
-                "打开 Revit 内完整设置窗口，用于管理插件、仓库、更新和 Ribbon 布局。");
+                "打开 PlugHub Windows 设置程序。",
+                "在 Windows 下打开完整设置窗口，用于管理插件、仓库、更新和 Ribbon 布局。",
+                "settings");
             AddFrameworkButton(
                 panel,
-                "PlugHub_Framework_ExternalSettings",
-                "Windows设置",
-                typeof(FrameworkExternalSettingsCommand),
-                "打开 PlugHub Windows 设置程序。",
-                "打开与 Revit 内设置窗口一致的 Windows WPF 设置程序。");
+                "PlugHub_Framework_Status",
+                "状态",
+                typeof(FrameworkStatusCommand),
+                "查看当前 PlugHub 运行状态。",
+                "显示当前 Revit 会话已加载的配置、模块、功能和日志数量；配置变更通常需要重启 Revit 后重绘 Ribbon。",
+                "diagnostics");
         }
 
-        private void AddFrameworkButton(RibbonPanel panel, string buttonName, string text, Type commandType, string tooltip, string longDescription)
+        private void AddFrameworkButton(RibbonPanel panel, string buttonName, string text, Type commandType, string tooltip, string longDescription, string iconKey)
         {
             if (panel.GetItems().Any(item => string.Equals(item.Name, buttonName, StringComparison.OrdinalIgnoreCase))) return;
 
@@ -88,8 +90,8 @@ namespace PlugHub.Revit2020
 
             data.ToolTip = tooltip;
             data.LongDescription = longDescription;
-            data.Image = DefaultRibbonIconProvider.CreateSmallIcon("settings");
-            data.LargeImage = DefaultRibbonIconProvider.CreateLargeIcon("settings");
+            data.Image = DefaultRibbonIconProvider.CreateSmallIcon(iconKey);
+            data.LargeImage = DefaultRibbonIconProvider.CreateLargeIcon(iconKey);
             panel.AddItem(data);
         }
 
