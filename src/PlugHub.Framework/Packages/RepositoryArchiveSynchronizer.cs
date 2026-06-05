@@ -1,9 +1,12 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Net;
+using System.Text;
+using System.Web.Script.Serialization;
 using PlugHub.Contracts.Modules;
 using PlugHub.Framework.Configuration;
 using PlugHub.Framework.Diagnostics;
@@ -15,6 +18,7 @@ namespace PlugHub.Framework.Packages
         private const string ArchiveDownloadUserAgent = "curl/8.0.1";
 
         private readonly RepositoryCredentialService _credentialService;
+        private readonly JavaScriptSerializer _serializer = new JavaScriptSerializer { MaxJsonLength = int.MaxValue, RecursionLimit = 128 };
 
         public RepositoryArchiveSynchronizer(RepositoryCredentialService credentialService)
         {
@@ -43,10 +47,26 @@ namespace PlugHub.Framework.Packages
                 Directory.CreateDirectory(parentDirectory);
                 Directory.CreateDirectory(stagingDirectory);
 
-                var archiveUrl = ArchiveUrl(address, repository);
-                DownloadArchive(archiveUrl, repository, archivePath);
-                ValidateArchiveFile(archivePath, archiveUrl);
-                ExtractArchive(archivePath, stagingDirectory);
+                try
+                {
+                    var archiveUrl = ArchiveUrl(address, repository);
+                    DownloadArchive(archiveUrl, repository, archivePath);
+                    ValidateArchiveFile(archivePath, archiveUrl);
+                    ExtractArchive(archivePath, stagingDirectory);
+                }
+                catch (Exception ex)
+                {
+                    if (!ShouldUseGiteeApiFallback(address, repository, ex))
+                    {
+                        throw;
+                    }
+
+                    DeleteFileQuietly(archivePath);
+                    DeleteDirectoryQuietly(stagingDirectory);
+                    Directory.CreateDirectory(stagingDirectory);
+                    SyncGiteeRepositoryViaApi(address, repository, stagingDirectory);
+                }
+
                 ReplaceCacheDirectory(stagingDirectory, cacheDirectory);
                 return true;
             }
@@ -60,6 +80,143 @@ namespace PlugHub.Framework.Packages
                 DeleteFileQuietly(archivePath);
                 DeleteDirectoryQuietly(stagingDirectory);
             }
+        }
+
+        private bool ShouldUseGiteeApiFallback(RepositoryAddress address, PackageRepositoryConfiguration repository, Exception exception)
+        {
+            if (!string.Equals(address.Provider, "gitee", StringComparison.OrdinalIgnoreCase)) return false;
+            if (!string.Equals(repository.Visibility, "private", StringComparison.OrdinalIgnoreCase)) return false;
+            if (string.IsNullOrWhiteSpace(_credentialService.ResolveApiKey(repository))) return false;
+            if (exception is InvalidDataException) return true;
+
+            var webException = exception as WebException;
+            var response = webException?.Response as HttpWebResponse;
+            if (response == null) return false;
+
+            return response.StatusCode == HttpStatusCode.Forbidden
+                || response.StatusCode == HttpStatusCode.Unauthorized
+                || response.StatusCode == HttpStatusCode.NotFound;
+        }
+
+        private void SyncGiteeRepositoryViaApi(RepositoryAddress address, PackageRepositoryConfiguration repository, string stagingDirectory)
+        {
+            var apiKey = _credentialService.ResolveApiKey(repository);
+            if (string.IsNullOrWhiteSpace(apiKey))
+            {
+                throw new InvalidOperationException("Private Gitee repository requires an access token.");
+            }
+
+            var gitRef = string.IsNullOrWhiteSpace(repository.Ref) ? "main" : repository.Ref.Trim();
+            var tree = ReadJsonObject(GiteeApiUrl(address, "git/trees/" + Uri.EscapeDataString(gitRef), apiKey, "recursive=1"));
+            var entries = ArrayValue(tree, "tree")
+                .Select(item => item as Dictionary<string, object>)
+                .Where(item => item != null)
+                .Cast<Dictionary<string, object>>()
+                .Where(item => string.Equals(StringValue(item, "type"), "blob", StringComparison.OrdinalIgnoreCase))
+                .Select(item => StringValue(item, "path"))
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (entries.Count == 0)
+            {
+                throw new InvalidDataException("Gitee repository tree did not contain downloadable files.");
+            }
+
+            foreach (var path in entries)
+            {
+                DownloadGiteeApiFile(address, gitRef, path, apiKey, stagingDirectory);
+            }
+        }
+
+        private void DownloadGiteeApiFile(
+            RepositoryAddress address,
+            string gitRef,
+            string repositoryPath,
+            string apiKey,
+            string stagingDirectory)
+        {
+            var file = ReadJsonObject(GiteeApiUrl(address, "contents/" + EscapePath(repositoryPath), apiKey, "ref=" + Uri.EscapeDataString(gitRef)));
+            var type = StringValue(file, "type");
+            if (!string.Equals(type, "file", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            var content = StringValue(file, "content").Replace("\r", string.Empty).Replace("\n", string.Empty);
+            var encoding = StringValue(file, "encoding");
+            var bytes = string.Equals(encoding, "base64", StringComparison.OrdinalIgnoreCase)
+                ? Convert.FromBase64String(content)
+                : Encoding.UTF8.GetBytes(content);
+            var targetPath = Path.GetFullPath(Path.Combine(stagingDirectory, repositoryPath.Replace('/', Path.DirectorySeparatorChar)));
+            if (!IsUnderDirectory(stagingDirectory, targetPath))
+            {
+                throw new InvalidOperationException("Gitee API file path is unsafe: " + repositoryPath);
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(targetPath) ?? stagingDirectory);
+            File.WriteAllBytes(targetPath, bytes);
+        }
+
+        private Dictionary<string, object> ReadJsonObject(Uri uri)
+        {
+            var request = (HttpWebRequest)WebRequest.Create(uri);
+            request.Method = "GET";
+            request.Timeout = 30000;
+            request.ReadWriteTimeout = 30000;
+            request.UserAgent = ArchiveDownloadUserAgent;
+            request.Accept = "application/json";
+
+            using (var response = (HttpWebResponse)request.GetResponse())
+            using (var source = response.GetResponseStream())
+            {
+                if (source == null)
+                {
+                    throw new InvalidOperationException("Gitee API response did not contain a body.");
+                }
+
+                using (var reader = new StreamReader(source, Encoding.UTF8))
+                {
+                    return _serializer.Deserialize<Dictionary<string, object>>(reader.ReadToEnd()) ?? new Dictionary<string, object>();
+                }
+            }
+        }
+
+        private static Uri GiteeApiUrl(RepositoryAddress address, string apiPath, string apiKey, string extraQuery)
+        {
+            var query = "access_token=" + Uri.EscapeDataString(apiKey.Trim());
+            if (!string.IsNullOrWhiteSpace(extraQuery))
+            {
+                query += "&" + extraQuery.TrimStart('&', '?');
+            }
+
+            return new Uri("https://gitee.com/api/v5/repos/"
+                + Uri.EscapeDataString(address.Owner)
+                + "/"
+                + Uri.EscapeDataString(address.Name)
+                + "/"
+                + apiPath
+                + "?"
+                + query);
+        }
+
+        private static string EscapePath(string path)
+        {
+            return string.Join("/", (path ?? string.Empty)
+                .Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(Uri.EscapeDataString));
+        }
+
+        private static IEnumerable<object> ArrayValue(Dictionary<string, object> source, string key)
+        {
+            if (source == null || !source.TryGetValue(key, out var value)) return Enumerable.Empty<object>();
+            return value is ArrayList list ? list.Cast<object>() : Enumerable.Empty<object>();
+        }
+
+        private static string StringValue(Dictionary<string, object> source, string key)
+        {
+            if (source == null || !source.TryGetValue(key, out var value)) return string.Empty;
+            return Convert.ToString(value) ?? string.Empty;
         }
 
         private Uri ArchiveUrl(RepositoryAddress address, PackageRepositoryConfiguration repository)
