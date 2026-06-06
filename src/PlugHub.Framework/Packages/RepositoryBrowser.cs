@@ -180,7 +180,7 @@ namespace PlugHub.Framework.Packages
                 .Select(ch => char.IsLetterOrDigit(ch) || ch == '-' || ch == '_' || ch == '.' ? ch : '_')
                 .ToArray();
             var segment = new string(chars).Trim('_');
-            return string.IsNullOrWhiteSpace(segment) ? "package" : segment;
+            return string.IsNullOrWhiteSpace(segment) || segment.All(ch => ch == '.') ? "package" : segment;
         }
 
         private static void AddDiagnostic(ICollection<DiagnosticMessage> diagnostics, string repositoryId, string code, string message)

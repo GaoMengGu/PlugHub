@@ -67,8 +67,7 @@ namespace PlugHub.Manager.Maintenance
                 throw new InvalidOperationException("Refusing to delete a drive root: " + fullPath);
             }
 
-            if (string.Equals(Path.GetFileName(fullPath), "PlugHub", StringComparison.OrdinalIgnoreCase)
-                || ContainsPlugHubInstallMarkers(fullPath))
+            if (ContainsPlugHubInstallMarkers(fullPath))
             {
                 return fullPath;
             }

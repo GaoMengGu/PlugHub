@@ -16,6 +16,7 @@ namespace PlugHub.Framework.Packages
     public sealed class RepositoryArchiveSynchronizer
     {
         private const string ArchiveDownloadUserAgent = "curl/8.0.1";
+        private const string RepositoryCacheRootName = "repository-cache";
 
         private readonly RepositoryCredentialService _credentialService;
         private readonly JavaScriptSerializer _serializer = new JavaScriptSerializer { MaxJsonLength = int.MaxValue, RecursionLimit = 128 };
@@ -31,6 +32,7 @@ namespace PlugHub.Framework.Packages
             if (string.IsNullOrWhiteSpace(cacheDirectory)) throw new ArgumentException("Cache directory is required.", nameof(cacheDirectory));
             if (diagnostics == null) throw new ArgumentNullException(nameof(diagnostics));
 
+            var fullCacheDirectory = ValidateCacheDirectory(cacheDirectory);
             var address = RepositoryAddress.From(repository);
             if (address == null)
             {
@@ -38,7 +40,7 @@ namespace PlugHub.Framework.Packages
                 return false;
             }
 
-            var parentDirectory = Path.GetDirectoryName(cacheDirectory) ?? cacheDirectory;
+            var parentDirectory = Path.GetDirectoryName(fullCacheDirectory) ?? throw new InvalidOperationException("Repository cache directory must have a parent directory.");
             var stagingDirectory = Path.Combine(parentDirectory, SafePathSegment(repository.Id) + ".download." + Guid.NewGuid().ToString("N"));
             var archivePath = Path.Combine(parentDirectory, SafePathSegment(repository.Id) + ".archive." + Guid.NewGuid().ToString("N") + ".zip");
 
@@ -67,7 +69,7 @@ namespace PlugHub.Framework.Packages
                     SyncGiteeRepositoryViaApi(address, repository, stagingDirectory);
                 }
 
-                ReplaceCacheDirectory(stagingDirectory, cacheDirectory);
+                ReplaceCacheDirectory(stagingDirectory, fullCacheDirectory);
                 return true;
             }
             catch (Exception ex)
@@ -170,6 +172,7 @@ namespace PlugHub.Framework.Packages
             using (var response = (HttpWebResponse)request.GetResponse())
             using (var source = response.GetResponseStream())
             {
+                EnsureHttpsResponse(response.ResponseUri);
                 if (source == null)
                 {
                     throw new InvalidOperationException("Gitee API response did not contain a body.");
@@ -260,15 +263,18 @@ namespace PlugHub.Framework.Packages
             }
 
             using (var response = (HttpWebResponse)request.GetResponse())
-            using (var source = response.GetResponseStream())
-            using (var target = File.Create(archivePath))
             {
-                if (source == null)
+                EnsureHttpsResponse(response.ResponseUri);
+                using (var source = response.GetResponseStream())
+                using (var target = File.Create(archivePath))
                 {
-                    throw new InvalidOperationException("Repository archive response did not contain a body.");
-                }
+                    if (source == null)
+                    {
+                        throw new InvalidOperationException("Repository archive response did not contain a body.");
+                    }
 
-                source.CopyTo(target);
+                    source.CopyTo(target);
+                }
             }
         }
 
@@ -360,6 +366,28 @@ namespace PlugHub.Framework.Packages
             }
         }
 
+        private static string ValidateCacheDirectory(string cacheDirectory)
+        {
+            var fullCacheDirectory = Path.GetFullPath(cacheDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var parentDirectory = Path.GetDirectoryName(fullCacheDirectory);
+            if (string.IsNullOrWhiteSpace(parentDirectory)
+                || !string.Equals(Path.GetFileName(parentDirectory), RepositoryCacheRootName, StringComparison.OrdinalIgnoreCase)
+                || string.IsNullOrWhiteSpace(Path.GetFileName(fullCacheDirectory)))
+            {
+                throw new InvalidOperationException("Repository cache directory must be a child of the repository-cache directory.");
+            }
+
+            return fullCacheDirectory;
+        }
+
+        private static void EnsureHttpsResponse(Uri responseUri)
+        {
+            if (responseUri == null || !string.Equals(responseUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Repository archive download redirected to a non-HTTPS URL.");
+            }
+        }
+
         private static bool IsUnderDirectory(string parentDirectory, string childPath)
         {
             var parent = Path.GetFullPath(parentDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
@@ -405,7 +433,7 @@ namespace PlugHub.Framework.Packages
                 .Select(ch => char.IsLetterOrDigit(ch) || ch == '-' || ch == '_' || ch == '.' ? ch : '_')
                 .ToArray();
             var segment = new string(chars).Trim('_');
-            return string.IsNullOrWhiteSpace(segment) ? "repository" : segment;
+            return string.IsNullOrWhiteSpace(segment) || segment.All(ch => ch == '.') ? "repository" : segment;
         }
 
         private static void AddDiagnostic(ICollection<DiagnosticMessage> diagnostics, string repositoryId, string code, string message)

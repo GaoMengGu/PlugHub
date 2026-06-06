@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Net;
 
 namespace PlugHub.Framework.Updates
@@ -18,8 +19,8 @@ namespace PlugHub.Framework.Updates
                 throw new InvalidOperationException("Release asset URL must be HTTPS.");
             }
 
-            Directory.CreateDirectory(targetDirectory);
-            var targetPath = Path.Combine(targetDirectory, SafeFileName(fileName));
+            var targetPath = ResolveTargetPath(targetDirectory, fileName);
+            Directory.CreateDirectory(Path.GetDirectoryName(targetPath) ?? targetDirectory);
 
             EnsureSecureTransport();
             var request = (HttpWebRequest)WebRequest.Create(uri);
@@ -32,15 +33,32 @@ namespace PlugHub.Framework.Updates
             request.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
 
             using (var response = (HttpWebResponse)request.GetResponse())
-            using (var stream = response.GetResponseStream())
-            using (var target = File.Create(targetPath))
             {
-                if (stream == null)
+                EnsureHttpsResponse(response.ResponseUri);
+                using (var stream = response.GetResponseStream())
+                using (var target = File.Create(targetPath))
                 {
-                    throw new InvalidDataException("Release asset response did not contain a body.");
-                }
+                    if (stream == null)
+                    {
+                        throw new InvalidDataException("Release asset response did not contain a body.");
+                    }
 
-                stream.CopyTo(target);
+                    stream.CopyTo(target);
+                }
+            }
+
+            return targetPath;
+        }
+
+        private static string ResolveTargetPath(string targetDirectory, string fileName)
+        {
+            if (string.IsNullOrWhiteSpace(targetDirectory)) throw new ArgumentException("Target directory is required.", nameof(targetDirectory));
+
+            var fullTargetDirectory = Path.GetFullPath(targetDirectory);
+            var targetPath = Path.GetFullPath(Path.Combine(fullTargetDirectory, SafeFileName(fileName)));
+            if (!IsUnderDirectory(fullTargetDirectory, targetPath))
+            {
+                throw new InvalidOperationException("Release asset target path must stay inside the target directory.");
             }
 
             return targetPath;
@@ -57,6 +75,21 @@ namespace PlugHub.Framework.Updates
             ServicePointManager.Expect100Continue = false;
         }
 
+        private static void EnsureHttpsResponse(Uri responseUri)
+        {
+            if (responseUri == null || !string.Equals(responseUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Release asset download redirected to a non-HTTPS URL.");
+            }
+        }
+
+        private static bool IsUnderDirectory(string parentDirectory, string childPath)
+        {
+            var parent = Path.GetFullPath(parentDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            var child = Path.GetFullPath(childPath);
+            return child.StartsWith(parent, StringComparison.OrdinalIgnoreCase);
+        }
+
         private static string SafeFileName(string value)
         {
             foreach (var invalid in Path.GetInvalidFileNameChars())
@@ -64,7 +97,8 @@ namespace PlugHub.Framework.Updates
                 value = (value ?? string.Empty).Replace(invalid, '_');
             }
 
-            return string.IsNullOrWhiteSpace(value) ? "PlugHub-update.zip" : value;
+            var segment = (value ?? string.Empty).Trim();
+            return string.IsNullOrWhiteSpace(segment) || segment.All(ch => ch == '.') ? "PlugHub-update.zip" : segment;
         }
     }
 }

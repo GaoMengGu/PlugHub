@@ -42,6 +42,7 @@ namespace PlugHub.Tests
                 new TestCase("package repository service rejects pending delete path escape", PackageRepositoryServiceRejectsPendingDeletePathEscape),
                 new TestCase("package repository service rejects pending update staging path escape", PackageRepositoryServiceRejectsPendingUpdateStagingPathEscape),
                 new TestCase("package repository service rejects cancelled update staging path escape", PackageRepositoryServiceRejectsCancelledUpdateStagingPathEscape),
+                new TestCase("package repository service rejects dot segment cache ids", PackageRepositoryServiceRejectsDotSegmentCacheIds),
                 new TestCase("ribbon layout composer builds configured layout and default fallback", RibbonLayoutComposerBuildsConfiguredLayoutAndDefaultFallback),
                 new TestCase("ribbon layout composer filters invalid container children", RibbonLayoutComposerFiltersInvalidContainerChildren),
                 new TestCase("framework update package accepts single manager maintenance payload", FrameworkUpdatePackageAcceptsSingleManagerMaintenancePayload),
@@ -51,6 +52,7 @@ namespace PlugHub.Tests
                 new TestCase("manager updater rejects non PlugHub directory", ManagerUpdaterRejectsNonPlugHubDirectory),
                 new TestCase("manager uninstaller accepts local Revit build output directory", ManagerUninstallerAcceptsLocalRevitBuildOutputDirectory),
                 new TestCase("manager uninstaller rejects non PlugHub directory", ManagerUninstallerRejectsNonPlugHubDirectory),
+                new TestCase("manager uninstaller rejects unmarked PlugHub named directory", ManagerUninstallerRejectsUnmarkedPlugHubNamedDirectory),
                 new TestCase("manager maintenance logger does not recreate deleted install directory", ManagerMaintenanceLoggerDoesNotRecreateDeletedInstallDirectory),
                 new TestCase("sensitive text redactor masks repository tokens", SensitiveTextRedactorMasksRepositoryTokens)
             };
@@ -816,6 +818,23 @@ namespace PlugHub.Tests
             }
         }
 
+        private static void PackageRepositoryServiceRejectsDotSegmentCacheIds()
+        {
+            using (var temp = TempDirectory.Create())
+            {
+                var repository = new PackageRepositoryConfiguration
+                {
+                    Id = "..",
+                    Provider = "github",
+                    Repository = "owner/repository",
+                    Enabled = true
+                };
+
+                var service = new PackageRepositoryService();
+                Require(!service.HasRepositoryCache(temp.Path, repository), "dot-only repository ids must not resolve to the PlugHub base directory.");
+            }
+        }
+
         private static void RibbonLayoutComposerBuildsConfiguredLayoutAndDefaultFallback()
         {
             var view = new ViewConfiguration
@@ -1149,6 +1168,27 @@ namespace PlugHub.Tests
                 }
 
                 Require(failed, "manager uninstaller must reject directories without PlugHub install markers.");
+            }
+        }
+
+        private static void ManagerUninstallerRejectsUnmarkedPlugHubNamedDirectory()
+        {
+            using (var temp = TempDirectory.Create())
+            {
+                var installDirectory = Path.Combine(temp.Path, "PlugHub");
+                Directory.CreateDirectory(installDirectory);
+
+                var failed = false;
+                try
+                {
+                    ValidateManagerUninstallDirectory(installDirectory);
+                }
+                catch (InvalidOperationException ex) when (ex.Message.Contains("not a PlugHub install root"))
+                {
+                    failed = true;
+                }
+
+                Require(failed, "manager uninstaller must not trust directory name alone without PlugHub install markers.");
             }
         }
 
