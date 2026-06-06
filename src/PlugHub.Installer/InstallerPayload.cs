@@ -12,10 +12,7 @@ namespace PlugHub.Installer
 
         public static void ExtractTo(string installDirectory)
         {
-            if (string.IsNullOrWhiteSpace(installDirectory))
-            {
-                throw new ArgumentException("Install directory is required.", nameof(installDirectory));
-            }
+            var fullInstallDirectory = ValidateInstallDirectory(installDirectory);
 
             var stagingRoot = Path.Combine(Path.GetTempPath(), "PlugHubInstaller", Guid.NewGuid().ToString("N"));
             var payloadZip = Path.Combine(stagingRoot, ResourceName);
@@ -26,7 +23,7 @@ namespace PlugHub.Installer
                 Directory.CreateDirectory(extractedDirectory);
                 WritePayloadZip(payloadZip);
                 ExtractPayloadZip(payloadZip, extractedDirectory);
-                CopyDirectory(extractedDirectory, installDirectory);
+                CopyDirectory(extractedDirectory, fullInstallDirectory);
             }
             finally
             {
@@ -35,6 +32,28 @@ namespace PlugHub.Installer
                     Directory.Delete(stagingRoot, true);
                 }
             }
+        }
+
+        private static string ValidateInstallDirectory(string installDirectory)
+        {
+            if (string.IsNullOrWhiteSpace(installDirectory))
+            {
+                throw new ArgumentException("Install directory is required.", nameof(installDirectory));
+            }
+
+            var fullPath = Path.GetFullPath(installDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var root = Path.GetPathRoot(fullPath)?.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            if (string.Equals(fullPath, root, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Refusing to install into a drive root: " + fullPath);
+            }
+
+            if (!string.Equals(Path.GetFileName(fullPath), "PlugHub", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Install directory must be named PlugHub: " + fullPath);
+            }
+
+            return fullPath;
         }
 
         private static void WritePayloadZip(string targetPath)

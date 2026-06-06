@@ -67,7 +67,7 @@ namespace PlugHub.Manager.Maintenance
                 throw new InvalidOperationException("Refusing to delete a drive root: " + fullPath);
             }
 
-            if (ContainsPlugHubInstallMarkers(fullPath))
+            if (ContainsPlugHubInstallMarkers(fullPath) && IsAllowedInstallRootName(fullPath))
             {
                 return fullPath;
             }
@@ -79,6 +79,20 @@ namespace PlugHub.Manager.Maintenance
         {
             return Directory.Exists(directory)
                 && Array.TrueForAll(RequiredInstallMarkers, marker => File.Exists(Path.Combine(directory, marker)));
+        }
+
+        private static bool IsAllowedInstallRootName(string directory)
+        {
+            var fullPath = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            if (string.Equals(Path.GetFileName(fullPath), "PlugHub", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            var parent = Path.GetDirectoryName(fullPath);
+            return string.Equals(Path.GetFileName(fullPath), "Revit2020", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(parent)
+                && string.Equals(Path.GetFileName(parent), "dist", StringComparison.OrdinalIgnoreCase);
         }
     }
 }

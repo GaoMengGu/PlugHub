@@ -51,8 +51,10 @@ namespace PlugHub.Tests
                 new TestCase("manager updater validates maintenance payload", ManagerUpdaterValidatesMaintenancePayload),
                 new TestCase("manager updater removes stale standalone maintenance pdbs", ManagerUpdaterRemovesStaleStandaloneMaintenancePdbs),
                 new TestCase("manager updater rejects non PlugHub directory", ManagerUpdaterRejectsNonPlugHubDirectory),
+                new TestCase("manager updater rejects marker validated parent directory", ManagerUpdaterRejectsMarkerValidatedParentDirectory),
                 new TestCase("manager uninstaller accepts local Revit build output directory", ManagerUninstallerAcceptsLocalRevitBuildOutputDirectory),
                 new TestCase("manager uninstaller rejects non PlugHub directory", ManagerUninstallerRejectsNonPlugHubDirectory),
+                new TestCase("manager uninstaller rejects marker validated parent directory", ManagerUninstallerRejectsMarkerValidatedParentDirectory),
                 new TestCase("manager uninstaller rejects unmarked PlugHub named directory", ManagerUninstallerRejectsUnmarkedPlugHubNamedDirectory),
                 new TestCase("manager maintenance logger does not recreate deleted install directory", ManagerMaintenanceLoggerDoesNotRecreateDeletedInstallDirectory),
                 new TestCase("sensitive text redactor masks repository tokens", SensitiveTextRedactorMasksRepositoryTokens)
@@ -1137,6 +1139,36 @@ namespace PlugHub.Tests
             }
         }
 
+        private static void ManagerUpdaterRejectsMarkerValidatedParentDirectory()
+        {
+            using (var temp = TempDirectory.Create())
+            {
+                var installDirectory = Path.Combine(temp.Path, "Program Files");
+                WritePlugHubInstallMarkers(installDirectory);
+                var zipPath = Path.Combine(temp.Path, "framework.zip");
+                WriteUpdatePackage(zipPath, new[]
+                {
+                    "PlugHub.Revit2020.dll",
+                    "PlugHub.Framework.dll",
+                    "PlugHub.Contracts.dll",
+                    "PlugHub.Wpf.dll",
+                    "PlugHub.Manager.exe"
+                });
+
+                var failed = false;
+                try
+                {
+                    RunManagerFrameworkUpdate(zipPath, installDirectory);
+                }
+                catch (InvalidOperationException ex) when (ex.Message.Contains("not a PlugHub install root"))
+                {
+                    failed = true;
+                }
+
+                Require(failed, "manager updater must not update a marker-validated parent directory that is not a PlugHub install root.");
+            }
+        }
+
         private static void ManagerMaintenanceLoggerDoesNotRecreateDeletedInstallDirectory()
         {
             using (var temp = TempDirectory.Create())
@@ -1197,6 +1229,27 @@ namespace PlugHub.Tests
                 }
 
                 Require(failed, "manager uninstaller must reject directories without PlugHub install markers.");
+            }
+        }
+
+        private static void ManagerUninstallerRejectsMarkerValidatedParentDirectory()
+        {
+            using (var temp = TempDirectory.Create())
+            {
+                var installDirectory = Path.Combine(temp.Path, "Program Files");
+                WritePlugHubInstallMarkers(installDirectory);
+
+                var failed = false;
+                try
+                {
+                    ValidateManagerUninstallDirectory(installDirectory);
+                }
+                catch (InvalidOperationException ex) when (ex.Message.Contains("not a PlugHub install root"))
+                {
+                    failed = true;
+                }
+
+                Require(failed, "manager uninstaller must not delete a marker-validated parent directory that is not a PlugHub install root.");
             }
         }
 

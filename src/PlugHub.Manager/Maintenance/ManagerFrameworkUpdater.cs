@@ -189,7 +189,7 @@ namespace PlugHub.Manager.Maintenance
                 throw new InvalidOperationException("Refusing to update an unsafe install directory: " + installDirectory);
             }
 
-            if (!ContainsPlugHubInstallMarkers(full))
+            if (!ContainsPlugHubInstallMarkers(full) || !IsAllowedInstallRootName(full))
             {
                 throw new InvalidOperationException("Refusing to update a directory that is not a PlugHub install root: " + full);
             }
@@ -201,6 +201,20 @@ namespace PlugHub.Manager.Maintenance
         {
             return Directory.Exists(directory)
                 && Array.TrueForAll(RequiredInstallMarkers, marker => File.Exists(Path.Combine(directory, marker)));
+        }
+
+        private static bool IsAllowedInstallRootName(string directory)
+        {
+            var fullPath = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            if (string.Equals(Path.GetFileName(fullPath), "PlugHub", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            var parent = Path.GetDirectoryName(fullPath);
+            return string.Equals(Path.GetFileName(fullPath), "Revit2020", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(parent)
+                && string.Equals(Path.GetFileName(parent), "dist", StringComparison.OrdinalIgnoreCase);
         }
 
         private static string SafeSegment(string value)
