@@ -2859,7 +2859,8 @@ namespace PlugHub.StaticValidation
             Require(solutionX.Contains("src/PlugHub.Installer/PlugHub.Installer.csproj"), "installer project must be included in PlugHub.slnx.");
             Require(installerForm.Contains(@"D:\Program Files\PlugHub"), "installer UI must default the install directory to D:\\Program Files\\PlugHub.");
             Require(installerForm.Contains("FolderBrowserDialog"), "installer UI must let users choose the install directory.");
-            Require(installerPayload.Contains("GetManifestResourceStream") && installerPayload.Contains("ZipFile.ExtractToDirectory"), "installer payload must be embedded and extracted by the installer.");
+            Require(installerPayload.Contains("GetManifestResourceStream") && installerPayload.Contains("ExtractPayloadZip"), "installer payload must be embedded and extracted by the installer.");
+            Require(installerPayload.Contains("IsUnderDirectory") && installerPayload.Contains("ExtractToFile") && !installerPayload.Contains("ZipFile.ExtractToDirectory"), "installer payload extraction must guard against zip-slip paths.");
             Require(addinWriter.Contains("Autodesk") && addinWriter.Contains("Revit") && addinWriter.Contains("Addins") && addinWriter.Contains("2020"), "installer must write the Revit 2020 addins manifest directory.");
             Require(addinWriter.Contains("PlugHub.Revit2020.dll") && addinWriter.Contains("Assembly") && addinWriter.Contains("Backup"), "installer must rewrite addin Assembly to the installed DLL path and backup existing manifests.");
             Require(workflow.Contains("Build PlugHub installer") && workflow.Contains("-t:Rebuild") && workflow.Contains("InstallerPayloadZip") && workflow.Contains("PlugHub-Setup-$tag.exe"), "release workflow must rebuild and upload PlugHub installer EXE.");

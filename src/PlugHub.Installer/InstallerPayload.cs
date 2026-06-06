@@ -25,7 +25,7 @@ namespace PlugHub.Installer
                 Directory.CreateDirectory(stagingRoot);
                 Directory.CreateDirectory(extractedDirectory);
                 WritePayloadZip(payloadZip);
-                ZipFile.ExtractToDirectory(payloadZip, extractedDirectory);
+                ExtractPayloadZip(payloadZip, extractedDirectory);
                 CopyDirectory(extractedDirectory, installDirectory);
             }
             finally
@@ -67,6 +67,30 @@ namespace PlugHub.Installer
             throw new FileNotFoundException("PlugHub installer payload was not embedded and no adjacent PlugHub-Revit2020 zip was found.");
         }
 
+        private static void ExtractPayloadZip(string payloadZip, string targetDirectory)
+        {
+            using (var archive = ZipFile.OpenRead(payloadZip))
+            {
+                foreach (var entry in archive.Entries)
+                {
+                    var targetPath = Path.GetFullPath(Path.Combine(targetDirectory, entry.FullName.Replace('/', Path.DirectorySeparatorChar)));
+                    if (!IsUnderDirectory(targetDirectory, targetPath))
+                    {
+                        throw new InvalidDataException("Installer payload contains an unsafe path: " + entry.FullName);
+                    }
+
+                    if (string.IsNullOrWhiteSpace(entry.Name))
+                    {
+                        Directory.CreateDirectory(targetPath);
+                        continue;
+                    }
+
+                    Directory.CreateDirectory(Path.GetDirectoryName(targetPath) ?? targetDirectory);
+                    entry.ExtractToFile(targetPath, true);
+                }
+            }
+        }
+
         private static void CopyDirectory(string sourceDirectory, string targetDirectory)
         {
             Directory.CreateDirectory(targetDirectory);
@@ -91,6 +115,13 @@ namespace PlugHub.Installer
             return fullPath.StartsWith(fullRoot, StringComparison.OrdinalIgnoreCase)
                 ? fullPath.Substring(fullRoot.Length)
                 : Path.GetFileName(path);
+        }
+
+        private static bool IsUnderDirectory(string parentDirectory, string childPath)
+        {
+            var parent = Path.GetFullPath(parentDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            var child = Path.GetFullPath(childPath);
+            return child.StartsWith(parent, StringComparison.OrdinalIgnoreCase);
         }
     }
 }

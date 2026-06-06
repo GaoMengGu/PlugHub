@@ -73,7 +73,12 @@ namespace PlugHub.Framework.Settings
                     continue;
                 }
 
-                var explicitManifestPath = Path.Combine(sourceDirectory, source.ManifestPath.Trim());
+                var explicitManifestPath = ResolveManifestPath(sourceDirectory, source.ManifestPath.Trim());
+                if (string.IsNullOrWhiteSpace(explicitManifestPath))
+                {
+                    continue;
+                }
+
                 var explicitManifest = TryReadModulesConfiguration(explicitManifestPath);
                 if (explicitManifest != null)
                 {
@@ -205,6 +210,20 @@ namespace PlugHub.Framework.Settings
         {
             if (string.IsNullOrWhiteSpace(path)) return baseDirectory;
             return Path.IsPathRooted(path) ? path : Path.GetFullPath(Path.Combine(baseDirectory, path));
+        }
+
+        private static string ResolveManifestPath(string sourceDirectory, string manifestPath)
+        {
+            var fullSourceDirectory = Path.GetFullPath(sourceDirectory);
+            var fullManifestPath = Path.GetFullPath(Path.Combine(fullSourceDirectory, manifestPath ?? string.Empty));
+            return IsUnderDirectory(fullSourceDirectory, fullManifestPath) ? fullManifestPath : string.Empty;
+        }
+
+        private static bool IsUnderDirectory(string parentDirectory, string childPath)
+        {
+            var parent = Path.GetFullPath(parentDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            var child = Path.GetFullPath(childPath);
+            return child.StartsWith(parent, StringComparison.OrdinalIgnoreCase);
         }
 
         private static string ResolveSourceDirectory(string baseDirectory, ModuleSourceConfiguration source)

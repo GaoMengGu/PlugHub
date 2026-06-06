@@ -27,7 +27,10 @@ namespace PlugHub.Tests
                 new TestCase("package manifest reader discovers nested manifests", PackageManifestReaderDiscoversNestedManifests),
                 new TestCase("module source resolver ignores git manifests", ModuleSourceResolverIgnoresGitManifests),
                 new TestCase("settings configuration store ignores git manifests", SettingsConfigurationStoreIgnoresGitManifests),
+                new TestCase("module source resolver rejects manifest path escape", ModuleSourceResolverRejectsManifestPathEscape),
+                new TestCase("settings configuration store rejects manifest path escape", SettingsConfigurationStoreRejectsManifestPathEscape),
                 new TestCase("package install service copies selected module payload only", PackageInstallServiceCopiesSelectedModulePayloadOnly),
+                new TestCase("package install service rejects rooted payload paths", PackageInstallServiceRejectsRootedPayloadPaths),
                 new TestCase("package repository service maintains install update uninstall state", PackageRepositoryServiceMaintainsInstallUpdateUninstallState),
                 new TestCase("package repository service cancels locked update and restores manifest", PackageRepositoryServiceCancelsLockedUpdateAndRestoresManifest),
                 new TestCase("package repository service applies locked delete after unlock", PackageRepositoryServiceAppliesLockedDeleteAfterUnlock),
@@ -299,6 +302,67 @@ namespace PlugHub.Tests
             }
         }
 
+        private static void ModuleSourceResolverRejectsManifestPathEscape()
+        {
+            using (var temp = TempDirectory.Create())
+            {
+                var sourceDirectory = Path.Combine(temp.Path, "source");
+                WritePackageManifest(Path.Combine(sourceDirectory, "packages.json"), "module.live");
+                WritePackageManifest(Path.Combine(temp.Path, "outside.packages.json"), "module.escape");
+
+                var resolved = new ModuleSourceResolver().Resolve(temp.Path, new ModulesConfiguration
+                {
+                    ModuleSources = new List<ModuleSourceConfiguration>
+                    {
+                        new ModuleSourceConfiguration
+                        {
+                            Id = "local",
+                            Type = "localFolder",
+                            Path = "source",
+                            ManifestPath = "..\\outside.packages.json",
+                            Enabled = true
+                        }
+                    }
+                });
+
+                var moduleIds = resolved.Modules.Modules.Select(module => module.Id).ToList();
+                Require(moduleIds.Count == 0, "module source resolver must not load manifests outside the source directory.");
+                Require(resolved.Diagnostics.Any(message => message.Code == "PH-SOURCE-MANIFEST"), "escaped manifest path must produce a manifest diagnostic.");
+            }
+        }
+
+        private static void SettingsConfigurationStoreRejectsManifestPathEscape()
+        {
+            using (var temp = TempDirectory.Create())
+            {
+                var configDirectory = Path.Combine(temp.Path, "config");
+                var sourceDirectory = Path.Combine(temp.Path, "source");
+                WritePackageManifest(Path.Combine(sourceDirectory, "packages.json"), "module.live");
+                WritePackageManifest(Path.Combine(temp.Path, "outside.packages.json"), "module.escape");
+
+                var documents = new SettingsConfigurationStore(configDirectory).LoadModuleDocuments(new FrameworkConfiguration
+                {
+                    Modules = new ModulesConfiguration
+                    {
+                        ModuleSources = new List<ModuleSourceConfiguration>
+                        {
+                            new ModuleSourceConfiguration
+                            {
+                                Id = "local",
+                                Type = "localFolder",
+                                Path = "source",
+                                ManifestPath = "..\\outside.packages.json",
+                                Enabled = true
+                            }
+                        }
+                    }
+                });
+
+                Require(!documents.Any(document => SamePath(document.Path, Path.Combine(temp.Path, "outside.packages.json"))), "settings store must not load escaped explicit manifests.");
+                Require(!documents.Any(document => document.Modules.Modules.Any(module => module.Id == "module.escape")), "settings store must not load escaped manifest modules.");
+            }
+        }
+
         private static void PackageInstallServiceCopiesSelectedModulePayloadOnly()
         {
             using (var temp = TempDirectory.Create())
@@ -374,6 +438,49 @@ namespace PlugHub.Tests
                 RequireContains(installedManifest, "module.a");
                 RequireDoesNotContain(installedManifest, "module.b");
                 RequireDoesNotContain(installedManifest, "\"indexVersion\"");
+            }
+        }
+
+        private static void PackageInstallServiceRejectsRootedPayloadPaths()
+        {
+            using (var temp = TempDirectory.Create())
+            {
+                var repositoryDirectory = Path.Combine(temp.Path, "repository");
+                var manifestPath = Path.Combine(repositoryDirectory, "packages.json");
+                var stagingDirectory = Path.Combine(temp.Path, "staging");
+                var externalAssembly = Path.Combine(temp.Path, "outside", "ExternalCommand.dll");
+                WriteText(externalAssembly, "external");
+                Directory.CreateDirectory(repositoryDirectory);
+
+                new PackageManifestWriter().WritePackageManifest(manifestPath, new ModulesConfiguration
+                {
+                    SchemaVersion = "1.0",
+                    Modules = new List<ModuleConfiguration>
+                    {
+                        new ModuleConfiguration
+                        {
+                            Id = "module.rooted",
+                            Version = "1.0.0",
+                            Assembly = externalAssembly,
+                            Features = new List<FeatureConfiguration>
+                            {
+                                new FeatureConfiguration
+                                {
+                                    Id = "feature.rooted",
+                                    DisplayName = "Rooted Feature",
+                                    CommandType = "Vendor.RootedCommand"
+                                }
+                            }
+                        }
+                    }
+                });
+
+                var package = PackageDescriptor(manifestPath, repositoryDirectory, "module.rooted");
+                var result = new PackageInstallService(new PackageManifestReader()).InstallPackagePayload(package, stagingDirectory);
+
+                Require(!result.Success, "repository package install must reject rooted payload paths.");
+                Require(result.Message.Contains("outside the repository package directory"), "rooted payload rejection should explain the path boundary.");
+                RequireFileMissing(Path.Combine(stagingDirectory, "packages.json"));
             }
         }
 

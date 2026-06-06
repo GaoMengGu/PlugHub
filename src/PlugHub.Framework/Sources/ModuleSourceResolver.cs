@@ -103,7 +103,13 @@ namespace PlugHub.Framework.Sources
 
         private bool AddModulesFromManifest(ModuleSourceConfiguration source, string sourceDirectory, ModulesConfiguration resolved, ICollection<DiagnosticMessage> diagnostics, bool ignoreNonPlugHubManifest = false)
         {
-            var manifestPath = Path.Combine(sourceDirectory, string.IsNullOrWhiteSpace(source.ManifestPath) ? DefaultPackageManifestName : source.ManifestPath);
+            var manifestPath = ResolveManifestPath(sourceDirectory, string.IsNullOrWhiteSpace(source.ManifestPath) ? DefaultPackageManifestName : source.ManifestPath);
+            if (string.IsNullOrWhiteSpace(manifestPath))
+            {
+                AddSourceDiagnostic(diagnostics, source.Id, "PH-SOURCE-MANIFEST", "Module source manifest path is outside the source directory: " + source.ManifestPath);
+                return false;
+            }
+
             if (!File.Exists(manifestPath))
             {
                 AddSourceDiagnostic(diagnostics, source.Id, "PH-SOURCE-MANIFEST", "Module source manifest was not found: " + manifestPath);
@@ -225,6 +231,20 @@ namespace PlugHub.Framework.Sources
         {
             if (string.IsNullOrWhiteSpace(path)) return baseDirectory;
             return Path.IsPathRooted(path) ? path : Path.GetFullPath(Path.Combine(baseDirectory, path));
+        }
+
+        private static string ResolveManifestPath(string sourceDirectory, string manifestPath)
+        {
+            var fullSourceDirectory = Path.GetFullPath(sourceDirectory);
+            var fullManifestPath = Path.GetFullPath(Path.Combine(fullSourceDirectory, manifestPath ?? string.Empty));
+            return IsUnderDirectory(fullSourceDirectory, fullManifestPath) ? fullManifestPath : string.Empty;
+        }
+
+        private static bool IsUnderDirectory(string parentDirectory, string childPath)
+        {
+            var parent = Path.GetFullPath(parentDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            var child = Path.GetFullPath(childPath);
+            return child.StartsWith(parent, StringComparison.OrdinalIgnoreCase);
         }
 
         private static void AddSourceDiagnostic(ICollection<DiagnosticMessage> diagnostics, string sourceId, string code, string message)

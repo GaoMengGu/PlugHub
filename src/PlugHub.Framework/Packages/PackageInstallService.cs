@@ -40,6 +40,11 @@ namespace PlugHub.Framework.Packages
                 return PackageRepositoryOperationResult.Failed("Package module was not found in manifest: " + package.ModuleId);
             }
 
+            if (!ValidatePayloadPaths(package.SourceDirectory, module, out var validationError))
+            {
+                return PackageRepositoryOperationResult.Failed(validationError);
+            }
+
             Directory.CreateDirectory(installDirectory);
             WriteSingleModuleManifest(modules, module, Path.Combine(installDirectory, DefaultPackageManifestName));
             foreach (var relativePath in PayloadPaths(module))
@@ -76,6 +81,55 @@ namespace PlugHub.Framework.Packages
             }
 
             return paths.Distinct(StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static bool ValidatePayloadPaths(string sourceDirectory, ModuleConfiguration module, out string error)
+        {
+            error = string.Empty;
+            if (!ValidatePayloadPath(sourceDirectory, module.Assembly, out error))
+            {
+                return false;
+            }
+
+            foreach (var feature in module.Features ?? new List<FeatureConfiguration>())
+            {
+                if (!ValidatePayloadPath(sourceDirectory, feature.CommandAssembly, out error))
+                {
+                    return false;
+                }
+
+                if (!ValidatePayloadPath(sourceDirectory, feature.IconPath, out error))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool ValidatePayloadPath(string sourceDirectory, string path, out string error)
+        {
+            error = string.Empty;
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return true;
+            }
+
+            var trimmed = path.Trim();
+            if (Path.IsPathRooted(trimmed))
+            {
+                error = "Package payload path is outside the repository package directory: " + trimmed;
+                return false;
+            }
+
+            var sourceFile = Path.GetFullPath(Path.Combine(sourceDirectory, trimmed));
+            if (!IsUnderDirectory(sourceDirectory, sourceFile))
+            {
+                error = "Package payload path is outside the repository package directory: " + trimmed;
+                return false;
+            }
+
+            return true;
         }
 
         private static void AddPayloadPath(ICollection<string> paths, string path)
