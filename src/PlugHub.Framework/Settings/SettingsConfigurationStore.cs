@@ -172,7 +172,7 @@ namespace PlugHub.Framework.Settings
             if (!Directory.Exists(sourceDirectory)) yield break;
 
             var rootManifest = Path.Combine(sourceDirectory, DefaultPackageManifestName);
-            if (File.Exists(rootManifest))
+            if (File.Exists(rootManifest) && IsOutsideGitDirectory(rootManifest))
             {
                 yield return rootManifest;
             }
@@ -180,6 +180,7 @@ namespace PlugHub.Framework.Settings
             var manifests = Directory.GetFiles(sourceDirectory, DefaultPackageManifestName, SearchOption.AllDirectories)
                 .Concat(Directory.GetFiles(sourceDirectory, AdjacentPackageManifestPattern, SearchOption.AllDirectories))
                 .Where(path => !string.Equals(path, rootManifest, StringComparison.OrdinalIgnoreCase))
+                .Where(IsOutsideGitDirectory)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(path => path, StringComparer.OrdinalIgnoreCase);
 
@@ -187,6 +188,11 @@ namespace PlugHub.Framework.Settings
             {
                 yield return manifest;
             }
+        }
+
+        private static bool IsOutsideGitDirectory(string path)
+        {
+            return path.IndexOf(Path.DirectorySeparatorChar + ".git" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) < 0;
         }
 
         private static bool IsModulesManifestFileName(string fileName)

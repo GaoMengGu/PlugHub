@@ -9,6 +9,8 @@ using PlugHub.Framework.Composition;
 using PlugHub.Framework.Configuration;
 using PlugHub.Framework.Diagnostics;
 using PlugHub.Framework.Packages;
+using PlugHub.Framework.Settings;
+using PlugHub.Framework.Sources;
 using PlugHub.Framework.Updates;
 
 namespace PlugHub.Tests
@@ -22,6 +24,8 @@ namespace PlugHub.Tests
                 new TestCase("package manifest writer omits runtime and layout fields", PackageManifestWriterOmitsRuntimeAndLayoutFields),
                 new TestCase("configuration loader applies defaults and view preset overrides", ConfigurationLoaderAppliesDefaultsAndViewPresetOverrides),
                 new TestCase("package manifest reader discovers nested manifests", PackageManifestReaderDiscoversNestedManifests),
+                new TestCase("module source resolver ignores git manifests", ModuleSourceResolverIgnoresGitManifests),
+                new TestCase("settings configuration store ignores git manifests", SettingsConfigurationStoreIgnoresGitManifests),
                 new TestCase("package install service copies selected module payload only", PackageInstallServiceCopiesSelectedModulePayloadOnly),
                 new TestCase("package repository service maintains install update uninstall state", PackageRepositoryServiceMaintainsInstallUpdateUninstallState),
                 new TestCase("package repository service cancels locked update and restores manifest", PackageRepositoryServiceCancelsLockedUpdateAndRestoresManifest),
@@ -231,6 +235,46 @@ namespace PlugHub.Tests
                 Require(manifests.Any(path => SamePath(path, nestedManifest)), "nested packages.json must be discovered.");
                 Require(manifests.Any(path => SamePath(path, adjacentManifest)), "adjacent *.packages.json must be discovered.");
                 Require(!manifests.Any(path => path.IndexOf(Path.DirectorySeparatorChar + ".git" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) >= 0), ".git manifests must be ignored.");
+            }
+        }
+
+        private static void ModuleSourceResolverIgnoresGitManifests()
+        {
+            using (var temp = TempDirectory.Create())
+            {
+                WritePackageManifest(Path.Combine(temp.Path, "packages", "live", "packages.json"), "module.live");
+                WritePackageManifest(Path.Combine(temp.Path, "packages", ".git", "objects", "packages.json"), "module.git");
+
+                var resolved = new ModuleSourceResolver().Resolve(temp.Path, new ModulesConfiguration
+                {
+                    PackageDirectories = new List<string> { "packages" }
+                });
+
+                var moduleIds = resolved.Modules.Modules.Select(module => module.Id).ToList();
+                Require(moduleIds.SequenceEqual(new[] { "module.live" }), "module source resolver must ignore manifests inside .git directories.");
+            }
+        }
+
+        private static void SettingsConfigurationStoreIgnoresGitManifests()
+        {
+            using (var temp = TempDirectory.Create())
+            {
+                var configDirectory = Path.Combine(temp.Path, "config");
+                WritePackageManifest(Path.Combine(temp.Path, "packages", "live", "packages.json"), "module.live");
+                WritePackageManifest(Path.Combine(temp.Path, "packages", ".git", "objects", "packages.json"), "module.git");
+
+                var documents = new SettingsConfigurationStore(configDirectory).LoadModuleDocuments(new FrameworkConfiguration
+                {
+                    Modules = new ModulesConfiguration
+                    {
+                        PackageDirectories = new List<string> { "packages" }
+                    }
+                });
+
+                var documentPaths = documents.Select(document => document.Path).ToList();
+                Require(documentPaths.Count == 1, "settings store must load only non-git module manifests.");
+                Require(!documentPaths.Any(path => path.IndexOf(Path.DirectorySeparatorChar + ".git" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) >= 0), "settings store must ignore manifests inside .git directories.");
+                Require(documents[0].Modules.Modules.Select(module => module.Id).SequenceEqual(new[] { "module.live" }), "settings store must load the live manifest.");
             }
         }
 
@@ -908,6 +952,33 @@ namespace PlugHub.Tests
             });
 
             return manifestPath;
+        }
+
+        private static void WritePackageManifest(string manifestPath, string moduleId)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(manifestPath) ?? string.Empty);
+            new PackageManifestWriter().WritePackageManifest(manifestPath, new ModulesConfiguration
+            {
+                SchemaVersion = "1.0",
+                Modules = new List<ModuleConfiguration>
+                {
+                    new ModuleConfiguration
+                    {
+                        Id = moduleId,
+                        Version = "1.0.0",
+                        Assembly = "bin/Module.dll",
+                        Features = new List<FeatureConfiguration>
+                        {
+                            new FeatureConfiguration
+                            {
+                                Id = moduleId + ".feature",
+                                DisplayName = moduleId,
+                                CommandType = "Vendor.Command"
+                            }
+                        }
+                    }
+                }
+            });
         }
 
         private static RepositoryPackageDescriptor PackageDescriptor(string manifestPath, string repositoryDirectory, string moduleId)
