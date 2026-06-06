@@ -23,6 +23,7 @@ namespace PlugHub.Tests
             {
                 new TestCase("package manifest writer omits runtime and layout fields", PackageManifestWriterOmitsRuntimeAndLayoutFields),
                 new TestCase("configuration loader applies defaults and view preset overrides", ConfigurationLoaderAppliesDefaultsAndViewPresetOverrides),
+                new TestCase("configuration loader tolerates malformed optional json", ConfigurationLoaderToleratesMalformedOptionalJson),
                 new TestCase("package manifest reader discovers nested manifests", PackageManifestReaderDiscoversNestedManifests),
                 new TestCase("module source resolver ignores git manifests", ModuleSourceResolverIgnoresGitManifests),
                 new TestCase("settings configuration store ignores git manifests", SettingsConfigurationStoreIgnoresGitManifests),
@@ -214,6 +215,23 @@ namespace PlugHub.Tests
                 Require(descriptor.CommandAssembly == "bin/visible.dll", "feature commandAssembly must fall back to module assembly.");
                 Require(descriptor.Category == "Model", "feature category must fall back to module category.");
                 Require(descriptor.Tags.SequenceEqual(new[] { "module-tag", "feature-tag" }), "module and feature tags must merge in order.");
+            }
+        }
+
+        private static void ConfigurationLoaderToleratesMalformedOptionalJson()
+        {
+            using (var temp = TempDirectory.Create())
+            {
+                var configDirectory = Path.Combine(temp.Path, "config");
+                WriteText(Path.Combine(configDirectory, "sources.json"), "{broken sources");
+                WriteText(Path.Combine(configDirectory, "views.json"), "{broken views");
+                WriteText(Path.Combine(configDirectory, "feature-combinations.json"), "{broken presets");
+
+                var runtime = new FrameworkConfigurationLoader().LoadRuntime(configDirectory);
+
+                Require(runtime.EffectiveModules.PackageDirectories.SequenceEqual(new[] { "packages" }), "malformed sources.json must fall back to default package directories.");
+                Require(runtime.ActiveView.Id == "workspace", "malformed views.json must fall back to the default workspace view.");
+                Require(runtime.ActivePreset == null, "malformed feature-combinations.json must fall back to no active preset.");
             }
         }
 

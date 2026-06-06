@@ -164,7 +164,24 @@ namespace PlugHub.Framework.Configuration
         private T ReadOptionalJson<T>(string path, T fallback)
         {
             if (!File.Exists(path)) return fallback;
-            return _serializer.Deserialize<T>(File.ReadAllText(path)) ?? fallback;
+
+            try
+            {
+                return _serializer.Deserialize<T>(File.ReadAllText(path)) ?? fallback;
+            }
+            catch (Exception exception) when (IsOptionalJsonReadFailure(exception))
+            {
+                return fallback;
+            }
+        }
+
+        private static bool IsOptionalJsonReadFailure(Exception exception)
+        {
+            return exception is IOException ||
+                exception is UnauthorizedAccessException ||
+                exception is ArgumentException ||
+                exception is InvalidOperationException ||
+                exception is NotSupportedException;
         }
 
         private static ModulesConfiguration NormalizeModulesConfiguration(ModulesConfiguration modules)
