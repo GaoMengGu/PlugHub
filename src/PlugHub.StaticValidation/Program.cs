@@ -2870,7 +2870,7 @@ namespace PlugHub.StaticValidation
             Require(addinWriter.Contains("PlugHub.Revit2020.dll") && addinWriter.Contains("Assembly") && addinWriter.Contains("Backup"), "installer must rewrite addin Assembly to the installed DLL path and backup existing manifests.");
             Require(workflow.Contains("runs-on: windows-2022") && !workflow.Contains("runs-on: windows-latest"), "release workflow must pin Windows packaging to windows-2022 instead of drifting with windows-latest.");
             Require(workflow.Contains("actions/checkout@v6") && !workflow.Contains("actions/checkout@v4"), "release workflow must use the Node 24 checkout action line.");
-            Require(workflow.Contains("sigstore/cosign-installer@v4") && !workflow.Contains("sigstore/cosign-installer@v3"), "release workflow must use the current cosign installer action line.");
+            Require(workflow.Contains("sigstore/cosign-installer@v4.1.2") && !workflow.Contains("sigstore/cosign-installer@v3"), "release workflow must pin the resolvable cosign installer v4 action line.");
             Require(workflow.Contains("softprops/action-gh-release@v3") && !workflow.Contains("softprops/action-gh-release@v2"), "release workflow must use the Node 24 GitHub release action line.");
             Require(workflow.Contains("Build PlugHub installer") && workflow.Contains("-t:Rebuild") && workflow.Contains("InstallerPayloadZip") && workflow.Contains("PlugHub-Setup-$tag.exe"), "release workflow must rebuild and upload PlugHub installer EXE.");
             Require(readme.Contains("PlugHub-Setup") && readme.Contains(@"D:\Program Files\PlugHub"), "README must document the installer EXE and default install directory.");
