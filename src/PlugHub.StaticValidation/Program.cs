@@ -2876,7 +2876,8 @@ namespace PlugHub.StaticValidation
             Require(releaseWorkflow.Contains("Publish GitHub release") && releaseWorkflow.Contains("Publish Gitee release"), "GitHub release workflow must publish GitHub release first, then mirror it to Gitee.");
             Require(releaseWorkflow.Contains("Wait for Gitee tag") && releaseWorkflow.Contains("git ls-remote https://gitee.com/GaoMengGu/PlugHub.git \"refs/tags/$tag\""), "GitHub release workflow must wait until the tag exists on Gitee before creating a Gitee release.");
             Require(releaseWorkflow.Contains("GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}") && releaseWorkflow.Contains("GITEE_TOKEN is required"), "GitHub release workflow must use the Gitee API token for release publishing.");
-            Require(releaseWorkflow.Contains("api/v5/repos/GaoMengGu/PlugHub/releases") && releaseWorkflow.Contains("target_commitish = \"main\""), "GitHub release workflow must create or resolve GaoMengGu/PlugHub Gitee releases through the API.");
+            Require(releaseWorkflow.Contains("api/v5/repos/GaoMengGu/PlugHub/releases") && releaseWorkflow.Contains("target_commitish = $env:GITHUB_SHA"), "GitHub release workflow must create Gitee releases against the exact GitHub release commit.");
+            Require(releaseWorkflow.Contains("DeleteExistingGiteeRelease") && releaseWorkflow.Contains("Invoke-RestMethod -Method Delete"), "GitHub release workflow must delete and recreate existing Gitee releases before uploading replacement assets.");
             Require(releaseWorkflow.Contains("New-FormBody") && releaseWorkflow.Contains("application/x-www-form-urlencoded; charset=utf-8"), "GitHub release workflow must submit Gitee release metadata as explicit UTF-8 form data.");
             Require(releaseWorkflow.Contains("attach_files") && releaseWorkflow.Contains("curl.exe -sS -f"), "GitHub release workflow must upload Gitee release attachments and fail on HTTP upload errors.");
 

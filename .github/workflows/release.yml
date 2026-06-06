@@ -246,6 +246,28 @@ jobs:
             }) -join "&"
           }
 
+          function DeleteExistingGiteeRelease {
+            param(
+              [string]$ReleaseBaseUri,
+              [string]$EscapedToken,
+              [string]$EscapedTag
+            )
+
+            try {
+              $existingRelease = Invoke-RestMethod -Method Get -Uri "$ReleaseBaseUri/tags/$EscapedTag?access_token=$EscapedToken"
+            }
+            catch {
+              return
+            }
+
+            if ($null -eq $existingRelease -or [string]::IsNullOrWhiteSpace([string]$existingRelease.id)) {
+              return
+            }
+
+            Invoke-RestMethod -Method Delete -Uri "$ReleaseBaseUri/$($existingRelease.id)?access_token=$EscapedToken" | Out-Null
+            Write-Host "Deleted existing Gitee release: $($existingRelease.id)"
+          }
+
           if ([string]::IsNullOrWhiteSpace($env:GITEE_TOKEN)) {
             throw "GITEE_TOKEN is required to publish the Gitee release."
           }
@@ -269,22 +291,18 @@ jobs:
           $releaseBody = Get-Content -LiteralPath $notesPath -Raw
           $escapedToken = [Uri]::EscapeDataString($env:GITEE_TOKEN)
           $escapedTag = [Uri]::EscapeDataString($tag)
-          $release = $null
 
-          try {
-            $createBody = New-FormBody @{
-              access_token = $env:GITEE_TOKEN
-              tag_name = $tag
-              target_commitish = "main"
-              name = "PlugHub $tag"
-              body = $releaseBody
-              prerelease = "false"
-            }
-            $release = Invoke-RestMethod -Method Post -Uri $releaseBaseUri -ContentType "application/x-www-form-urlencoded; charset=utf-8" -Body $createBody
+          DeleteExistingGiteeRelease -ReleaseBaseUri $releaseBaseUri -EscapedToken $escapedToken -EscapedTag $escapedTag
+
+          $createBody = New-FormBody @{
+            access_token = $env:GITEE_TOKEN
+            tag_name = $tag
+            target_commitish = $env:GITHUB_SHA
+            name = "PlugHub $tag"
+            body = $releaseBody
+            prerelease = "false"
           }
-          catch {
-            $release = Invoke-RestMethod -Method Get -Uri "$releaseBaseUri/tags/$escapedTag?access_token=$escapedToken"
-          }
+          $release = Invoke-RestMethod -Method Post -Uri $releaseBaseUri -ContentType "application/x-www-form-urlencoded; charset=utf-8" -Body $createBody
 
           if ($null -eq $release -or [string]::IsNullOrWhiteSpace([string]$release.id)) {
             throw "Gitee release was not created or resolved for tag $tag."
