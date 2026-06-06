@@ -50,10 +50,13 @@ namespace PlugHub.Framework.Updates
             request.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
 
             using (var response = (HttpWebResponse)request.GetResponse())
-            using (var stream = response.GetResponseStream())
-            using (var reader = new StreamReader(stream ?? Stream.Null))
             {
-                return reader.ReadToEnd();
+                EnsureHttpsResponse(response.ResponseUri);
+                using (var stream = response.GetResponseStream())
+                using (var reader = new StreamReader(stream ?? Stream.Null))
+                {
+                    return reader.ReadToEnd();
+                }
             }
         }
 
@@ -137,6 +140,14 @@ namespace PlugHub.Framework.Updates
             }
 
             ServicePointManager.Expect100Continue = false;
+        }
+
+        private static void EnsureHttpsResponse(Uri responseUri)
+        {
+            if (responseUri == null || !string.Equals(responseUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Release API redirected to a non-HTTPS URL.");
+            }
         }
 
         private static IEnumerable<Dictionary<string, object>> AssetObjects(object value)
