@@ -3143,6 +3143,7 @@ namespace PlugHub.StaticValidation
             Require(!File.Exists(FullPath(".github/workflows/auto-version.yml")), "release versioning must live in release.yml, not a separate auto-version workflow.");
             Require(!releaseWorkflow.Contains("branches:") && releaseWorkflow.Contains("tags:") && releaseWorkflow.Contains("\"V*\""), "release workflow must run for V* tag pushes instead of automatic main push releases.");
             Require(releaseWorkflow.Contains("workflow_dispatch") && releaseWorkflow.Contains("version:"), "release workflow must support manual explicit version input.");
+            Require(releaseWorkflow.Contains("PLUGHUB_RELEASE_INPUT_VERSION") && releaseWorkflow.Contains("$env:GITHUB_REF") && releaseWorkflow.Contains("refs/tags/V*"), "release workflow must resolve tag pushes from GitHub environment variables.");
             Require(releaseWorkflow.Contains("Resolve release tag") && releaseWorkflow.Contains("--sort=-v:refname") && releaseWorkflow.Contains("+ 1"), "release workflow must increment the latest patch version by default.");
             Require(releaseWorkflow.Contains("^V\\d+\\.\\d+\\.\\d+$") && releaseWorkflow.Contains("git ls-remote"), "release workflow must validate Vx.y.z tags and reject existing remote tags.");
             Require(releaseWorkflow.Contains("git tag") && releaseWorkflow.Contains("git push origin \"refs/tags/${{ steps.resolve.outputs.tag }}\""), "release workflow must create and push the resolved release tag.");

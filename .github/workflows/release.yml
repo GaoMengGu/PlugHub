@@ -37,14 +37,17 @@ jobs:
       - name: Resolve release tag
         id: resolve
         shell: pwsh
+        env:
+          PLUGHUB_RELEASE_INPUT_VERSION: ${{ github.event.inputs.version }}
         run: |
           git fetch --tags origin
-          $eventName = "${{ github.event_name }}"
-          $refName = "${{ github.ref_name }}"
-          $explicitVersion = "${{ github.event.inputs.version }}".Trim()
+          $eventName = $env:GITHUB_EVENT_NAME
+          $refName = $env:GITHUB_REF_NAME
+          $ref = $env:GITHUB_REF
+          $explicitVersion = ([string]$env:PLUGHUB_RELEASE_INPUT_VERSION).Trim()
           $createTag = $true
 
-          if ($eventName -eq "push" -and $refName -like "V*") {
+          if ($eventName -eq "push" -and $ref -like "refs/tags/V*") {
             $tag = $refName
             $createTag = $false
           }
