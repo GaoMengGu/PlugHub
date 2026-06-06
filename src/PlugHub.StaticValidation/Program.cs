@@ -1128,6 +1128,7 @@ namespace PlugHub.StaticValidation
             Require(loader.Contains("IsFlatPayloadFile"), "shadow-copy loader must avoid copying every installed package for flat DLL module manifests.");
             Require(loader.Contains("ApplyPendingCleanup") && loader.Contains("pending-cleanup.txt"), "shadow-copy loader must retry cleanup of old locked cache directories.");
             Require(loader.Contains("runtimeCacheRoot") && loader.Contains("IsUnderDirectory(runtimeCacheRoot"), "shadow-copy pending cleanup must only delete directories under runtime-cache.");
+            Require(loader.Contains("segment.All(ch => ch == '.')") && loader.Contains("? \"package\""), "shadow-copy loader cache path segments must reject all-dot package ids.");
             Require(loader.Contains("Assembly.LoadFrom(cachedAssemblyPath)"), "net48 command loader must load the cached business assembly copy.");
             Require(!loader.Contains("Assembly.LoadFrom(assemblyPath)"), "net48 command loader must not load directly from the installed package assembly path.");
             Require(featureDispatcher.Contains("new Net48ShadowCopyCommandAssemblyLoader()"), "FeatureCommandDispatcher must use the shadow-copy command loader.");
@@ -2066,6 +2067,7 @@ namespace PlugHub.StaticValidation
             Require(packageRepositoryService.Contains("new PackageManifestReader"), "PackageRepositoryService must delegate manifest reading to PackageManifestReader.");
             Require(packageRepositoryService.Contains("new PackageInstallService"), "PackageRepositoryService must delegate payload installation to PackageInstallService.");
             Require(packageManifestReader.Contains("ReadPackagesFromManifest") && packageManifestReader.Contains("RepositoryPackageDisplayName"), "repository manifest reading must live in PackageManifestReader.");
+            Require(packageManifestReader.Contains("segment.All(ch => ch == '.')") && packageRepositoryService.Contains("segment.All(ch => ch == '.')"), "repository package path segments must reject all-dot package ids.");
             Require(packageManifestReader.Contains("AdjacentPackageManifestPattern = \"*.packages.json\""), "repository manifest reader must discover adjacent *.packages.json manifests.");
             Require(packageInstallService.Contains("InstallPackagePayload") && packageInstallService.Contains("CopyPackagePayload") && packageInstallService.Contains("WriteSingleModuleManifest") && !packageInstallService.Contains("CopyDirectory("), "repository install must split selected plugins and must not copy the whole repository directory.");
             Require(packageRepositoryService.Contains("ApplyPendingOperations") && packageRepositoryService.Contains("PendingPackageOperation.Restart"), "repository package operations must defer locked DLL deletion and replacement and mark normal installs as restart-required.");

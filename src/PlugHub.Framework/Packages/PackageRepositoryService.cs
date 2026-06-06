@@ -897,7 +897,7 @@ namespace PlugHub.Framework.Packages
                 .Select(ch => char.IsLetterOrDigit(ch) || ch == '-' || ch == '_' || ch == '.' ? ch : '_')
                 .ToArray();
             var segment = new string(chars).Trim('_');
-            return string.IsNullOrWhiteSpace(segment) ? "package" : segment;
+            return string.IsNullOrWhiteSpace(segment) || segment.All(ch => ch == '.') ? "package" : segment;
         }
 
         private static string StringValue(Dictionary<string, object> source, string key)

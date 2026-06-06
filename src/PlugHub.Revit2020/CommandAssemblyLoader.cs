@@ -373,7 +373,8 @@ namespace PlugHub.Revit2020
             var chars = (string.IsNullOrWhiteSpace(value) ? "package" : value)
                 .Select(ch => invalid.Contains(ch) || char.IsWhiteSpace(ch) ? '_' : ch)
                 .ToArray();
-            return new string(chars);
+            var segment = new string(chars);
+            return string.IsNullOrWhiteSpace(segment) || segment.All(ch => ch == '.') ? "package" : segment;
         }
 
         private static string ToHex(byte[]? bytes)

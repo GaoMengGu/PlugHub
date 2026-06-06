@@ -43,6 +43,7 @@ namespace PlugHub.Tests
                 new TestCase("package repository service rejects pending update staging path escape", PackageRepositoryServiceRejectsPendingUpdateStagingPathEscape),
                 new TestCase("package repository service rejects cancelled update staging path escape", PackageRepositoryServiceRejectsCancelledUpdateStagingPathEscape),
                 new TestCase("package repository service rejects dot segment cache ids", PackageRepositoryServiceRejectsDotSegmentCacheIds),
+                new TestCase("package repository service rejects dot segment package ids", PackageRepositoryServiceRejectsDotSegmentPackageIds),
                 new TestCase("ribbon layout composer builds configured layout and default fallback", RibbonLayoutComposerBuildsConfiguredLayoutAndDefaultFallback),
                 new TestCase("ribbon layout composer filters invalid container children", RibbonLayoutComposerFiltersInvalidContainerChildren),
                 new TestCase("framework update package accepts single manager maintenance payload", FrameworkUpdatePackageAcceptsSingleManagerMaintenancePayload),
@@ -832,6 +833,34 @@ namespace PlugHub.Tests
 
                 var service = new PackageRepositoryService();
                 Require(!service.HasRepositoryCache(temp.Path, repository), "dot-only repository ids must not resolve to the PlugHub base directory.");
+            }
+        }
+
+        private static void PackageRepositoryServiceRejectsDotSegmentPackageIds()
+        {
+            using (var temp = TempDirectory.Create())
+            {
+                var baseDirectory = Path.Combine(temp.Path, "plughub");
+                var repositoryDirectory = Path.Combine(temp.Path, "repository");
+                var manifestPath = Path.Combine(repositoryDirectory, "packages.json");
+                var expectedInstallDirectory = Path.Combine(baseDirectory, "packages", "package");
+                WritePackageManifest(manifestPath, "..");
+
+                var packages = new PackageManifestReader().ReadPackagesFromManifest(
+                    manifestPath,
+                    "repo",
+                    baseDirectory,
+                    (root, installDirectory, moduleId) => string.Empty,
+                    (root, installDirectory, moduleId) => false,
+                    (root, packageId, moduleId) => string.Empty);
+
+                Require(packages.Count == 1, "dot segment package manifest must still be readable for diagnostics and user action.");
+                Require(SamePath(packages[0].InstallDirectory, expectedInstallDirectory), "dot-only package ids must not resolve to the PlugHub base directory when browsing.");
+
+                var service = new PackageRepositoryService();
+                var package = PackageDescriptor(manifestPath, repositoryDirectory, "..");
+                service.RefreshInstallState(baseDirectory, package);
+                Require(SamePath(package.InstallDirectory, expectedInstallDirectory), "dot-only package ids must not resolve to the PlugHub base directory when refreshing install state.");
             }
         }
 
