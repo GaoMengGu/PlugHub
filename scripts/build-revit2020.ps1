@@ -15,9 +15,7 @@ param(
 $ErrorActionPreference = "Stop"
 $Root = Resolve-Path "$PSScriptRoot\.."
 $Project = Join-Path $Root "src\PlugHub.Revit2020\PlugHub.Revit2020.csproj"
-$SettingsAppProject = Join-Path $Root "src\PlugHub.SettingsApp\PlugHub.SettingsApp.csproj"
-$UpdaterProject = Join-Path $Root "src\PlugHub.Updater\PlugHub.Updater.csproj"
-$UninstallerProject = Join-Path $Root "src\PlugHub.Uninstaller\PlugHub.Uninstaller.csproj"
+$ManagerProject = Join-Path $Root "src\PlugHub.Manager\PlugHub.Manager.csproj"
 
 function Assert-PathInsideRoot {
     param([string]$Path)
@@ -109,12 +107,8 @@ if ($Clean) {
     Remove-RepoPath (Join-Path $Root "src\PlugHub.Framework\obj")
     Remove-RepoPath (Join-Path $Root "src\PlugHub.Revit2020\bin")
     Remove-RepoPath (Join-Path $Root "src\PlugHub.Revit2020\obj")
-    Remove-RepoPath (Join-Path $Root "src\PlugHub.SettingsApp\bin")
-    Remove-RepoPath (Join-Path $Root "src\PlugHub.SettingsApp\obj")
-    Remove-RepoPath (Join-Path $Root "src\PlugHub.Updater\bin")
-    Remove-RepoPath (Join-Path $Root "src\PlugHub.Updater\obj")
-    Remove-RepoPath (Join-Path $Root "src\PlugHub.Uninstaller\bin")
-    Remove-RepoPath (Join-Path $Root "src\PlugHub.Uninstaller\obj")
+    Remove-RepoPath (Join-Path $Root "src\PlugHub.Manager\bin")
+    Remove-RepoPath (Join-Path $Root "src\PlugHub.Manager\obj")
     Remove-RepoPath (Join-Path $Root "src\PlugHub.StaticValidation\bin")
     Remove-RepoPath (Join-Path $Root "src\PlugHub.StaticValidation\obj")
 }
@@ -141,6 +135,18 @@ $RemovedModuleName = "PlugHub." + "Sample" + "Module"
 $StaleOutputPaths = @(
     (Join-Path $OutputDir ($RemovedModuleName + ".dll")),
     (Join-Path $OutputDir ($RemovedModuleName + ".pdb")),
+    (Join-Path $OutputDir "PlugHub.SettingsApp.exe"),
+    (Join-Path $OutputDir "PlugHub.SettingsApp.exe.config"),
+    (Join-Path $OutputDir "PlugHub.SettingsApp.pdb"),
+    (Join-Path $OutputDir "PlugHub.SettingsUi.dll"),
+    (Join-Path $OutputDir "PlugHub.SettingsUi.pdb"),
+    (Join-Path $OutputDir "PlugHub.Updater.exe"),
+    (Join-Path $OutputDir "PlugHub.Updater.exe.config"),
+    (Join-Path $OutputDir "PlugHub.Updater.pdb"),
+    (Join-Path $OutputDir "PlugHub.Uninstaller.exe"),
+    (Join-Path $OutputDir "PlugHub.Uninstaller.exe.config"),
+    (Join-Path $OutputDir "PlugHub.Uninstaller.pdb"),
+    (Join-Path $OutputDir "PlugHub-Uninstall.exe"),
     (Join-Path $OutputDir "PlugHub.BuiltinModule.dll"),
     (Join-Path $OutputDir "PlugHub.BuiltinModule.pdb"),
     (Join-Path $OutputDir "config\plugin-sources.json"),
@@ -195,35 +201,17 @@ if ($NoStage) {
     return
 }
 
-& dotnet build $UpdaterProject -c $Configuration -t:Rebuild "/p:OutDir=$OutputDir\" "/p:PlugHubVersion=$($PlugHubReleaseVersion.Version)" "/p:PlugHubReleaseTag=$($PlugHubReleaseVersion.ReleaseTag)"
+& dotnet build $ManagerProject -c $Configuration -t:Rebuild "/p:OutDir=$OutputDir\" "/p:PlugHubVersion=$($PlugHubReleaseVersion.Version)" "/p:PlugHubReleaseTag=$($PlugHubReleaseVersion.ReleaseTag)"
 if ($LASTEXITCODE -ne 0) {
-    throw "dotnet build PlugHub.Updater failed with exit code $LASTEXITCODE."
-}
-
-& dotnet build $SettingsAppProject -c $Configuration -t:Rebuild "/p:OutDir=$OutputDir\" "/p:PlugHubVersion=$($PlugHubReleaseVersion.Version)" "/p:PlugHubReleaseTag=$($PlugHubReleaseVersion.ReleaseTag)"
-if ($LASTEXITCODE -ne 0) {
-    throw "dotnet build PlugHub.SettingsApp failed with exit code $LASTEXITCODE."
-}
-
-& dotnet build $UninstallerProject -c $Configuration -t:Rebuild "/p:OutDir=$OutputDir\" "/p:PlugHubVersion=$($PlugHubReleaseVersion.Version)" "/p:PlugHubReleaseTag=$($PlugHubReleaseVersion.ReleaseTag)"
-if ($LASTEXITCODE -ne 0) {
-    throw "dotnet build PlugHub.Uninstaller failed with exit code $LASTEXITCODE."
+    throw "dotnet build PlugHub.Manager failed with exit code $LASTEXITCODE."
 }
 
 $Addin = Join-Path $OutputDir "PlugHub.addin"
 $Dll = Join-Path $OutputDir "PlugHub.Revit2020.dll"
-$Updater = Join-Path $OutputDir "PlugHub.Updater.exe"
-$SettingsApp = Join-Path $OutputDir "PlugHub.SettingsApp.exe"
-$BuiltUninstaller = Join-Path $OutputDir "PlugHub.Uninstaller.exe"
-$InstalledUninstaller = Join-Path $OutputDir "PlugHub-Uninstall.exe"
+$Manager = Join-Path $OutputDir "PlugHub.Manager.exe"
 if (!(Test-Path $Dll)) { throw "Build finished but $Dll was not found." }
 if (!(Test-Path $Addin)) { throw "Build finished but $Addin was not found." }
-if (!(Test-Path $Updater)) { throw "Build finished but $Updater was not found." }
-if (!(Test-Path $SettingsApp)) { throw "Build finished but $SettingsApp was not found." }
-if (!(Test-Path $BuiltUninstaller)) { throw "Build finished but $BuiltUninstaller was not found." }
-Copy-Item -LiteralPath $BuiltUninstaller -Destination $InstalledUninstaller -Force
-Remove-Item -LiteralPath $BuiltUninstaller -Force
-if (!(Test-Path $InstalledUninstaller)) { throw "Build finished but $InstalledUninstaller was not found." }
+if (!(Test-Path $Manager)) { throw "Build finished but $Manager was not found." }
 
 $RequiredConfigFiles = @(
     "config\sources.json",
@@ -252,5 +240,4 @@ if ($InstallAddin) {
 Write-Host "PlugHub build output: $OutputDir"
 Write-Host "DLL: $Dll"
 Write-Host "ADDIN: $Addin"
-Write-Host "SETTINGS: $SettingsApp"
-Write-Host "UNINSTALLER: $InstalledUninstaller"
+Write-Host "MANAGER: $Manager"

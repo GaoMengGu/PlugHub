@@ -204,19 +204,11 @@ namespace PlugHub.StaticValidation
                 "src/PlugHub.Framework/Updates/ReleaseAssetDownloader.cs",
                 "src/PlugHub.Framework/Updates/FrameworkUpdatePackageValidator.cs",
                 "src/PlugHub.Revit2020/PlugHub.Revit2020.csproj",
-                "src/PlugHub.Updater/PlugHub.Updater.csproj",
-                "src/PlugHub.Updater/Program.cs",
-                "src/PlugHub.Updater/UpdaterArguments.cs",
-                "src/PlugHub.Updater/FrameworkDllUpdater.cs",
-                "src/PlugHub.Updater/UpdaterLogger.cs",
                 "src/PlugHub.Installer/PlugHub.Installer.csproj",
                 "src/PlugHub.Installer/Program.cs",
                 "src/PlugHub.Installer/InstallerForm.cs",
                 "src/PlugHub.Installer/InstallerPayload.cs",
                 "src/PlugHub.Installer/AddinManifestWriter.cs",
-                "src/PlugHub.Uninstaller/PlugHub.Uninstaller.csproj",
-                "src/PlugHub.Uninstaller/Program.cs",
-                "src/PlugHub.Uninstaller/UninstallerForm.cs",
                 "src/PlugHub.Tests/PlugHub.Tests.csproj",
                 "src/PlugHub.Tests/Program.cs",
                 "src/PlugHub.StaticValidation/PlugHub.StaticValidation.csproj",
@@ -249,26 +241,34 @@ namespace PlugHub.StaticValidation
                 "src/PlugHub.Framework/Diagnostics/PlugHubLogExporter.cs",
                 "src/PlugHub.Framework/Diagnostics/SensitiveTextRedactor.cs",
                 "src/PlugHub.Framework/Packages/PendingPackageOperationStore.cs",
+                "src/PlugHub.Wpf/PlugHub.Wpf.csproj",
+                "src/PlugHub.Wpf/FrameworkStatusWindow.cs",
+                "src/PlugHub.Wpf/DefaultRibbonIconProvider.cs",
+                "src/PlugHub.Wpf/RevitUiTheme.cs",
+                "src/PlugHub.Wpf/RevitWindowOwner.cs",
+                "src/PlugHub.Manager/PlugHub.Manager.csproj",
                 "src/PlugHub.Revit2020/ExternalApplicationEntry.cs",
-                "src/PlugHub.Revit2020/ExternalSettingsAppLauncher.cs",
+                "src/PlugHub.Revit2020/ExternalManagerLauncher.cs",
                 "src/PlugHub.Revit2020/FeatureRibbonBuilder.cs",
                 "src/PlugHub.Revit2020/FrameworkFeatureCommand.cs",
-                "src/PlugHub.Revit2020/FrameworkSettingsWindow.cs",
-                "src/PlugHub.Revit2020/FrameworkStatusCommand.cs",
-                "src/PlugHub.Revit2020/Settings/FrameworkSettingsViewModel.cs",
-                "src/PlugHub.Revit2020/Settings/RepositorySettingsController.cs",
-                "src/PlugHub.Revit2020/Settings/Rows/ModuleRow.cs",
-                "src/PlugHub.Revit2020/Settings/Rows/FeatureRow.cs",
-                "src/PlugHub.Revit2020/Settings/Rows/GroupRow.cs",
-                "src/PlugHub.Revit2020/Settings/Rows/RepositoryRow.cs",
-                "src/PlugHub.Revit2020/Settings/Rows/RepositoryPackageRow.cs",
-                "src/PlugHub.Revit2020/Settings/Rows/PendingPackageOperationRow.cs",
-                "src/PlugHub.Revit2020/Settings/Rows/DiagnosticRow.cs",
-                "src/PlugHub.Revit2020/FrameworkStatusWindow.cs",
-                "src/PlugHub.Revit2020/DefaultRibbonIconProvider.cs",
-                "src/PlugHub.Revit2020/RevitWindowOwner.cs",
-                "src/PlugHub.SettingsApp/PlugHub.SettingsApp.csproj",
-                "src/PlugHub.SettingsApp/Program.cs",
+                "src/PlugHub.Manager/FrameworkSettingsWindow.cs",
+                "src/PlugHub.Manager/Settings/FrameworkSettingsViewModel.cs",
+                "src/PlugHub.Manager/Settings/RepositorySettingsController.cs",
+                "src/PlugHub.Manager/Settings/Rows/ModuleRow.cs",
+                "src/PlugHub.Manager/Settings/Rows/FeatureRow.cs",
+                "src/PlugHub.Manager/Settings/Rows/GroupRow.cs",
+                "src/PlugHub.Manager/Settings/Rows/RepositoryRow.cs",
+                "src/PlugHub.Manager/Settings/Rows/RepositoryPackageRow.cs",
+                "src/PlugHub.Manager/Settings/Rows/PendingPackageOperationRow.cs",
+                "src/PlugHub.Manager/Settings/Rows/DiagnosticRow.cs",
+                "src/PlugHub.Manager/Program.cs",
+                "src/PlugHub.Manager/Maintenance/ManagerMaintenanceMode.cs",
+                "src/PlugHub.Manager/Maintenance/ManagerMaintenanceArguments.cs",
+                "src/PlugHub.Manager/Maintenance/ManagerMaintenanceLauncher.cs",
+                "src/PlugHub.Manager/Maintenance/ManagerMaintenanceRunner.cs",
+                "src/PlugHub.Manager/Maintenance/ManagerFrameworkUpdater.cs",
+                "src/PlugHub.Manager/Maintenance/ManagerUninstaller.cs",
+                "src/PlugHub.Manager/Maintenance/ManagerMaintenanceLogger.cs",
                 "scripts/sign-revit2020.ps1",
                 "config/sources.example.json",
                 "config/views.example.json",
@@ -284,8 +284,14 @@ namespace PlugHub.StaticValidation
             var solution = ReadText("PlugHub.sln");
             var solutionX = ReadText("PlugHub.slnx");
             Require(solutionX.Contains("src/PlugHub.Tests/PlugHub.Tests.csproj"), "independent behavior test project must be included in PlugHub.slnx.");
-            Require(solution.Contains("src\\PlugHub.SettingsApp\\PlugHub.SettingsApp.csproj"), "external settings app project must be included in PlugHub.sln.");
-            Require(solutionX.Contains("src/PlugHub.SettingsApp/PlugHub.SettingsApp.csproj"), "external settings app project must be included in PlugHub.slnx.");
+            Require(solution.Contains("src\\PlugHub.Manager\\PlugHub.Manager.csproj"), "PlugHub Manager project must be included in PlugHub.sln.");
+            Require(solutionX.Contains("src/PlugHub.Manager/PlugHub.Manager.csproj"), "PlugHub Manager project must be included in PlugHub.slnx.");
+            Require(solution.Contains("src\\PlugHub.Wpf\\PlugHub.Wpf.csproj"), "shared WPF project must be included in PlugHub.sln.");
+            Require(solutionX.Contains("src/PlugHub.Wpf/PlugHub.Wpf.csproj"), "shared WPF project must be included in PlugHub.slnx.");
+            Require(!solution.Contains("PlugHub.Updater") && !solutionX.Contains("PlugHub.Updater"), "solution must not keep the old standalone updater project.");
+            Require(!solution.Contains("PlugHub.Uninstaller") && !solutionX.Contains("PlugHub.Uninstaller"), "solution must not keep the old standalone uninstaller project.");
+            Require(!solution.Contains("PlugHub.SettingsApp") && !solution.Contains("PlugHub.SettingsUi"), "solution must not keep legacy SettingsApp/SettingsUi project names after Manager rename.");
+            Require(!solutionX.Contains("PlugHub.SettingsApp") && !solutionX.Contains("PlugHub.SettingsUi"), "slnx must not keep legacy SettingsApp/SettingsUi project names after Manager rename.");
             var validationProgram = ReadText("src/PlugHub.StaticValidation/Program.cs");
             Require(validationProgram.Contains("string[] args"), "Static validation entrypoint must accept command-line arguments.");
             Require(validationProgram.Contains("--report-json") && validationProgram.Contains("--report-html"), "Static validation must support JSON and HTML report arguments.");
@@ -303,7 +309,7 @@ namespace PlugHub.StaticValidation
             }
             Require(!File.Exists(FullPath("config/modules.example.json")), "framework source config must be named sources.example.json, not modules.example.json.");
             Require(!File.Exists(FullPath("config/plugin-sources.example.json")), "framework source config must be named sources.example.json, not plugin-sources.example.json.");
-            Require(!File.Exists(FullPath("src/PlugHub.Revit2020/Settings/SettingsConfigurationStore.cs")), "settings configuration store must live in PlugHub.Framework for external settings app reuse.");
+            Require(!File.Exists(FullPath("src/PlugHub.Manager/Settings/SettingsConfigurationStore.cs")), "settings configuration store must live in PlugHub.Framework for PlugHub Manager reuse.");
             Require(!Directory.Exists(FullPath("modules")), "source workspace must not keep a modules drop-in directory; build output creates package drop-ins.");
             if (Directory.Exists(FullPath("tests")))
             {
@@ -337,7 +343,7 @@ namespace PlugHub.StaticValidation
             Require(!readme.Contains("D:\\AI\\code\\PlugHub_Modules"), "root README must not expose local external module paths.");
             Require(readme.Contains("面向建模用户") && readme.Contains("框架概览") && readme.Contains("能做什么"), "root README must introduce PlugHub for modeling users.");
             Require(readme.Contains("安装") && readme.Contains("文件夹权限") && readme.Contains(@"D:\Program Files\PlugHub"), "root README must document installation and folder permission guidance.");
-            Require(readme.Contains("更新") && readme.Contains("检查更新小图标") && readme.Contains("框架 DLL、Windows 设置程序、更新程序和卸载程序"), "root README must document framework update behavior.");
+            Require(readme.Contains("更新") && readme.Contains("检查更新小图标") && readme.Contains("卸载小图标") && readme.Contains("框架 DLL 和 PlugHub Manager"), "root README must document framework update and Manager maintenance behavior.");
             Require(readme.Contains("布局设置") && readme.Contains("拖拽") && readme.Contains("重启 Revit"), "root README must document how users change Ribbon layout.");
             Require(readme.Contains("仓库源") && readme.Contains("同步仓库源") && readme.Contains("不需要安装 Git"), "root README must document repository source setup for users.");
             Require(readme.Contains("插件安装") && readme.Contains("安装插件") && readme.Contains("packages"), "root README must document plugin installation for users.");
@@ -1022,9 +1028,9 @@ namespace PlugHub.StaticValidation
 
         private static void ValidateRibbonLayoutSettingsRows()
         {
-            var viewModel = ReadText("src/PlugHub.Revit2020/Settings/FrameworkSettingsViewModel.cs");
-            var nodeRowPath = "src/PlugHub.Revit2020/Settings/Rows/RibbonLayoutNodeRow.cs";
-            var poolRowPath = "src/PlugHub.Revit2020/Settings/Rows/RibbonFeaturePoolRow.cs";
+            var viewModel = ReadText("src/PlugHub.Manager/Settings/FrameworkSettingsViewModel.cs");
+            var nodeRowPath = "src/PlugHub.Manager/Settings/Rows/RibbonLayoutNodeRow.cs";
+            var poolRowPath = "src/PlugHub.Manager/Settings/Rows/RibbonFeaturePoolRow.cs";
             Require(File.Exists(FullPath(nodeRowPath)), "RibbonLayoutNodeRow must exist.");
             Require(File.Exists(FullPath(poolRowPath)), "RibbonFeaturePoolRow must exist.");
             var nodeRow = ReadText(nodeRowPath);
@@ -1460,26 +1466,28 @@ namespace PlugHub.StaticValidation
             Require(modulesText.Contains("\"manifestPath\": \"packages.json\""), "repository examples must point at packages.json.");
 
             var revitText = ReadAllCSharp("src/PlugHub.Revit2020");
+            var settingsUiText = ReadAllCSharp("src/PlugHub.Manager");
             Require(!revitText.Contains("RegisterDockablePane") && !revitText.Contains("DockablePaneProviderData") && !revitText.Contains("IDockablePaneProvider"), "settings and feature UI must not use Revit DockablePane for this architecture.");
-            Require(revitText.Contains("FrameworkSettingsWindow") && revitText.Contains("System.Windows.Window"), "settings UI must use a WPF window.");
+            Require(!revitText.Contains("class FrameworkSettingsWindow") && !Directory.Exists(FullPath("src/PlugHub.Revit2020/Settings")), "Revit adapter must not own the full settings UI source.");
+            Require(settingsUiText.Contains("FrameworkSettingsWindow") && settingsUiText.Contains(": Window"), "settings UI must live in PlugHub.Manager as a WPF window.");
+            Require(!Directory.Exists(FullPath("src/PlugHub.SettingsApp")) && !Directory.Exists(FullPath("src/PlugHub.SettingsUi")), "legacy SettingsApp/SettingsUi source directories must be removed after Manager rename.");
             Require(revitText.Contains("FeatureExecutionGate"), "feature execution must be gated by latest runtime configuration.");
         }
 
         private static void ValidateSettingsPaneV21Specification()
         {
-            var settingsWindow = ReadText("src/PlugHub.Revit2020/FrameworkSettingsWindow.cs");
-            var settingsViewModel = ReadText("src/PlugHub.Revit2020/Settings/FrameworkSettingsViewModel.cs");
+            var settingsWindow = ReadText("src/PlugHub.Manager/FrameworkSettingsWindow.cs");
+            var settingsViewModel = ReadText("src/PlugHub.Manager/Settings/FrameworkSettingsViewModel.cs");
             var settingsCommand = ReadText("src/PlugHub.Revit2020/FrameworkSettingsCommand.cs");
-            var externalSettingsLauncher = ReadText("src/PlugHub.Revit2020/ExternalSettingsAppLauncher.cs");
-            var externalSettingsProject = ReadText("src/PlugHub.SettingsApp/PlugHub.SettingsApp.csproj");
-            var settingsAppProgram = ReadText("src/PlugHub.SettingsApp/Program.cs");
+            var externalSettingsLauncher = ReadText("src/PlugHub.Revit2020/ExternalManagerLauncher.cs");
+            var externalSettingsProject = ReadText("src/PlugHub.Manager/PlugHub.Manager.csproj");
+            var settingsAppProgram = ReadText("src/PlugHub.Manager/Program.cs");
             var settingsStore = ReadText("src/PlugHub.Framework/Settings/SettingsConfigurationStore.cs");
-            var statusCommand = ReadText("src/PlugHub.Revit2020/FrameworkStatusCommand.cs");
-            var statusWindow = ReadText("src/PlugHub.Revit2020/FrameworkStatusWindow.cs");
+            var statusWindow = ReadText("src/PlugHub.Wpf/FrameworkStatusWindow.cs");
             var featureCommand = ReadText("src/PlugHub.Revit2020/FrameworkFeatureCommand.cs");
             var ribbonBuilder = ReadText("src/PlugHub.Revit2020/FeatureRibbonBuilder.cs");
             var runtime = ReadText("src/PlugHub.Framework/Runtime/FrameworkRuntime.cs");
-            var ribbonDesignerDropService = ReadText("src/PlugHub.Revit2020/Settings/RibbonDesigner/RibbonDesignerDropService.cs");
+            var ribbonDesignerDropService = ReadText("src/PlugHub.Manager/Settings/RibbonDesigner/RibbonDesignerDropService.cs");
             var sourceResolver = ReadText("src/PlugHub.Framework/Sources/ModuleSourceResolver.cs");
             var configurationModels = ReadText("src/PlugHub.Framework/Configuration/ConfigurationModels.cs");
             var revitProject = ReadText("src/PlugHub.Revit2020/PlugHub.Revit2020.csproj");
@@ -1487,22 +1495,21 @@ namespace PlugHub.StaticValidation
             Require(!File.Exists(FullPath("src/PlugHub.Revit2020/FrameworkSettingsForm.cs")), "legacy WinForms settings form must be removed.");
             Require(!File.Exists(FullPath("src/PlugHub.Revit2020/FrameworkSettingsPane.cs")), "legacy DockablePane settings provider must be removed.");
             Require(!ReadAllCSharp("src/PlugHub.Revit2020").Contains("System.Windows.Forms") && !ReadAllCSharp("src/PlugHub.Revit2020").Contains("WindowsFormsHost"), "Revit settings/feature UI must not reference WinForms hosting.");
-            Require(settingsCommand.Contains("ExternalSettingsAppLauncher") && settingsCommand.Contains("TryLaunch") && settingsCommand.Contains("FrameworkStatusWindow"), "settings ribbon command must launch the Windows settings app and report failures through WPF status.");
+            Require(settingsCommand.Contains("ExternalManagerLauncher") && settingsCommand.Contains("TryLaunch") && settingsCommand.Contains("FrameworkStatusWindow"), "settings ribbon command must launch the PlugHub Manager and report failures through WPF status.");
             Require(!settingsCommand.Contains("FrameworkSettingsWindow") && !settingsCommand.Contains("ShowDialog") && !settingsCommand.Contains("FrameworkConfigurationLoader.LoadFromDirectory"), "Revit settings ribbon command must not host the full settings window or load editable settings in-process.");
             Require(!File.Exists(FullPath("src/PlugHub.Revit2020/FrameworkExternalSettingsCommand.cs")), "parallel Windows settings command must be removed after settings becomes the external-app entry.");
             Require(!settingsCommand.Contains("GetDockablePane") && !settingsCommand.Contains("pane.Hide") && !settingsCommand.Contains("pane.Show"), "settings command must not toggle a DockablePane.");
-            Require(externalSettingsLauncher.Contains("PlugHub.SettingsApp.exe") && externalSettingsLauncher.Contains("--config") && externalSettingsLauncher.Contains("FrameworkRuntimeState.BaseDirectory"), "external settings launcher must locate PlugHub.SettingsApp.exe and pass the runtime config directory.");
-            Require(externalSettingsProject.Contains("<TargetFramework>net48</TargetFramework>") && externalSettingsProject.Contains("<OutputType>WinExe</OutputType>") && externalSettingsProject.Contains("PresentationFramework"), "external settings app must be a net48 WPF Windows executable.");
-            Require(externalSettingsProject.Contains("PlugHub.Framework.csproj") && !externalSettingsProject.Contains("ProjectReference Include=\"..\\PlugHub.Revit2020") && !externalSettingsProject.Contains("Autodesk.Revit"), "external settings app must reuse framework services without depending on the Revit adapter project or Revit API.");
-            Require(externalSettingsProject.Contains("FrameworkSettingsWindow.cs") && externalSettingsProject.Contains("Settings\\**\\*.cs") && externalSettingsProject.Contains("SharedSettings"), "external settings app must compile the same WPF settings window sources for 1:1 behavior.");
-            Require(settingsAppProgram.Contains("FrameworkSettingsWindow") && settingsAppProgram.Contains("FrameworkConfigurationLoader.LoadFromDirectory") && !File.Exists(FullPath("src/PlugHub.SettingsApp/SettingsMainWindow.cs")), "external settings app must host the existing FrameworkSettingsWindow instead of a separate settings UI.");
+            Require(externalSettingsLauncher.Contains("PlugHub.Manager.exe") && externalSettingsLauncher.Contains("--config") && externalSettingsLauncher.Contains("--hostProcessId") && externalSettingsLauncher.Contains("FrameworkRuntimeState.BaseDirectory"), "external settings launcher must locate PlugHub.Manager.exe and pass the runtime config directory plus Revit host process id.");
+            Require(externalSettingsProject.Contains("<TargetFramework>net48</TargetFramework>") && externalSettingsProject.Contains("<OutputType>WinExe</OutputType>") && externalSettingsProject.Contains("PresentationFramework"), "PlugHub Manager must be a net48 WPF Windows executable.");
+            Require(externalSettingsProject.Contains("<AssemblyName>PlugHub.Manager</AssemblyName>") && !externalSettingsProject.Contains("ProjectReference Include=\"..\\PlugHub.Revit2020") && !externalSettingsProject.Contains("Autodesk.Revit"), "PlugHub Manager must be the WPF manager executable without depending on the Revit adapter project or Revit API.");
+            Require(!externalSettingsProject.Contains("PlugHub.SettingsApp") && !externalSettingsProject.Contains("PlugHub.SettingsUi") && !externalSettingsProject.Contains("SharedSettings"), "PlugHub Manager project must not keep legacy SettingsApp/SettingsUi naming or linked Revit settings sources.");
+            Require(settingsAppProgram.Contains("ManagerMaintenanceArguments.Parse") && settingsAppProgram.Contains("ManagerMaintenanceRunner") && settingsAppProgram.Contains("FrameworkSettingsWindow") && settingsAppProgram.Contains("FrameworkConfigurationLoader.LoadFromDirectory") && !File.Exists(FullPath("src/PlugHub.Manager/SettingsMainWindow.cs")), "PlugHub Manager must route maintenance mode before hosting the existing FrameworkSettingsWindow.");
             Require(settingsStore.Contains("namespace PlugHub.Framework.Settings") && settingsStore.Contains("public sealed class SettingsConfigurationStore") && !settingsStore.Contains("Autodesk.Revit"), "shared settings store must live in PlugHub.Framework.Settings and stay Revit-independent.");
-            Require(statusCommand.Contains("FrameworkRuntimeState.Current") && statusCommand.Contains("ShowRuntimeStatus") && !statusCommand.Contains("FrameworkRuntimeState.Refresh"), "status ribbon command must display the current runtime status without reloading configuration in-process.");
             Require(featureCommand.Contains("ShowRuntimeStatus"), "status command must use the focused runtime status view.");
             Require(featureCommand.Contains("FrameworkStatusWindow") && !featureCommand.Contains("TaskDialog.Show"), "framework fallback feature feedback must use WPF.");
             Require(ribbonBuilder.Contains("LoadFeatureIcon") && ribbonBuilder.Contains("LargeImage"), "configured feature icons must be applied to Revit ribbon buttons.");
             Require(ribbonBuilder.Contains("FrameworkSettingsCommand"), "framework Ribbon panel must expose settings command.");
-            Require(ribbonBuilder.Contains("FrameworkStatusCommand") && ribbonBuilder.Contains("PlugHub_Framework_Status"), "framework Ribbon panel must expose a lightweight status entry.");
+            Require(!ribbonBuilder.Contains("FrameworkStatusCommand") && !ribbonBuilder.Contains("PlugHub_Framework_Status") && !ribbonBuilder.Contains("\"状态\""), "framework Ribbon panel must not expose a status button; Revit keeps only the settings light entry.");
             Require(!ribbonBuilder.Contains("FrameworkExternalSettingsCommand") && !ribbonBuilder.Contains("PlugHub_Framework_ExternalSettings") && !ribbonBuilder.Contains("Windows设置"), "framework Ribbon panel must not expose a duplicate Windows settings entry.");
             Require(!runtime.Contains(".Browse(") && !runtime.Contains("RepositoryBrowser") && !runtime.Contains("RepositoryArchiveSynchronizer") && !runtime.Contains("FrameworkUpdateService"), "Revit startup runtime must not access remote repositories or framework update services.");
 
@@ -1515,11 +1522,11 @@ namespace PlugHub.StaticValidation
             Require(settingsWindow.Contains("LoadRibbonLayoutRows"), "settings window must load ribbon layout rows.");
             Require(settingsWindow.Contains("ApplyRibbonLayoutRows"), "settings window must save ribbon layout rows.");
             Require(settingsWindow.Contains("ResetDefaultRibbonLayout"), "settings window must reset to the framework default layout.");
-            Require(File.Exists(FullPath("src/PlugHub.Revit2020/Settings/RibbonDesigner/RibbonDesignerNodeRow.cs")), "visual ribbon designer node row must exist.");
-            Require(File.Exists(FullPath("src/PlugHub.Revit2020/Settings/RibbonDesigner/RibbonDesignerFeatureRow.cs")), "visual ribbon designer feature row must exist.");
-            Require(File.Exists(FullPath("src/PlugHub.Revit2020/Settings/RibbonDesigner/RibbonDesignerMapper.cs")), "visual ribbon designer mapper must exist.");
-            Require(File.Exists(FullPath("src/PlugHub.Revit2020/Settings/RibbonDesigner/RibbonDesignerDropService.cs")), "visual ribbon designer drop service must exist.");
-            Require(File.Exists(FullPath("src/PlugHub.Revit2020/Settings/RibbonDesigner/RibbonLayoutDiffService.cs")), "visual ribbon designer diff service must exist.");
+            Require(File.Exists(FullPath("src/PlugHub.Manager/Settings/RibbonDesigner/RibbonDesignerNodeRow.cs")), "visual ribbon designer node row must exist.");
+            Require(File.Exists(FullPath("src/PlugHub.Manager/Settings/RibbonDesigner/RibbonDesignerFeatureRow.cs")), "visual ribbon designer feature row must exist.");
+            Require(File.Exists(FullPath("src/PlugHub.Manager/Settings/RibbonDesigner/RibbonDesignerMapper.cs")), "visual ribbon designer mapper must exist.");
+            Require(File.Exists(FullPath("src/PlugHub.Manager/Settings/RibbonDesigner/RibbonDesignerDropService.cs")), "visual ribbon designer drop service must exist.");
+            Require(File.Exists(FullPath("src/PlugHub.Manager/Settings/RibbonDesigner/RibbonLayoutDiffService.cs")), "visual ribbon designer diff service must exist.");
             Require(settingsViewModel.Contains("RibbonDesignerFeatures"), "FrameworkSettingsViewModel must expose visual designer feature rows.");
             Require(settingsViewModel.Contains("RibbonDesignerTabs"), "FrameworkSettingsViewModel must expose visual designer layout tabs.");
             Require(settingsWindow.Contains("BuildVisualRibbonDesignerTab"), "settings layout page must use visual ribbon designer.");
@@ -1659,7 +1666,7 @@ namespace PlugHub.StaticValidation
 
         private static void ValidateFrameworkSettingsWindowSectionBoundaries()
         {
-            var settingsWindow = ReadText("src/PlugHub.Revit2020/FrameworkSettingsWindow.cs");
+            var settingsWindow = ReadText("src/PlugHub.Manager/FrameworkSettingsWindow.cs");
 
             var repositoriesTab = MethodBody(settingsWindow, "BuildRepositoriesTab");
             foreach (var token in new[] { "BuildRepositoryToolbar", "BuildRepositorySourceCards", "BuildRepositoryPackageToolbar", "BuildRepositoryPackageList", "Grid.SetRow" })
@@ -1728,7 +1735,7 @@ namespace PlugHub.StaticValidation
             }
 
             var updateFramework = MethodBody(settingsWindow, "UpdateFramework");
-            Require(updateFramework.Contains("_frameworkUpdateService.Download") && updateFramework.Contains("_frameworkUpdateService.StartUpdater") && updateFramework.Contains("Process.GetCurrentProcess().Id"), "update flow must download and hand off to the external updater.");
+            Require(updateFramework.Contains("_frameworkUpdateService.Download") && updateFramework.Contains("ManagerMaintenanceLauncher.StartUpdate") && updateFramework.Contains("MaintenanceWaitProcessIds"), "update flow must download and hand off to PlugHub Manager maintenance mode.");
 
             var updateDialog = MethodBody(settingsWindow, "ShowFrameworkUpdateDialog");
             Require(updateDialog.Contains("ReleaseNotesText") && updateDialog.Contains("LatestVersion") && updateDialog.Contains("DialogResult"), "update dialog must show target version, release notes, and return a user decision.");
@@ -1736,7 +1743,7 @@ namespace PlugHub.StaticValidation
 
         private static void ValidateSettingsRibbonCleanupSpecification()
         {
-            var settingsWindow = ReadText("src/PlugHub.Revit2020/FrameworkSettingsWindow.cs");
+            var settingsWindow = ReadText("src/PlugHub.Manager/FrameworkSettingsWindow.cs");
             var settingsStore = ReadText("src/PlugHub.Framework/Settings/SettingsConfigurationStore.cs");
             var ribbonBuilder = ReadText("src/PlugHub.Revit2020/FeatureRibbonBuilder.cs");
             var addinTemplate = ReadText("manifests/PlugHub.addin.template");
@@ -1757,7 +1764,7 @@ namespace PlugHub.StaticValidation
 
             Require(ribbonBuilder.Contains("\"PlugHub_Framework_Settings\""), "Ribbon must keep the settings entry.");
             Require(!ribbonBuilder.Contains("\"PlugHub_Framework_Refresh\"") && !ribbonBuilder.Contains("\"刷新配置\""), "Ribbon must not expose refresh configuration as a full settings substitute.");
-            Require(ribbonBuilder.Contains("\"PlugHub_Framework_Status\"") && ribbonBuilder.Contains("\"状态\""), "Ribbon must expose a lightweight runtime status entry.");
+            Require(!ribbonBuilder.Contains("\"PlugHub_Framework_Status\"") && !ribbonBuilder.Contains("\"状态\""), "Ribbon must not expose a status button.");
 
             Require(addinTemplate.Contains("<VendorDescription>GAOMENGGU</VendorDescription>"), "addin publisher description must be GAOMENGGU.");
             Require(buildProps.Contains("<Company>GAOMENGGU</Company>") && buildProps.Contains("<Authors>GAOMENGGU</Authors>"), "assembly metadata publisher must be GAOMENGGU.");
@@ -1790,7 +1797,7 @@ namespace PlugHub.StaticValidation
 
         private static void ValidateSettingsCreationAndSortingSpecification()
         {
-            var settingsWindow = ReadText("src/PlugHub.Revit2020/FrameworkSettingsWindow.cs");
+            var settingsWindow = ReadText("src/PlugHub.Manager/FrameworkSettingsWindow.cs");
 
             foreach (var token in new[] { "BuildVisualRibbonDesignerTab", "RibbonDesignerTabs", "BuildRibbonDesignerEditorBody", "BuildRibbonDesignerCanvas", "BuildRibbonDesignerPropertyPanel", "RefreshRibbonDesignerChangeSummary", "ResetDefaultRibbonLayout", "CreateDefaultRibbonLayoutNodes", "DefaultRibbonPanelKey", "ApplyRibbonLayoutRows", "RefreshRibbonDesignerCanvas" })
             {
@@ -1819,7 +1826,7 @@ namespace PlugHub.StaticValidation
             var packageOperationStatus = packageOperationResult < 0 ? -1 : settingsWindow.IndexOf("RefreshStatusWithPendingPackageOperations(result.Message)", packageOperationResult, StringComparison.Ordinal);
             Require(packageOperationStart >= 0 && packageOperationResult >= 0 && packageOperationStatus > packageOperationResult, "repository package operations must refresh footer pending-operation status.");
 
-            var ribbonDesignerMapper = ReadText("src/PlugHub.Revit2020/Settings/RibbonDesigner/RibbonDesignerMapper.cs");
+            var ribbonDesignerMapper = ReadText("src/PlugHub.Manager/Settings/RibbonDesigner/RibbonDesignerMapper.cs");
             Require(!settingsWindow.Contains("body.Children.Add(BuildRibbonDesignerPreviewButton(tab"), "layout canvas must not render a synthetic PlugHub tab button above panels.");
             Require(ribbonDesignerMapper.Contains("GroupBy(DefaultPanelKey") && ribbonDesignerMapper.Contains("GroupDisplayText") && ribbonDesignerMapper.Contains("ModuleName"), "layout designer default panels must match runtime grouped ribbon layout.");
         }
@@ -1827,13 +1834,13 @@ namespace PlugHub.StaticValidation
         private static void ValidateDefaultIconSpecification()
         {
             var ribbonBuilder = ReadText("src/PlugHub.Revit2020/FeatureRibbonBuilder.cs");
-            var iconProvider = ReadText("src/PlugHub.Revit2020/DefaultRibbonIconProvider.cs");
-            var settingsWindow = ReadText("src/PlugHub.Revit2020/FrameworkSettingsWindow.cs");
+            var iconProvider = ReadText("src/PlugHub.Wpf/DefaultRibbonIconProvider.cs");
+            var settingsWindow = ReadText("src/PlugHub.Manager/FrameworkSettingsWindow.cs");
             var modulesText = ReadText("config/sources.example.json");
 
             Require(ribbonBuilder.Contains("DefaultRibbonIconProvider") && ribbonBuilder.Contains("CreateSmallIcon") && ribbonBuilder.Contains("CreateLargeIcon"), "Ribbon builder must apply built-in default small/large icons.");
             Require(ribbonBuilder.Contains("\"PlugHub_Framework_Settings\"") && ribbonBuilder.Contains("\"settings\""), "settings ribbon button must use a built-in settings icon.");
-            Require(ribbonBuilder.Contains("\"PlugHub_Framework_Status\"") && ribbonBuilder.Contains("\"diagnostics\""), "status ribbon button must use a built-in diagnostics icon.");
+            Require(!ribbonBuilder.Contains("\"PlugHub_Framework_Status\"") && !ribbonBuilder.Contains("FrameworkStatusCommand"), "status ribbon button must not be rendered.");
             Require(ribbonBuilder.Contains("LoadConfiguredIcon"), "Ribbon builder must resolve configured file icons and built-in icon keys.");
             Require(ribbonBuilder.Contains("LoadDllSiblingIcon") && ribbonBuilder.Contains("SameNameIconExtensions"), "Ribbon builder must auto-load same-name icons beside feature DLLs before falling back to defaults.");
             Require(ribbonBuilder.Contains("AddSingleStackChildFallback"), "Ribbon builder must render a single-item stack as its child instead of dropping the feature.");
@@ -1850,10 +1857,10 @@ namespace PlugHub.StaticValidation
 
         private static void ValidateRevitWpfUiDesignSpecification()
         {
-            var theme = ReadText("src/PlugHub.Revit2020/RevitUiTheme.cs");
-            var settingsWindow = ReadText("src/PlugHub.Revit2020/FrameworkSettingsWindow.cs");
-            var statusWindow = ReadText("src/PlugHub.Revit2020/FrameworkStatusWindow.cs");
-            var iconProvider = ReadText("src/PlugHub.Revit2020/DefaultRibbonIconProvider.cs");
+            var theme = ReadText("src/PlugHub.Wpf/RevitUiTheme.cs");
+            var settingsWindow = ReadText("src/PlugHub.Manager/FrameworkSettingsWindow.cs");
+            var statusWindow = ReadText("src/PlugHub.Wpf/FrameworkStatusWindow.cs");
+            var iconProvider = ReadText("src/PlugHub.Wpf/DefaultRibbonIconProvider.cs");
             var buildScript = ReadText("scripts/build-revit2020.ps1");
 
             Require(theme.Contains("class RevitUiPalette") && theme.Contains("class RevitUiTheme"), "Revit WPF UI must centralize theme tokens in RevitUiTheme.");
@@ -1871,7 +1878,7 @@ namespace PlugHub.StaticValidation
 
         private static void ValidateSettingsGroupFeatureEditingBehavior()
         {
-            var settingsWindow = ReadText("src/PlugHub.Revit2020/FrameworkSettingsWindow.cs");
+            var settingsWindow = ReadText("src/PlugHub.Manager/FrameworkSettingsWindow.cs");
             var ribbonBuilder = ReadText("src/PlugHub.Revit2020/FeatureRibbonBuilder.cs");
             var ribbonLayoutComposer = ReadText("src/PlugHub.Framework/Composition/RibbonLayoutComposer.cs");
 
@@ -1898,10 +1905,10 @@ namespace PlugHub.StaticValidation
         private static void ValidatePackageSourceAndReleaseBehavior()
         {
             var modulesText = ReadText("config/sources.example.json");
-            var settingsWindow = ReadText("src/PlugHub.Revit2020/FrameworkSettingsWindow.cs");
-            var repositorySettingsController = ReadText("src/PlugHub.Revit2020/Settings/RepositorySettingsController.cs");
-            var repositoryRow = ReadText("src/PlugHub.Revit2020/Settings/Rows/RepositoryRow.cs");
-            var repositoryPackageRow = ReadText("src/PlugHub.Revit2020/Settings/Rows/RepositoryPackageRow.cs");
+            var settingsWindow = ReadText("src/PlugHub.Manager/FrameworkSettingsWindow.cs");
+            var repositorySettingsController = ReadText("src/PlugHub.Manager/Settings/RepositorySettingsController.cs");
+            var repositoryRow = ReadText("src/PlugHub.Manager/Settings/Rows/RepositoryRow.cs");
+            var repositoryPackageRow = ReadText("src/PlugHub.Manager/Settings/Rows/RepositoryPackageRow.cs");
             var sourceResolver = ReadText("src/PlugHub.Framework/Sources/ModuleSourceResolver.cs");
             var configurationLoader = ReadText("src/PlugHub.Framework/Configuration/FrameworkConfigurationLoader.cs");
             var packageRepositoryService = ReadText("src/PlugHub.Framework/Packages/PackageRepositoryService.cs");
@@ -2919,9 +2926,11 @@ namespace PlugHub.StaticValidation
 
         private static void ValidateUninstallerPackaging()
         {
-            var uninstallerProject = ReadText("src/PlugHub.Uninstaller/PlugHub.Uninstaller.csproj");
-            var uninstallerProgram = ReadText("src/PlugHub.Uninstaller/Program.cs");
-            var uninstallerForm = ReadText("src/PlugHub.Uninstaller/UninstallerForm.cs");
+            var managerProgram = ReadText("src/PlugHub.Manager/Program.cs");
+            var maintenanceArguments = ReadText("src/PlugHub.Manager/Maintenance/ManagerMaintenanceArguments.cs");
+            var maintenanceLauncher = ReadText("src/PlugHub.Manager/Maintenance/ManagerMaintenanceLauncher.cs");
+            var maintenanceRunner = ReadText("src/PlugHub.Manager/Maintenance/ManagerMaintenanceRunner.cs");
+            var managerUninstaller = ReadText("src/PlugHub.Manager/Maintenance/ManagerUninstaller.cs");
             var installerProject = ReadText("src/PlugHub.Installer/PlugHub.Installer.csproj");
             var installerPayload = ReadText("src/PlugHub.Installer/InstallerPayload.cs");
             var installerForm = ReadText("src/PlugHub.Installer/InstallerForm.cs");
@@ -2930,19 +2939,19 @@ namespace PlugHub.StaticValidation
             var solutionX = ReadText("PlugHub.slnx");
             var readme = ReadText("README.md");
 
-            Require(uninstallerProject.Contains("<OutputType>WinExe</OutputType>") && uninstallerProject.Contains("<TargetFramework>net48</TargetFramework>"), "uninstaller project must build a net48 Windows EXE.");
-            Require(solution.Contains("src\\PlugHub.Uninstaller\\PlugHub.Uninstaller.csproj"), "uninstaller project must be included in PlugHub.sln.");
-            Require(solutionX.Contains("src/PlugHub.Uninstaller/PlugHub.Uninstaller.csproj"), "uninstaller project must be included in PlugHub.slnx.");
-            Require(uninstallerProgram.Contains("/run-from-temp") && uninstallerProgram.Contains("/installDir"), "uninstaller must support temporary self-copy execution with an explicit install directory.");
-            Require(uninstallerProgram.Contains("/installDirBase64") && uninstallerProgram.Contains("Convert.ToBase64String") && uninstallerProgram.Contains("Encoding.UTF8"), "uninstaller temporary self-copy must pass the install directory as UTF-8 Base64 instead of raw quoted paths.");
-            Require(uninstallerProgram.Contains("TrimWrappingQuotes") && uninstallerProgram.Contains("NormalizePathArgument"), "uninstaller must normalize legacy installDir path arguments before Path.GetFullPath.");
-            Require(uninstallerForm.Contains("PlugHub.addin") && uninstallerForm.Contains("SpecialFolder.CommonApplicationData"), "uninstaller must remove the machine-wide ProgramData addin manifest.");
-            Require(uninstallerForm.Contains("Directory.Delete") && uninstallerForm.Contains("Close Revit"), "uninstaller must delete the install directory and report locked-file guidance.");
-            Require(installerProject.Contains("InstallerUninstallerExe") && installerProject.Contains("PlugHubUninstaller.exe"), "installer project must embed the uninstaller exe through InstallerUninstallerExe.");
-            Require(installerPayload.Contains("PlugHub-Uninstall.exe") && installerPayload.Contains("WriteUninstaller"), "installer payload must write PlugHub-Uninstall.exe to the install directory.");
-            Require(installerForm.Contains("PlugHub-Uninstall.exe"), "installer UI must report or create the installed uninstaller.");
-            Require(githubWorkflow.Contains("Build PlugHub uninstaller") && githubWorkflow.Contains("InstallerUninstallerExe"), "GitHub release workflow must build and embed the uninstaller.");
-            Require(readme.Contains("PlugHub-Uninstall.exe"), "README must document the uninstaller.");
+            Require(!File.Exists(FullPath("src/PlugHub.Uninstaller/PlugHub.Uninstaller.csproj")), "standalone uninstaller project file must be removed.");
+            Require(!solution.Contains("PlugHub.Uninstaller") && !solutionX.Contains("PlugHub.Uninstaller"), "solutions must not include the old standalone uninstaller project.");
+            Require(managerProgram.Contains("ManagerMaintenanceArguments.Parse") && managerProgram.Contains("ManagerMaintenanceRunner"), "PlugHub Manager must dispatch maintenance mode before opening the settings window.");
+            Require(maintenanceArguments.Contains("/uninstall") && maintenanceArguments.Contains("/installDirBase64") && maintenanceArguments.Contains("Encoding.UTF8"), "Manager maintenance arguments must support uninstall with UTF-8 Base64 install directory.");
+            Require(maintenanceLauncher.Contains("StartUninstall") && maintenanceLauncher.Contains("CreateTemporaryManagerCopy") && maintenanceLauncher.Contains("Path.GetTempPath()") && maintenanceLauncher.Contains("PlugHub.Manager.exe"), "Manager uninstall must run from a temporary PlugHub.Manager.exe copy.");
+            Require(maintenanceRunner.Contains("PlugHub Manager - Uninstall") && maintenanceRunner.Contains("MessageBoxButton.YesNo") && maintenanceRunner.Contains("WaitForProcesses"), "Manager uninstall maintenance mode must confirm and wait for locking processes.");
+            Require(managerUninstaller.Contains("PlugHub.addin") && managerUninstaller.Contains("SpecialFolder.CommonApplicationData"), "Manager uninstaller must remove the machine-wide ProgramData addin manifest.");
+            Require(managerUninstaller.Contains("Directory.Delete") && managerUninstaller.Contains("Refusing to delete a drive root") && managerUninstaller.Contains("RequiredInstallMarkers") && managerUninstaller.Contains("ContainsPlugHubInstallMarkers") && managerUninstaller.Contains("not a PlugHub install root"), "Manager uninstaller must delete only a validated PlugHub install directory.");
+            Require(!installerProject.Contains("InstallerUninstallerExe") && !installerProject.Contains("PlugHubUninstaller.exe"), "installer project must not embed a standalone uninstaller.");
+            Require(!installerPayload.Contains("PlugHub-Uninstall.exe") && !installerPayload.Contains("WriteUninstaller"), "installer payload must not write a standalone uninstaller.");
+            Require(!installerForm.Contains("PlugHub-Uninstall.exe"), "installer UI must not report a standalone uninstaller.");
+            Require(!githubWorkflow.Contains("Build PlugHub uninstaller") && !githubWorkflow.Contains("InstallerUninstallerExe"), "GitHub release workflow must not build or embed a standalone uninstaller.");
+            Require(!readme.Contains("PlugHub-Uninstall.exe"), "README must not document a standalone uninstaller.");
         }
 
         private static void ValidateFrameworkAutoUpdateSpecification()
@@ -2950,34 +2959,42 @@ namespace PlugHub.StaticValidation
             var solution = ReadText("PlugHub.sln");
             var solutionX = ReadText("PlugHub.slnx");
             var buildProps = ReadText("build/Directory.Build.props");
-            var settingsWindow = ReadText("src/PlugHub.Revit2020/FrameworkSettingsWindow.cs");
+            var settingsWindow = ReadText("src/PlugHub.Manager/FrameworkSettingsWindow.cs");
+            var managerProject = ReadText("src/PlugHub.Manager/PlugHub.Manager.csproj");
+            var managerProgram = ReadText("src/PlugHub.Manager/Program.cs");
+            var maintenanceArguments = ReadText("src/PlugHub.Manager/Maintenance/ManagerMaintenanceArguments.cs");
+            var maintenanceLauncher = ReadText("src/PlugHub.Manager/Maintenance/ManagerMaintenanceLauncher.cs");
+            var maintenanceRunner = ReadText("src/PlugHub.Manager/Maintenance/ManagerMaintenanceRunner.cs");
+            var managerUpdater = ReadText("src/PlugHub.Manager/Maintenance/ManagerFrameworkUpdater.cs");
+            var maintenanceLogger = ReadText("src/PlugHub.Manager/Maintenance/ManagerMaintenanceLogger.cs");
             var frameworkProject = ReadText("src/PlugHub.Framework/PlugHub.Framework.csproj");
             var service = ReadText("src/PlugHub.Framework/Updates/FrameworkUpdateService.cs");
             var releaseClient = ReadText("src/PlugHub.Framework/Updates/ReleaseClient.cs");
             var releaseAssetDownloader = ReadText("src/PlugHub.Framework/Updates/ReleaseAssetDownloader.cs");
             var validator = ReadText("src/PlugHub.Framework/Updates/FrameworkUpdatePackageValidator.cs");
-            var updaterProject = ReadText("src/PlugHub.Updater/PlugHub.Updater.csproj");
-            var updaterProgram = ReadText("src/PlugHub.Updater/Program.cs");
-            var updaterArguments = ReadText("src/PlugHub.Updater/UpdaterArguments.cs");
-            var updaterRunner = ReadText("src/PlugHub.Updater/FrameworkDllUpdater.cs");
             var githubWorkflow = ReadText(".github/workflows/release.yml");
             var buildScript = ReadText("scripts/build-revit2020.ps1");
             var readme = ReadText("README.md");
 
             Require(frameworkProject.Contains("System.Web.Extensions"), "framework update release JSON parsing must keep using available net48 framework references.");
-            Require(solution.Contains("src\\PlugHub.Updater\\PlugHub.Updater.csproj"), "updater project must be included in PlugHub.sln.");
-            Require(solutionX.Contains("src/PlugHub.Updater/PlugHub.Updater.csproj"), "updater project must be included in PlugHub.slnx.");
-            Require(updaterProject.Contains("<TargetFramework>net48</TargetFramework>") && updaterProject.Contains("<OutputType>WinExe</OutputType>"), "updater must build as a silent net48 Windows EXE.");
+            Require(!File.Exists(FullPath("src/PlugHub.Updater/PlugHub.Updater.csproj")), "standalone updater project file must be removed.");
+            Require(!solution.Contains("PlugHub.Updater") && !solutionX.Contains("PlugHub.Updater"), "solutions must not include the old standalone updater project.");
+            Require(managerProject.Contains("System.IO.Compression") && managerProject.Contains("System.IO.Compression.FileSystem"), "PlugHub Manager must include compression references for update maintenance mode.");
             Require(buildProps.Contains("PlugHubVersion") && buildProps.Contains("PlugHubReleaseTag") && buildProps.Contains("<InformationalVersion>$(PlugHubReleaseTag)</InformationalVersion>"), "shared build props must stamp release tags into assembly informational version.");
             Require(settingsWindow.Contains("AssemblyInformationalVersionAttribute") && settingsWindow.Contains("InformationalVersion") && settingsWindow.Contains("Split('+')"), "About tab and update checks must read the release tag from assembly informational version.");
             Require(settingsWindow.Contains("BuildAboutHeader") && settingsWindow.Contains("AssemblyVersionText()"), "About tab header must show PlugHub followed by the current framework version.");
             Require(settingsWindow.Contains("CreateIconButton(\"refresh\"") && settingsWindow.Contains("CheckFrameworkUpdate"), "About tab must use a compact check-update icon beside the framework version.");
+            Require(settingsWindow.Contains("CreateIconButton(\"uninstall\"") && settingsWindow.Contains("LaunchUninstaller"), "About tab must expose a compact uninstall icon after the update icon.");
             Require(!settingsWindow.Contains("CreateIconButton(\"upgrade\"") && !settingsWindow.Contains("ConfirmFrameworkUpdate"), "About tab must merge upgrade into the check-update icon and remove the separate upgrade action.");
             Require(settingsWindow.Contains("CreateBorderlessIconButtonStyle") && settingsWindow.Contains("Control.BorderThicknessProperty") && settingsWindow.Contains("new Thickness(0)"), "About tab icon buttons must be borderless compact glyph actions.");
             Require(!settingsWindow.Contains("CreateButton(\"检查更新\"") && !settingsWindow.Contains("CreateButton(\"更新框架\""), "About tab must not show the old text check/update buttons.");
             Require(settingsWindow.Contains("ShowFrameworkUpdateDialog") && settingsWindow.Contains("ReleaseNotes"), "Check-update icon must show target version and release notes when an update is available.");
             Require(settingsWindow.Contains("if (task.Result.Success && task.Result.HasUpdate)") && settingsWindow.Contains("ShowFrameworkUpdateDialog(task.Result)") && settingsWindow.Contains("UpdateFramework(task.Result)"), "Check-update action must automatically prompt and start the updater when a newer framework release exists.");
             Require(settingsWindow.Contains("CheckFrameworkUpdate") && settingsWindow.Contains("RefreshStatus"), "About tab update actions must write to the bottom-left status text.");
+            Require(settingsWindow.Contains("ManagerMaintenanceLauncher.StartUpdate") && settingsWindow.Contains("ManagerMaintenanceLauncher.StartUninstall") && settingsWindow.Contains("MaintenanceWaitProcessIds"), "About tab update and uninstall actions must hand off to PlugHub Manager maintenance mode.");
+            Require(managerProgram.Contains("ManagerMaintenanceArguments.Parse") && managerProgram.Contains("ManagerMaintenanceRunner") && managerProgram.Contains("ReadIntOption(args, \"--hostProcessId\")"), "PlugHub Manager must route /update and /uninstall maintenance modes before opening settings and remember the Revit host process id.");
+            Require(maintenanceArguments.Contains("/update") && maintenanceArguments.Contains("/uninstall") && maintenanceArguments.Contains("/payloadZipBase64") && maintenanceArguments.Contains("/waitProcessId"), "Manager maintenance arguments must support update, uninstall, encoded paths, and wait process ids.");
+            Require(maintenanceLauncher.Contains("StartUpdate") && maintenanceLauncher.Contains("CreateTemporaryManagerCopy") && maintenanceLauncher.Contains("Path.GetTempPath()") && maintenanceLauncher.Contains("Directory.GetFiles(sourceDirectory, \"PlugHub.*.dll\")"), "Manager maintenance launcher must run a temporary manager copy with required framework DLLs.");
             Require(service.Contains("https://gitee.com/api/v5/repos/GaoMengGu/PlugHub/tags") && service.Contains("https://api.github.com/repos/GaoMengGu/PlugHub/releases/latest") && service.Contains("PlugHub-Revit2020-"), "framework update service must use Gitee first and GitHub as fallback for latest release assets.");
             Require(service.Contains("DefaultUpdateSources") && service.Contains("GiteeTagList") && service.Contains("GitHubLatestRelease"), "framework update service must name update source types explicitly.");
             Require(service.Contains("AssetDownloadUrls") && service.Contains("DownloadFallbackUrls"), "framework update service must preserve fallback asset URLs for blocked or failed hosts.");
@@ -2985,32 +3002,30 @@ namespace PlugHub.StaticValidation
             Require(!service.Contains("升级图标"), "framework update check message must not reference the removed upgrade icon.");
             Require(releaseClient.Contains("Body = StringValue(root, \"body\")") && releaseClient.Contains("AssetObjects("), "release client must parse release body and release assets from GitHub/Gitee JSON.");
             Require(releaseClient.Contains("ParseGiteeTagsJson") && releaseClient.Contains("CreateGiteeReleaseDownloadUrl"), "release client must parse Gitee tags and generate Gitee release asset URLs.");
-            Require(service.Contains("PlugHub.Updater.exe") && service.Contains("StartUpdater"), "framework update service must start the silent updater instead of copying DLLs in-process.");
-            Require(service.Contains("CreateTemporaryUpdaterCopy") && service.Contains("Path.GetTempPath()") && service.Contains("File.Copy(updaterPath, temporaryUpdaterPath, true)") && service.Contains("FileName = temporaryUpdaterPath"), "framework update service must run a temporary updater copy so the installed PlugHub.Updater.exe can be overwritten.");
+            Require(!service.Contains("PlugHub.Updater.exe") && !service.Contains("StartUpdater") && !service.Contains("CreateTemporaryUpdaterCopy"), "framework update service must not know about a standalone updater executable.");
             Require(releaseClient.Contains("HttpWebRequest") && releaseClient.Contains("UserAgent") && releaseClient.Contains("JavaScriptSerializer"), "release client must use net48-compatible HTTP and JSON APIs.");
             Require(releaseClient.Contains("EnsureSecureTransport()") && releaseAssetDownloader.Contains("EnsureSecureTransport()") && releaseAssetDownloader.Contains("KeepAlive = false"), "framework update HTTP client and asset downloader must harden TLS transport before HTTPS requests.");
-            Require(validator.Contains("PlugHub.Revit2020.dll") && validator.Contains("PlugHub.Framework.dll") && validator.Contains("PlugHub.Contracts.dll") && validator.Contains("PlugHub.Updater.exe") && validator.Contains("PlugHub.SettingsApp.exe") && validator.Contains("PlugHub-Uninstall.exe"), "update package validator must require the core framework DLLs, updater, external settings app, and installed uninstaller.");
+            Require(validator.Contains("PlugHub.Revit2020.dll") && validator.Contains("PlugHub.Framework.dll") && validator.Contains("PlugHub.Contracts.dll") && validator.Contains("PlugHub.Wpf.dll") && !validator.Contains("PlugHub.Manager.dll") && !validator.Contains("PlugHub.Updater.exe") && validator.Contains("PlugHub.Manager.exe") && !validator.Contains("PlugHub-Uninstall.exe"), "update package validator must require the core framework DLLs and manager app only.");
             Require(validator.Contains("IsSafeZipEntry") && validator.Contains("Path.DirectorySeparatorChar"), "update package validator must reject unsafe zip paths.");
-            Require(updaterArguments.Contains("/payloadZip") && updaterArguments.Contains("/installDir") && updaterArguments.Contains("/targetVersion") && updaterArguments.Contains("/revitProcessId"), "updater must accept the documented arguments.");
-            Require(updaterProgram.Contains("FrameworkDllUpdater") && !updaterProgram.Contains("Application.Run"), "updater must run silently without a WinForms window.");
-            Require(updaterRunner.Contains("WaitForExit") && updaterRunner.Contains("CopyFrameworkFilesAndUninstaller"), "updater must wait for Revit exit before copying framework files.");
-            Require(updaterRunner.Contains("PlugHub.Updater.exe") && updaterRunner.Contains("PlugHub.SettingsApp.exe") && updaterRunner.Contains("PlugHub-Uninstall.exe") && updaterRunner.Contains("ShouldCopyUpdateEntry"), "updater must replace the installed updater, external settings app, and uninstaller from the update package.");
-            Require(updaterRunner.Contains("MaxBackupDirectoriesToKeep = 3") && updaterRunner.Contains("PruneOldBackups") && updaterRunner.Contains("GetCreationTimeUtc"), "updater must keep only the latest three update backup directories.");
-            Require(updaterRunner.Contains("PlugHub.addin") && !updaterRunner.Contains("Directory.Delete(installDirectory"), "updater must avoid addin/config/packages replacement and install directory deletion.");
-            Require(githubWorkflow.Contains("Build PlugHub updater") && githubWorkflow.Contains("PlugHub.Updater.csproj") && githubWorkflow.Contains("/p:PlugHubReleaseTag=\"$env:PLUGHUB_RELEASE_TAG\""), "GitHub release workflow must build the updater with the resolved release tag version.");
+            Require(maintenanceRunner.Contains("ManagerFrameworkUpdater") && maintenanceRunner.Contains("ManagerUninstaller") && maintenanceRunner.Contains("PlugHub Manager maintenance failed"), "Manager maintenance runner must dispatch update and uninstall maintenance modes.");
+            Require(managerUpdater.Contains("WaitForExit") && managerUpdater.Contains("CopyFrameworkFiles") && managerUpdater.Contains("ShouldCopyUpdateEntry"), "Manager update maintenance must wait for locking processes before copying framework files.");
+            Require(managerUpdater.Contains("PlugHub.Manager.exe") && managerUpdater.Contains("StaleMaintenanceExecutables") && managerUpdater.Contains("PlugHub.Updater.exe") && managerUpdater.Contains("PlugHub-Uninstall.exe"), "Manager update maintenance must replace Manager and clean stale standalone maintenance executables.");
+            Require(managerUpdater.Contains("MaxBackupDirectoriesToKeep = 3") && managerUpdater.Contains("PruneOldBackups") && managerUpdater.Contains("GetCreationTimeUtc"), "Manager update maintenance must keep only the latest three update backup directories.");
+            Require(!managerUpdater.Contains("PlugHub.addin") && !managerUpdater.Contains("Directory.Delete(installDirectory"), "Manager update maintenance must avoid addin/config/packages replacement and install directory deletion.");
+            Require(maintenanceLogger.Contains("plughub-manager-maintenance-") && maintenanceLogger.Contains("Encoding.UTF8"), "Manager maintenance must write UTF-8 logs with a distinct file prefix.");
+            Require(!githubWorkflow.Contains("Build PlugHub updater") && !githubWorkflow.Contains("PlugHub.Updater.csproj"), "GitHub release workflow must not build a standalone updater.");
             Require(githubWorkflow.Contains("Publish Gitee release") && githubWorkflow.Contains("PlugHub-Revit2020-$tag.zip"), "GitHub release workflow must mirror the built updater package to Gitee release assets.");
-            Require(buildScript.Contains("PlugHub.Updater.csproj") && buildScript.Contains("PlugHub.Updater.exe"), "local Revit 2020 build script must stage PlugHub.Updater.exe.");
-            Require(buildScript.Contains("PlugHub.SettingsApp.csproj") && buildScript.Contains("PlugHub.SettingsApp.exe"), "local Revit 2020 build script must stage PlugHub.SettingsApp.exe.");
-            Require(buildScript.Contains("PlugHub.Uninstaller.csproj") && buildScript.Contains("PlugHub-Uninstall.exe"), "local Revit 2020 build script must stage PlugHub-Uninstall.exe for update packages.");
+            Require(!buildScript.Contains("PlugHub.Updater.csproj") && !buildScript.Contains("PlugHub.Uninstaller.csproj"), "local Revit 2020 build script must not build standalone maintenance executables.");
+            Require(buildScript.Contains("PlugHub.Manager.csproj") && buildScript.Contains("PlugHub.Manager.exe"), "local Revit 2020 build script must stage PlugHub.Manager.exe.");
+            Require(buildScript.Contains("PlugHub.Updater.exe") && buildScript.Contains("PlugHub-Uninstall.exe") && buildScript.Contains("StaleOutputPaths"), "local Revit 2020 build script must remove stale standalone maintenance executables from dist.");
             Require(buildScript.Contains("Resolve-PlugHubReleaseVersion") && buildScript.Contains("/p:PlugHubVersion=$($PlugHubReleaseVersion.Version)") && buildScript.Contains("/p:PlugHubReleaseTag=$($PlugHubReleaseVersion.ReleaseTag)"), "local and release builds must stamp PlugHub DLLs with the release tag version.");
-            Require(readme.Contains("检查更新小图标") && readme.Contains("自动弹出目标版本号") && readme.Contains("框架 DLL、Windows 设置程序、更新程序和卸载程序"), "README must document framework auto-update behavior.");
+            Require(readme.Contains("检查更新小图标") && readme.Contains("卸载小图标") && readme.Contains("自动弹出目标版本号") && readme.Contains("框架 DLL 和 PlugHub Manager") && !readme.Contains("PlugHub.Updater.exe") && !readme.Contains("PlugHub-Uninstall.exe"), "README must document single-Manager framework update and uninstall behavior.");
             Require(readme.Contains("已是最新版本") && readme.Contains("关闭弹窗则退出更新") && !readme.Contains("Revit 实机测试成功"), "README must document updater behavior without claiming Revit real-machine validation.");
 
             ValidateReleaseClientParsesUpdatePackageAndNotes();
             ValidateFrameworkUpdatePackageRejectsUnsafeZip();
-            ValidateFrameworkUpdatePackageRequiresUninstaller();
-            ValidateFrameworkUpdatePackageRequiresUpdater();
-            ValidateFrameworkUpdatePackageRequiresSettingsApp();
+            ValidateFrameworkUpdatePackageAcceptsSingleManagerMaintenancePayload();
+            ValidateFrameworkUpdatePackageRequiresManager();
         }
 
         private static void ValidateReleaseClientParsesUpdatePackageAndNotes()
@@ -3060,34 +3075,24 @@ namespace PlugHub.StaticValidation
             }
         }
 
-        private static void ValidateFrameworkUpdatePackageRequiresUninstaller()
+        private static void ValidateFrameworkUpdatePackageAcceptsSingleManagerMaintenancePayload()
         {
             var validator = new PlugHub.Framework.Updates.FrameworkUpdatePackageValidator();
             var temp = Path.Combine(Path.GetTempPath(), "PlugHubStaticValidation", Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(temp);
             try
             {
-                var zip = Path.Combine(temp, "missing-uninstaller.zip");
+                var zip = Path.Combine(temp, "manager-maintenance.zip");
                 using (var archive = ZipFile.Open(zip, ZipArchiveMode.Create))
                 {
                     archive.CreateEntry("PlugHub.Revit2020.dll");
                     archive.CreateEntry("PlugHub.Framework.dll");
                     archive.CreateEntry("PlugHub.Contracts.dll");
-                    archive.CreateEntry("PlugHub.Updater.exe");
-                    archive.CreateEntry("PlugHub.SettingsApp.exe");
+                    archive.CreateEntry("PlugHub.Wpf.dll");
+                    archive.CreateEntry("PlugHub.Manager.exe");
                 }
 
-                var failed = false;
-                try
-                {
-                    validator.Validate(zip);
-                }
-                catch (InvalidDataException ex) when (ex.Message.Contains("PlugHub-Uninstall.exe"))
-                {
-                    failed = true;
-                }
-
-                Require(failed, "framework update validator must require PlugHub-Uninstall.exe in release packages.");
+                validator.Validate(zip);
             }
             finally
             {
@@ -3095,42 +3100,7 @@ namespace PlugHub.StaticValidation
             }
         }
 
-        private static void ValidateFrameworkUpdatePackageRequiresUpdater()
-        {
-            var validator = new PlugHub.Framework.Updates.FrameworkUpdatePackageValidator();
-            var temp = Path.Combine(Path.GetTempPath(), "PlugHubStaticValidation", Guid.NewGuid().ToString("N"));
-            Directory.CreateDirectory(temp);
-            try
-            {
-                var zip = Path.Combine(temp, "missing-updater.zip");
-                using (var archive = ZipFile.Open(zip, ZipArchiveMode.Create))
-                {
-                    archive.CreateEntry("PlugHub.Revit2020.dll");
-                    archive.CreateEntry("PlugHub.Framework.dll");
-                    archive.CreateEntry("PlugHub.Contracts.dll");
-                    archive.CreateEntry("PlugHub.SettingsApp.exe");
-                    archive.CreateEntry("PlugHub-Uninstall.exe");
-                }
-
-                var failed = false;
-                try
-                {
-                    validator.Validate(zip);
-                }
-                catch (InvalidDataException ex) when (ex.Message.Contains("PlugHub.Updater.exe"))
-                {
-                    failed = true;
-                }
-
-                Require(failed, "framework update validator must require PlugHub.Updater.exe in release packages.");
-            }
-            finally
-            {
-                Directory.Delete(temp, true);
-            }
-        }
-
-        private static void ValidateFrameworkUpdatePackageRequiresSettingsApp()
+        private static void ValidateFrameworkUpdatePackageRequiresManager()
         {
             var validator = new PlugHub.Framework.Updates.FrameworkUpdatePackageValidator();
             var temp = Path.Combine(Path.GetTempPath(), "PlugHubStaticValidation", Guid.NewGuid().ToString("N"));
@@ -3143,8 +3113,7 @@ namespace PlugHub.StaticValidation
                     archive.CreateEntry("PlugHub.Revit2020.dll");
                     archive.CreateEntry("PlugHub.Framework.dll");
                     archive.CreateEntry("PlugHub.Contracts.dll");
-                    archive.CreateEntry("PlugHub.Updater.exe");
-                    archive.CreateEntry("PlugHub-Uninstall.exe");
+                    archive.CreateEntry("PlugHub.Wpf.dll");
                 }
 
                 var failed = false;
@@ -3152,12 +3121,12 @@ namespace PlugHub.StaticValidation
                 {
                     validator.Validate(zip);
                 }
-                catch (InvalidDataException ex) when (ex.Message.Contains("PlugHub.SettingsApp.exe"))
+                catch (InvalidDataException ex) when (ex.Message.Contains("PlugHub.Manager.exe"))
                 {
                     failed = true;
                 }
 
-                Require(failed, "framework update validator must require PlugHub.SettingsApp.exe in release packages.");
+                Require(failed, "framework update validator must require PlugHub.Manager.exe in release packages.");
             }
             finally
             {
@@ -3212,7 +3181,7 @@ namespace PlugHub.StaticValidation
                 "config/sources.json",
                 "config/views.json",
                 "config/feature-combinations.json",
-                "PlugHub.SettingsApp.exe",
+                "PlugHub.Manager.exe",
                 "packages/README.md"
             };
 
@@ -3228,6 +3197,13 @@ namespace PlugHub.StaticValidation
                 staleProject + ".pdb",
                 "PlugHub.BuiltinModule.dll",
                 "PlugHub.BuiltinModule.pdb",
+                "PlugHub.Updater.exe",
+                "PlugHub.Updater.exe.config",
+                "PlugHub.Updater.pdb",
+                "PlugHub.Uninstaller.exe",
+                "PlugHub.Uninstaller.exe.config",
+                "PlugHub.Uninstaller.pdb",
+                "PlugHub-Uninstall.exe",
                 ("config/" + "plugin-sources.json").Replace('/', Path.DirectorySeparatorChar),
                 ("packages/" + "dropins").Replace('/', Path.DirectorySeparatorChar),
                 ("packages/" + "github").Replace('/', Path.DirectorySeparatorChar),

@@ -4,6 +4,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using PlugHub.Contracts.Modules;
 using PlugHub.Framework.Runtime;
+using PlugHub.Wpf;
 
 namespace PlugHub.Revit2020
 {
@@ -16,7 +17,7 @@ namespace PlugHub.Revit2020
             if (string.IsNullOrWhiteSpace(configDirectory))
             {
                 FrameworkStatusWindow.ShowLogs(
-                    "PlugHub 设置",
+                    "PlugHub Manager",
                     "未找到运行时配置目录，请确认框架已正常启动。",
                     new[]
                     {
@@ -33,15 +34,15 @@ namespace PlugHub.Revit2020
 
             try
             {
-                if (new ExternalSettingsAppLauncher().TryLaunch(configDirectory, out var diagnostic))
+                if (new ExternalManagerLauncher().TryLaunch(configDirectory, out var diagnostic))
                 {
                     return Result.Succeeded;
                 }
 
                 message = diagnostic;
                 FrameworkStatusWindow.ShowLogs(
-                    "PlugHub 设置",
-                    "打开 Windows 设置程序失败：" + diagnostic,
+                    "PlugHub Manager",
+                    "打开 PlugHub Manager 失败：" + diagnostic,
                     new[]
                     {
                         new DiagnosticMessage
@@ -58,8 +59,8 @@ namespace PlugHub.Revit2020
             {
                 message = ex.Message;
                 FrameworkStatusWindow.ShowLogs(
-                    "PlugHub 设置",
-                    "打开设置失败：" + ex.Message,
+                    "PlugHub Manager",
+                    "打开 PlugHub Manager 失败：" + ex.Message,
                     new[]
                     {
                         new DiagnosticMessage

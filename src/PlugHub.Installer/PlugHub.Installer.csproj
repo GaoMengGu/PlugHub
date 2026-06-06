@@ -18,7 +18,4 @@
   <ItemGroup Condition="'$(InstallerPayloadZip)' != ''">
     <EmbeddedResource Include="$(InstallerPayloadZip)" LogicalName="PlugHubPayload.zip" />
   </ItemGroup>
-  <ItemGroup Condition="'$(InstallerUninstallerExe)' != ''">
-    <EmbeddedResource Include="$(InstallerUninstallerExe)" LogicalName="PlugHubUninstaller.exe" />
-  </ItemGroup>
 </Project>

@@ -39,6 +39,7 @@
   <ItemGroup>
     <ProjectReference Include="..\PlugHub.Contracts\PlugHub.Contracts.csproj" />
     <ProjectReference Include="..\PlugHub.Framework\PlugHub.Framework.csproj" />
+    <ProjectReference Include="..\PlugHub.Wpf\PlugHub.Wpf.csproj" />
   </ItemGroup>
 
   <ItemGroup>

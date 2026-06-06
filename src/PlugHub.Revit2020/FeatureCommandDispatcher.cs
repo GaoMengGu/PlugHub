@@ -6,6 +6,7 @@ using System.Linq;
 using PlugHub.Contracts.Modules;
 using PlugHub.Framework.Diagnostics;
 using PlugHub.Framework.Runtime;
+using PlugHub.Wpf;
 
 namespace PlugHub.Revit2020
 {

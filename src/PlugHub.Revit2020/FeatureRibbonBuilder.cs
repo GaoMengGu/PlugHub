@@ -9,6 +9,7 @@ using System.Windows.Media.Imaging;
 using Autodesk.Revit.UI;
 using PlugHub.Framework.Composition;
 using PlugHub.Framework.Configuration;
+using PlugHub.Wpf;
 
 namespace PlugHub.Revit2020
 {
@@ -65,17 +66,9 @@ namespace PlugHub.Revit2020
                 "PlugHub_Framework_Settings",
                 "设置",
                 typeof(FrameworkSettingsCommand),
-                "打开 PlugHub Windows 设置程序。",
-                "在 Windows 下打开完整设置窗口，用于管理插件、仓库、更新和 Ribbon 布局。",
+                "打开 PlugHub Manager。",
+                "在 Windows 下打开完整管理器，用于管理插件、仓库、更新、卸载和 Ribbon 布局。",
                 "settings");
-            AddFrameworkButton(
-                panel,
-                "PlugHub_Framework_Status",
-                "状态",
-                typeof(FrameworkStatusCommand),
-                "查看当前 PlugHub 运行状态。",
-                "显示当前 Revit 会话已加载的配置、模块、功能和日志数量；配置变更通常需要重启 Revit 后重绘 Ribbon。",
-                "diagnostics");
         }
 
         private void AddFrameworkButton(RibbonPanel panel, string buttonName, string text, Type commandType, string tooltip, string longDescription, string iconKey)

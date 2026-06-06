@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -182,70 +181,6 @@ namespace PlugHub.Framework.Updates
             return _releaseClient.GetLatestRelease(source.Uri);
         }
 
-        public FrameworkUpdateOperationResult StartUpdater(string installDirectory, string packagePath, string targetVersion, int revitProcessId)
-        {
-            try
-            {
-                if (string.IsNullOrWhiteSpace(installDirectory))
-                {
-                    throw new InvalidOperationException("安装目录为空。");
-                }
-
-                if (string.IsNullOrWhiteSpace(packagePath) || !File.Exists(packagePath))
-                {
-                    throw new FileNotFoundException("框架更新包不存在。", packagePath);
-                }
-
-                _validator.Validate(packagePath);
-                var updaterPath = Path.Combine(installDirectory, "PlugHub.Updater.exe");
-                if (!File.Exists(updaterPath))
-                {
-                    throw new FileNotFoundException("PlugHub.Updater.exe 不存在。", updaterPath);
-                }
-
-                var temporaryUpdaterPath = CreateTemporaryUpdaterCopy(updaterPath);
-                var arguments = string.Join(" ", new[]
-                {
-                    "/payloadZipBase64", ToBase64(packagePath),
-                    "/installDirBase64", ToBase64(installDirectory),
-                    "/targetVersionBase64", ToBase64(targetVersion),
-                    "/revitProcessId", revitProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                });
-
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = temporaryUpdaterPath,
-                    Arguments = arguments,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    WorkingDirectory = installDirectory
-                });
-
-                return new FrameworkUpdateOperationResult
-                {
-                    Success = true,
-                    Message = "框架更新已准备好。请重启 Revit，关闭后将静默覆盖框架 DLL。"
-                };
-            }
-            catch (Exception ex)
-            {
-                return new FrameworkUpdateOperationResult
-                {
-                    Success = false,
-                    Message = "启动框架更新失败：" + ex.Message
-                };
-            }
-        }
-
-        private static string CreateTemporaryUpdaterCopy(string updaterPath)
-        {
-            var temporaryDirectory = Path.Combine(Path.GetTempPath(), "PlugHub", "updater", Guid.NewGuid().ToString("N"));
-            Directory.CreateDirectory(temporaryDirectory);
-            var temporaryUpdaterPath = Path.Combine(temporaryDirectory, Path.GetFileName(updaterPath));
-            File.Copy(updaterPath, temporaryUpdaterPath, true);
-            return temporaryUpdaterPath;
-        }
-
         private static FrameworkUpdateCheckResult FailureCheck(string currentVersion, string message)
         {
             return new FrameworkUpdateCheckResult
@@ -354,11 +289,6 @@ namespace PlugHub.Framework.Updates
             }
 
             return string.IsNullOrWhiteSpace(value) ? "unknown" : value;
-        }
-
-        private static string ToBase64(string value)
-        {
-            return Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(value ?? string.Empty));
         }
 
         private enum FrameworkUpdateSourceKind

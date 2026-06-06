@@ -12,14 +12,13 @@ namespace PlugHub.Framework.Updates
         {
             "PlugHub.Revit2020.dll",
             "PlugHub.Framework.dll",
-            "PlugHub.Contracts.dll"
+            "PlugHub.Contracts.dll",
+            "PlugHub.Wpf.dll"
         };
 
         private static readonly string[] RequiredRootFiles =
         {
-            "PlugHub.Updater.exe",
-            "PlugHub.SettingsApp.exe",
-            "PlugHub-Uninstall.exe"
+            "PlugHub.Manager.exe"
         };
 
         public void Validate(string zipPath)

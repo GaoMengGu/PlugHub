@@ -121,9 +121,8 @@ namespace PlugHub.Installer
 
                 _statusLabel.Text = "Registering Revit addin...";
                 var addinPath = AddinManifestWriter.Install(installDirectory);
-                var uninstallerPath = Path.Combine(Path.GetFullPath(installDirectory), "PlugHub-Uninstall.exe");
 
-                _statusLabel.Text = "Installed. Addin: " + addinPath + " Uninstaller: " + uninstallerPath;
+                _statusLabel.Text = "Installed. Addin: " + addinPath;
                 MessageBox.Show(this, "PlugHub was installed successfully.", Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)

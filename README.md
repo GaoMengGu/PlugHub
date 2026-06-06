@@ -1,6 +1,6 @@
 # PlugHub Revit 2020 用户指南
 
-PlugHub 是面向建模用户的 Revit 2020 插件管理框架。它把多个插件集中到一个 `PlugHub` Ribbon 页签里，让用户可以在 Windows 设置程序中管理功能按钮、插件包、仓库源和框架更新。Revit 中只保留设置启动、状态查看和插件命令入口。
+PlugHub 是面向建模用户的 Revit 2020 插件管理框架。它把多个插件集中到一个 `PlugHub` Ribbon 页签里，让用户可以在 PlugHub Manager 中管理功能按钮、插件包、仓库源、框架更新和卸载。Revit 中只保留「设置」轻入口和插件命令入口。
 
 ## 框架概览
 
@@ -17,7 +17,7 @@ PlugHub 的作用不是提供某一个固定建模命令，而是提供一个统
 - 给不同项目或团队整理一套稳定的插件工具栏。
 - 只安装当前需要的插件，减少 Ribbon 上的无关按钮。
 - 把插件来源集中到仓库源，避免手工到处复制 DLL。
-- 在更新框架时尽量只替换框架 DLL、设置程序、更新程序和卸载程序，不覆盖本地插件和配置。
+- 在更新框架时尽量只替换框架 DLL 和 PlugHub Manager，不覆盖本地插件和配置。
 
 ## 安装
 
@@ -39,7 +39,7 @@ C:\ProgramData\Autodesk\Revit\Addins\2020\PlugHub.addin
 D:\Program Files\PlugHub
 ```
 
-安装完成后，目录中会包含 `PlugHub.SettingsApp.exe` 和 `PlugHub-Uninstall.exe`。前者用于在 Windows 下打开 PlugHub 设置窗口，后者用于卸载 PlugHub。
+安装完成后，目录中会包含 `PlugHub.Manager.exe`。它用于在 Windows 下打开 PlugHub Manager，也负责「关于」页签里的更新和卸载维护流程。
 
 ### 文件夹权限
 
@@ -53,15 +53,16 @@ D:\Program Files\PlugHub
 
 ## 更新
 
-打开 Revit 后，进入 `PlugHub` 页签，点击「设置」。PlugHub 会启动 Windows 设置程序。进入「关于」页签后：
+打开 Revit 后，进入 `PlugHub` 页签，点击「设置」。PlugHub 会启动 PlugHub Manager。进入「关于」页签后：
 
 - 左上角会显示 `PlugHub` 和当前框架版本。
 - 版本后方有一个检查更新小图标。
+- 检查更新小图标后方有一个卸载小图标，用于启动 Manager 卸载维护流程。
 - 点击后，如果已是最新版本，只在窗口左下角提示结果。
 - 如果发现新版本，会自动弹出目标版本号和 release 更新信息。
-- 点击确认后，PlugHub 会下载更新包并启动静默更新程序；关闭弹窗则退出更新。
+- 点击确认后，PlugHub 会下载更新包并启动 Manager 维护流程；关闭弹窗则退出更新。
 
-框架更新只覆盖框架 DLL、Windows 设置程序、更新程序和卸载程序，不覆盖这些内容：
+框架更新只覆盖框架 DLL 和 PlugHub Manager，不覆盖这些内容：
 
 - `PlugHub.addin`
 - `packages`
@@ -69,7 +70,7 @@ D:\Program Files\PlugHub
 - 仓库缓存
 - 日志
 
-当前 Revit 会话不会热替换已加载 DLL。确认更新后，左下角会提示需要重启 Revit；关闭并重新打开 Revit 后，新框架 DLL、`PlugHub.SettingsApp.exe`、`PlugHub.Updater.exe` 和 `PlugHub-Uninstall.exe` 才会生效。
+当前 Revit 会话不会热替换已加载 DLL。确认更新后，Manager 会关闭并启动临时维护进程；关闭并重新打开 Revit 后，新框架 DLL 和 `PlugHub.Manager.exe` 才会生效。
 
 ## 布局设置
 
@@ -77,7 +78,7 @@ D:\Program Files\PlugHub
 
 常见操作：
 
-- 点击 `PlugHub` 页签中的「设置」，在 Windows 设置程序中进入「布局」页签。
+- 点击 `PlugHub` 页签中的「设置」，在 PlugHub Manager 中进入「布局」页签。
 - 在可用功能列表中选择插件功能。
 - 将功能拖拽到目标分组或面板中。
 - 选中已有按钮后，可以修改显示名、分组、按钮大小和图标。
@@ -101,7 +102,7 @@ https://gitee.com/GaoMengGu/PlugHub_Packages
 
 设置方法：
 
-1. 打开 Windows 设置程序，进入「仓库源」或「仓库」相关页面。
+1. 打开 PlugHub Manager，进入「仓库源」或「仓库」相关页面。
 2. 新增或编辑仓库源，填写名称、地址和分支。
 3. 私有仓库需要填写 Token；公开仓库通常不需要。
 4. 保存后点击「同步仓库源」。
@@ -127,7 +128,7 @@ PlugHub 通过 HTTP archive 同步仓库源，普通建模用户不需要安装 
 
 ### 手动放入 packages
 
-如果插件包由团队内部直接提供，也可以手动放入安装目录下的 `packages` 文件夹。手动安装后需要重新打开 Revit，或在 Windows 设置程序中重新加载配置。
+如果插件包由团队内部直接提供，也可以手动放入安装目录下的 `packages` 文件夹。手动安装后需要重新打开 Revit，或在 PlugHub Manager 中重新加载配置。
 
 注意：
 

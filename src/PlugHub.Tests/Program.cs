@@ -1,12 +1,15 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
+using System.Reflection;
 using PlugHub.Contracts.Features;
 using PlugHub.Framework.Composition;
 using PlugHub.Framework.Configuration;
 using PlugHub.Framework.Diagnostics;
 using PlugHub.Framework.Packages;
+using PlugHub.Framework.Updates;
 
 namespace PlugHub.Tests
 {
@@ -30,6 +33,11 @@ namespace PlugHub.Tests
                 new TestCase("package repository service rejects pending manifest backup path escape", PackageRepositoryServiceRejectsPendingManifestBackupPathEscape),
                 new TestCase("ribbon layout composer builds configured layout and default fallback", RibbonLayoutComposerBuildsConfiguredLayoutAndDefaultFallback),
                 new TestCase("ribbon layout composer filters invalid container children", RibbonLayoutComposerFiltersInvalidContainerChildren),
+                new TestCase("framework update package accepts single manager maintenance payload", FrameworkUpdatePackageAcceptsSingleManagerMaintenancePayload),
+                new TestCase("framework update package rejects missing manager maintenance payload", FrameworkUpdatePackageRejectsMissingManagerMaintenancePayload),
+                new TestCase("manager uninstaller accepts local Revit build output directory", ManagerUninstallerAcceptsLocalRevitBuildOutputDirectory),
+                new TestCase("manager uninstaller rejects non PlugHub directory", ManagerUninstallerRejectsNonPlugHubDirectory),
+                new TestCase("manager maintenance logger does not recreate deleted install directory", ManagerMaintenanceLoggerDoesNotRecreateDeletedInstallDirectory),
                 new TestCase("sensitive text redactor masks repository tokens", SensitiveTextRedactorMasksRepositoryTokens)
             };
 
@@ -695,6 +703,114 @@ namespace PlugHub.Tests
             RequireContains(redacted, "apiKey=\"***");
         }
 
+        private static void FrameworkUpdatePackageAcceptsSingleManagerMaintenancePayload()
+        {
+            using (var temp = TempDirectory.Create())
+            {
+                var zipPath = Path.Combine(temp.Path, "framework.zip");
+                WriteUpdatePackage(zipPath, new[]
+                {
+                    "PlugHub.Revit2020.dll",
+                    "PlugHub.Framework.dll",
+                    "PlugHub.Contracts.dll",
+                    "PlugHub.Wpf.dll",
+                    "PlugHub.Manager.exe"
+                });
+
+                new FrameworkUpdatePackageValidator().Validate(zipPath);
+            }
+        }
+
+        private static void FrameworkUpdatePackageRejectsMissingManagerMaintenancePayload()
+        {
+            using (var temp = TempDirectory.Create())
+            {
+                var zipPath = Path.Combine(temp.Path, "framework.zip");
+                WriteUpdatePackage(zipPath, new[]
+                {
+                    "PlugHub.Revit2020.dll",
+                    "PlugHub.Framework.dll",
+                    "PlugHub.Contracts.dll",
+                    "PlugHub.Wpf.dll"
+                });
+
+                var failed = false;
+                try
+                {
+                    new FrameworkUpdatePackageValidator().Validate(zipPath);
+                }
+                catch (InvalidDataException ex) when (ex.Message.Contains("PlugHub.Manager.exe"))
+                {
+                    failed = true;
+                }
+
+                Require(failed, "framework update validator must require PlugHub.Manager.exe.");
+            }
+        }
+
+        private static void ManagerMaintenanceLoggerDoesNotRecreateDeletedInstallDirectory()
+        {
+            using (var temp = TempDirectory.Create())
+            {
+                var installDirectory = Path.Combine(temp.Path, "PlugHub");
+                Directory.CreateDirectory(installDirectory);
+
+                var managerAssembly = Assembly.Load("PlugHub.Manager");
+                var loggerType = managerAssembly.GetType("PlugHub.Manager.Maintenance.ManagerMaintenanceLogger", true)!;
+                var logger = Activator.CreateInstance(
+                    loggerType,
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                    null,
+                    new object[] { installDirectory },
+                    null)!;
+
+                Directory.Delete(installDirectory, true);
+                var info = loggerType.GetMethod("Info", BindingFlags.Instance | BindingFlags.Public)!;
+                info.Invoke(logger, new object[] { "after uninstall" });
+
+                Require(!Directory.Exists(installDirectory), "maintenance logger must not recreate the deleted PlugHub install directory.");
+            }
+        }
+
+        private static void ManagerUninstallerAcceptsLocalRevitBuildOutputDirectory()
+        {
+            using (var temp = TempDirectory.Create())
+            {
+                var installDirectory = Path.Combine(temp.Path, "dist", "Revit2020");
+                WriteText(Path.Combine(installDirectory, "PlugHub.addin"), "addin");
+                WriteText(Path.Combine(installDirectory, "PlugHub.Revit2020.dll"), "revit");
+                WriteText(Path.Combine(installDirectory, "PlugHub.Framework.dll"), "framework");
+                WriteText(Path.Combine(installDirectory, "PlugHub.Contracts.dll"), "contracts");
+                WriteText(Path.Combine(installDirectory, "PlugHub.Wpf.dll"), "wpf");
+                WriteText(Path.Combine(installDirectory, "PlugHub.Manager.exe"), "manager");
+
+                var validated = ValidateManagerUninstallDirectory(installDirectory);
+
+                Require(SamePath(validated, installDirectory), "local Revit build output directory must be accepted as a PlugHub install root.");
+            }
+        }
+
+        private static void ManagerUninstallerRejectsNonPlugHubDirectory()
+        {
+            using (var temp = TempDirectory.Create())
+            {
+                var installDirectory = Path.Combine(temp.Path, "dist", "Revit2020");
+                Directory.CreateDirectory(installDirectory);
+
+                var failed = false;
+                try
+                {
+                    ValidateManagerUninstallDirectory(installDirectory);
+                }
+                catch (InvalidOperationException ex) when (ex.Message.Contains("not a PlugHub install root"))
+                {
+                    failed = true;
+                }
+
+                Require(failed, "manager uninstaller must reject directories without PlugHub install markers.");
+            }
+        }
+
         private static string WriteRepositoryPackage(string repositoryDirectory, string version, string assemblyContent)
         {
             var manifestPath = Path.Combine(repositoryDirectory, "packages.json");
@@ -761,6 +877,22 @@ namespace PlugHub.Tests
             File.WriteAllText(path, text);
         }
 
+        private static void WriteUpdatePackage(string zipPath, IEnumerable<string> entries)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(zipPath) ?? string.Empty);
+            using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+            {
+                foreach (var entry in entries)
+                {
+                    var archiveEntry = archive.CreateEntry(entry);
+                    using (var writer = new StreamWriter(archiveEntry.Open()))
+                    {
+                        writer.Write(entry);
+                    }
+                }
+            }
+        }
+
         private static void RequireFileExists(string path)
         {
             Require(File.Exists(path), "expected file to exist: " + path);
@@ -792,6 +924,21 @@ namespace PlugHub.Tests
         private static bool SamePath(string left, string right)
         {
             return string.Equals(Path.GetFullPath(left), Path.GetFullPath(right), StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string ValidateManagerUninstallDirectory(string installDirectory)
+        {
+            var managerAssembly = Assembly.Load("PlugHub.Manager");
+            var uninstallerType = managerAssembly.GetType("PlugHub.Manager.Maintenance.ManagerUninstaller", true)!;
+            var validate = uninstallerType.GetMethod("ValidateInstallDirectory", BindingFlags.Static | BindingFlags.NonPublic)!;
+            try
+            {
+                return (string)validate.Invoke(null, new object[] { installDirectory })!;
+            }
+            catch (TargetInvocationException ex) when (ex.InnerException != null)
+            {
+                throw new InvalidOperationException(ex.InnerException.Message, ex.InnerException);
+            }
         }
 
         private sealed class TestCase
