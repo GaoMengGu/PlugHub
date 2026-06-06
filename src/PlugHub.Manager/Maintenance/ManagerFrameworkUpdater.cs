@@ -12,13 +12,24 @@ namespace PlugHub.Manager.Maintenance
         private const int MaxBackupDirectoriesToKeep = 3;
         private const string InstalledManagerName = "PlugHub.Manager.exe";
 
-        private static readonly string[] StaleMaintenanceExecutables =
+        private static readonly string[] RequiredInstallMarkers =
+        {
+            "PlugHub.Revit2020.dll",
+            "PlugHub.Framework.dll",
+            "PlugHub.Contracts.dll",
+            "PlugHub.Wpf.dll",
+            InstalledManagerName
+        };
+
+        private static readonly string[] StaleMaintenanceArtifacts =
         {
             "PlugHub.Updater.exe",
             "PlugHub.Updater.exe.config",
+            "PlugHub.Updater.pdb",
             "PlugHub-Uninstall.exe",
             "PlugHub.Uninstaller.exe",
-            "PlugHub.Uninstaller.exe.config"
+            "PlugHub.Uninstaller.exe.config",
+            "PlugHub.Uninstaller.pdb"
         };
 
         private readonly ManagerMaintenanceLogger _logger;
@@ -38,7 +49,7 @@ namespace PlugHub.Manager.Maintenance
 
             WaitForProcesses(args.WaitProcessIds);
             CopyFrameworkFiles(args.PayloadZip, installDirectory, args.TargetVersion);
-            DeleteStaleMaintenanceExecutables(installDirectory);
+            DeleteStaleMaintenanceArtifacts(installDirectory);
         }
 
         private void WaitForProcesses(IEnumerable<int> processIds)
@@ -108,9 +119,9 @@ namespace PlugHub.Manager.Maintenance
                 || string.Equals(normalized, InstalledManagerName, StringComparison.OrdinalIgnoreCase);
         }
 
-        private void DeleteStaleMaintenanceExecutables(string installDirectory)
+        private void DeleteStaleMaintenanceArtifacts(string installDirectory)
         {
-            foreach (var name in StaleMaintenanceExecutables)
+            foreach (var name in StaleMaintenanceArtifacts)
             {
                 var path = Path.Combine(installDirectory, name);
                 if (!File.Exists(path)) continue;
@@ -118,11 +129,11 @@ namespace PlugHub.Manager.Maintenance
                 try
                 {
                     File.Delete(path);
-                    _logger.Info("Deleted stale maintenance executable: " + path);
+                    _logger.Info("Deleted stale maintenance artifact: " + path);
                 }
                 catch (Exception ex)
                 {
-                    _logger.Info("Failed to delete stale maintenance executable: " + path + " - " + ex.Message);
+                    _logger.Info("Failed to delete stale maintenance artifact: " + path + " - " + ex.Message);
                 }
             }
         }
@@ -164,14 +175,30 @@ namespace PlugHub.Manager.Maintenance
 
         private static string SafeInstallDirectory(string installDirectory)
         {
+            if (string.IsNullOrWhiteSpace(installDirectory))
+            {
+                throw new InvalidOperationException("Install directory is required.");
+            }
+
             var full = Path.GetFullPath(installDirectory ?? string.Empty).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
             var root = Path.GetPathRoot(full)?.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            if (string.IsNullOrWhiteSpace(full) || string.Equals(full, root, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(full, root, StringComparison.OrdinalIgnoreCase))
             {
                 throw new InvalidOperationException("Refusing to update an unsafe install directory: " + installDirectory);
             }
 
+            if (!ContainsPlugHubInstallMarkers(full))
+            {
+                throw new InvalidOperationException("Refusing to update a directory that is not a PlugHub install root: " + full);
+            }
+
             return full;
+        }
+
+        private static bool ContainsPlugHubInstallMarkers(string directory)
+        {
+            return Directory.Exists(directory)
+                && Array.TrueForAll(RequiredInstallMarkers, marker => File.Exists(Path.Combine(directory, marker)));
         }
 
         private static string SafeSegment(string value)

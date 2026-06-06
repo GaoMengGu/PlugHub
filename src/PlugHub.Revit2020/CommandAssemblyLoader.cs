@@ -206,21 +206,24 @@ namespace PlugHub.Revit2020
                 return;
             }
 
+            var runtimeCacheRoot = Path.Combine(plugHubBaseDirectory, RuntimeCacheDirectoryName);
             foreach (var directory in pendingDirectories.Where(line => !string.IsNullOrWhiteSpace(line)).Distinct(StringComparer.OrdinalIgnoreCase))
             {
-                if (!Directory.Exists(directory)) continue;
+                var fullDirectory = Path.GetFullPath(directory);
+                if (!IsUnderDirectory(runtimeCacheRoot, fullDirectory)) continue;
+                if (!Directory.Exists(fullDirectory)) continue;
 
                 try
                 {
-                    Directory.Delete(directory, true);
+                    Directory.Delete(fullDirectory, true);
                 }
                 catch (IOException)
                 {
-                    remaining.Add(directory);
+                    remaining.Add(fullDirectory);
                 }
                 catch (UnauthorizedAccessException)
                 {
-                    remaining.Add(directory);
+                    remaining.Add(fullDirectory);
                 }
             }
 
