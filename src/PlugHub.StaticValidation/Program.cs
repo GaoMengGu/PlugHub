@@ -2236,11 +2236,12 @@ namespace PlugHub.StaticValidation
             {
                 var store = new PlugHub.Framework.Packages.PendingPackageOperationStore();
                 var service = new PlugHub.Framework.Packages.PackageRepositoryService();
-                var installA = Path.Combine(baseDirectory, "install-a");
-                var installB = Path.Combine(baseDirectory, "install-b");
-                var staging = Path.Combine(baseDirectory, "staging-a");
-                var stagingSameA = Path.Combine(baseDirectory, "staging-same-a");
-                var stagingSameB = Path.Combine(baseDirectory, "staging-same-b");
+                var installA = Path.Combine(baseDirectory, "packages", "install-a");
+                var installB = Path.Combine(baseDirectory, "packages", "install-b");
+                var stagingRoot = Path.Combine(baseDirectory, "repository-cache", ".package-install");
+                var staging = Path.Combine(stagingRoot, "staging-a");
+                var stagingSameA = Path.Combine(stagingRoot, "staging-same-a");
+                var stagingSameB = Path.Combine(stagingRoot, "staging-same-b");
 
                 Directory.CreateDirectory(stagingSameA);
                 Directory.CreateDirectory(stagingSameB);
@@ -2280,7 +2281,7 @@ namespace PlugHub.StaticValidation
                 Require(remaining.Count == 1 && remaining[0].PackageId == "shared-package" && remaining[0].ModuleId == "module-b", "cancel pending operation must not remove another module from the same package.");
                 Require(!Directory.Exists(staging), "cancel pending update must remove the staging directory.");
 
-                var deleteInstall = Path.Combine(baseDirectory, "delete-install");
+                var deleteInstall = Path.Combine(baseDirectory, "packages", "delete-install");
                 Directory.CreateDirectory(deleteInstall);
                 store.AddOrReplace(baseDirectory, PlugHub.Framework.Packages.PendingPackageOperation.Delete("delete-package", "delete-module", deleteInstall));
                 var cancelDelete = service.CancelPendingOperation(baseDirectory, "delete-package", "delete-module");

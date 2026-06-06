@@ -61,7 +61,7 @@ namespace PlugHub.Framework.Packages
             {
                 if (string.Equals(operation.Operation, "delete", StringComparison.OrdinalIgnoreCase))
                 {
-                    if (!TryApplyPendingDelete(operation, out var error))
+                    if (!TryApplyPendingDelete(baseDirectory, operation, out var error))
                     {
                         remaining.Add(operation);
                         AddDiagnostic(diagnostics, operation.PackageId, "PH-PACKAGE-PENDING-DELETE", "延迟卸载插件包失败，下次启动会重试: " + error, DiagnosticSeverity.Warning);
@@ -119,6 +119,11 @@ namespace PlugHub.Framework.Packages
 
             if (string.Equals(operation.Operation, "update", StringComparison.OrdinalIgnoreCase))
             {
+                if (!TryValidatePendingStagingDirectory(baseDirectory, operation, out var stagingError))
+                {
+                    return PackageRepositoryOperationResult.Failed("Invalid pending update staging directory: " + stagingError);
+                }
+
                 DeleteDirectoryQuietly(operation.StagingDirectory);
             }
 
@@ -461,9 +466,14 @@ namespace PlugHub.Framework.Packages
             }
         }
 
-        private bool TryApplyPendingDelete(PendingPackageOperation operation, out string error)
+        private bool TryApplyPendingDelete(string baseDirectory, PendingPackageOperation operation, out string error)
         {
             error = string.Empty;
+            if (!TryValidatePendingInstallDirectory(baseDirectory, operation, out error))
+            {
+                return false;
+            }
+
             if (string.IsNullOrWhiteSpace(operation.InstallDirectory) || !Directory.Exists(operation.InstallDirectory))
             {
                 return true;
@@ -495,6 +505,12 @@ namespace PlugHub.Framework.Packages
         private bool TryApplyPendingUpdate(string baseDirectory, PendingPackageOperation operation, out string error)
         {
             error = string.Empty;
+            if (!TryValidatePendingInstallDirectory(baseDirectory, operation, out error)
+                || !TryValidatePendingStagingDirectory(baseDirectory, operation, out error))
+            {
+                return false;
+            }
+
             if (string.IsNullOrWhiteSpace(operation.StagingDirectory) || !Directory.Exists(operation.StagingDirectory))
             {
                 return true;
@@ -757,6 +773,58 @@ namespace PlugHub.Framework.Packages
         private bool TryWriteManifest(string manifestPath, Dictionary<string, object> root, out string error)
         {
             return _manifestReader.TryWriteManifest(manifestPath, root, out error);
+        }
+
+        private static bool TryValidatePendingInstallDirectory(string baseDirectory, PendingPackageOperation operation, out string error)
+        {
+            error = string.Empty;
+            if (operation == null)
+            {
+                error = "Pending operation is missing.";
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(operation.InstallDirectory))
+            {
+                error = "Pending operation install directory is missing.";
+                return false;
+            }
+
+            var installRoot = InstalledPackagesRoot(baseDirectory);
+            var installDirectory = Path.GetFullPath(operation.InstallDirectory);
+            if (!IsUnderDirectory(installRoot, installDirectory))
+            {
+                error = "Pending operation install directory is outside packages: " + operation.InstallDirectory;
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool TryValidatePendingStagingDirectory(string baseDirectory, PendingPackageOperation operation, out string error)
+        {
+            error = string.Empty;
+            if (operation == null)
+            {
+                error = "Pending operation is missing.";
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(operation.StagingDirectory))
+            {
+                error = "Pending operation staging directory is missing.";
+                return false;
+            }
+
+            var stagingRoot = TemporaryPackageRoot(baseDirectory);
+            var stagingDirectory = Path.GetFullPath(operation.StagingDirectory);
+            if (!IsUnderDirectory(stagingRoot, stagingDirectory))
+            {
+                error = "Pending operation staging directory is outside package-install cache: " + operation.StagingDirectory;
+                return false;
+            }
+
+            return true;
         }
 
         private static bool IsInstalledPackagesRoot(string directory)

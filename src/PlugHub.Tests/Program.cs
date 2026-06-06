@@ -35,6 +35,9 @@ namespace PlugHub.Tests
                 new TestCase("package repository service partially cleans duplicate multi module manifests", PackageRepositoryServicePartiallyCleansDuplicateMultiModuleManifests),
                 new TestCase("package repository service cancels locked uninstall and restores manifest", PackageRepositoryServiceCancelsLockedUninstallAndRestoresManifest),
                 new TestCase("package repository service rejects pending manifest backup path escape", PackageRepositoryServiceRejectsPendingManifestBackupPathEscape),
+                new TestCase("package repository service rejects pending delete path escape", PackageRepositoryServiceRejectsPendingDeletePathEscape),
+                new TestCase("package repository service rejects pending update staging path escape", PackageRepositoryServiceRejectsPendingUpdateStagingPathEscape),
+                new TestCase("package repository service rejects cancelled update staging path escape", PackageRepositoryServiceRejectsCancelledUpdateStagingPathEscape),
                 new TestCase("ribbon layout composer builds configured layout and default fallback", RibbonLayoutComposerBuildsConfiguredLayoutAndDefaultFallback),
                 new TestCase("ribbon layout composer filters invalid container children", RibbonLayoutComposerFiltersInvalidContainerChildren),
                 new TestCase("framework update package accepts single manager maintenance payload", FrameworkUpdatePackageAcceptsSingleManagerMaintenancePayload),
@@ -615,6 +618,75 @@ namespace PlugHub.Tests
                 Require(!cancel.Success, "cancel must reject manifest backup paths outside packages.");
                 Require(store.Read(baseDirectory).Count == 1, "rejected cancel must leave the pending operation for retry or manual repair.");
                 Require(Directory.Exists(stagingDirectory), "rejected cancel must not delete staging before manifest backups are restored.");
+            }
+        }
+
+        private static void PackageRepositoryServiceRejectsPendingDeletePathEscape()
+        {
+            using (var temp = TempDirectory.Create())
+            {
+                var baseDirectory = Path.Combine(temp.Path, "plughub");
+                var outsideDirectory = Path.Combine(temp.Path, "outside-delete");
+                WriteText(Path.Combine(outsideDirectory, "keep.txt"), "keep");
+
+                var store = new PendingPackageOperationStore();
+                store.Write(baseDirectory, new[]
+                {
+                    PendingPackageOperation.Delete("module.escape", "module.escape", outsideDirectory)
+                });
+
+                var diagnostics = new PackageRepositoryService().ApplyPendingOperations(baseDirectory);
+
+                Require(Directory.Exists(outsideDirectory), "pending delete must not remove directories outside packages.");
+                Require(diagnostics.Any(diagnostic => diagnostic.Code == "PH-PACKAGE-PENDING-DELETE"), "rejected pending delete must report a stable diagnostic.");
+                Require(store.Read(baseDirectory).Count == 1, "rejected pending delete must remain queued for manual repair.");
+            }
+        }
+
+        private static void PackageRepositoryServiceRejectsPendingUpdateStagingPathEscape()
+        {
+            using (var temp = TempDirectory.Create())
+            {
+                var baseDirectory = Path.Combine(temp.Path, "plughub");
+                var installDirectory = Path.Combine(baseDirectory, "packages", "module.escape");
+                var outsideStagingDirectory = Path.Combine(temp.Path, "outside-staging");
+                WriteText(Path.Combine(outsideStagingDirectory, "packages.json"), "{}");
+
+                var store = new PendingPackageOperationStore();
+                store.Write(baseDirectory, new[]
+                {
+                    PendingPackageOperation.Update("module.escape", "module.escape", installDirectory, outsideStagingDirectory)
+                });
+
+                var diagnostics = new PackageRepositoryService().ApplyPendingOperations(baseDirectory);
+
+                Require(Directory.Exists(outsideStagingDirectory), "pending update must not move staging directories outside the package-install cache.");
+                Require(!Directory.Exists(installDirectory), "pending update must not install from an escaped staging directory.");
+                Require(diagnostics.Any(diagnostic => diagnostic.Code == "PH-PACKAGE-PENDING-UPDATE"), "rejected pending update must report a stable diagnostic.");
+                Require(store.Read(baseDirectory).Count == 1, "rejected pending update must remain queued for manual repair.");
+            }
+        }
+
+        private static void PackageRepositoryServiceRejectsCancelledUpdateStagingPathEscape()
+        {
+            using (var temp = TempDirectory.Create())
+            {
+                var baseDirectory = Path.Combine(temp.Path, "plughub");
+                var installDirectory = Path.Combine(baseDirectory, "packages", "module.escape");
+                var outsideStagingDirectory = Path.Combine(temp.Path, "outside-cancel-staging");
+                WriteText(Path.Combine(outsideStagingDirectory, "packages.json"), "{}");
+
+                var store = new PendingPackageOperationStore();
+                store.Write(baseDirectory, new[]
+                {
+                    PendingPackageOperation.Update("module.escape", "module.escape", installDirectory, outsideStagingDirectory)
+                });
+
+                var cancel = new PackageRepositoryService().CancelPendingOperation(baseDirectory, "module.escape", "module.escape");
+
+                Require(!cancel.Success, "cancel must reject escaped update staging directories.");
+                Require(Directory.Exists(outsideStagingDirectory), "cancel must not delete escaped staging directories.");
+                Require(store.Read(baseDirectory).Count == 1, "rejected cancel must leave the pending update for manual repair.");
             }
         }
 
