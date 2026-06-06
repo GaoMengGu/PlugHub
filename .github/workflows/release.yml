@@ -300,7 +300,6 @@ jobs:
 
           $releaseBaseUri = "https://gitee.com/api/v5/repos/GaoMengGu/PlugHub/releases"
           $releaseBody = Get-Content -LiteralPath $notesPath -Raw
-          $escapedToken = [Uri]::EscapeDataString($env:GITEE_TOKEN)
           $escapedTag = [Uri]::EscapeDataString($tag)
 
           DeleteExistingGiteeRelease -ReleaseBaseUri $releaseBaseUri -EscapedTag $escapedTag

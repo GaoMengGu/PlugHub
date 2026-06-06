@@ -3,6 +3,7 @@ obj/
 dist/
 build/validation-report.*
 .vs/
+.tmp/
 .superpowers/
 .worktrees/
 docs/
