@@ -249,12 +249,11 @@ jobs:
           function DeleteExistingGiteeRelease {
             param(
               [string]$ReleaseBaseUri,
-              [string]$EscapedToken,
               [string]$EscapedTag
             )
 
             try {
-              $existingRelease = Invoke-RestMethod -Method Get -Uri "$ReleaseBaseUri/tags/$EscapedTag?access_token=$EscapedToken"
+              $existingRelease = Invoke-RestMethod -Method Get -Uri "$ReleaseBaseUri/tags/$EscapedTag"
             }
             catch {
               $statusCode = 0
@@ -304,7 +303,7 @@ jobs:
           $escapedToken = [Uri]::EscapeDataString($env:GITEE_TOKEN)
           $escapedTag = [Uri]::EscapeDataString($tag)
 
-          DeleteExistingGiteeRelease -ReleaseBaseUri $releaseBaseUri -EscapedToken $escapedToken -EscapedTag $escapedTag
+          DeleteExistingGiteeRelease -ReleaseBaseUri $releaseBaseUri -EscapedTag $escapedTag
 
           $createBody = New-FormBody @{
             access_token = $env:GITEE_TOKEN
