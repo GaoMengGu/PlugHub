@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using PlugHub.Framework.Updates;
 
 namespace PlugHub.Manager.Maintenance
 {
@@ -47,6 +48,7 @@ namespace PlugHub.Manager.Maintenance
                 throw new FileNotFoundException("Payload zip was not found.", args.PayloadZip);
             }
 
+            new FrameworkUpdatePackageValidator().Validate(args.PayloadZip);
             WaitForProcesses(args.WaitProcessIds);
             CopyFrameworkFiles(args.PayloadZip, installDirectory, args.TargetVersion);
             DeleteStaleMaintenanceArtifacts(installDirectory);

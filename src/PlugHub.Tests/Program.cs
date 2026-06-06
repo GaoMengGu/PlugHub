@@ -46,6 +46,7 @@ namespace PlugHub.Tests
                 new TestCase("ribbon layout composer filters invalid container children", RibbonLayoutComposerFiltersInvalidContainerChildren),
                 new TestCase("framework update package accepts single manager maintenance payload", FrameworkUpdatePackageAcceptsSingleManagerMaintenancePayload),
                 new TestCase("framework update package rejects missing manager maintenance payload", FrameworkUpdatePackageRejectsMissingManagerMaintenancePayload),
+                new TestCase("manager updater validates maintenance payload", ManagerUpdaterValidatesMaintenancePayload),
                 new TestCase("manager updater removes stale standalone maintenance pdbs", ManagerUpdaterRemovesStaleStandaloneMaintenancePdbs),
                 new TestCase("manager updater rejects non PlugHub directory", ManagerUpdaterRejectsNonPlugHubDirectory),
                 new TestCase("manager uninstaller accepts local Revit build output directory", ManagerUninstallerAcceptsLocalRevitBuildOutputDirectory),
@@ -1024,6 +1025,37 @@ namespace PlugHub.Tests
 
                 RequireFileMissing(Path.Combine(installDirectory, "PlugHub.Updater.pdb"));
                 RequireFileMissing(Path.Combine(installDirectory, "PlugHub.Uninstaller.pdb"));
+            }
+        }
+
+        private static void ManagerUpdaterValidatesMaintenancePayload()
+        {
+            using (var temp = TempDirectory.Create())
+            {
+                var installDirectory = Path.Combine(temp.Path, "PlugHub");
+                Directory.CreateDirectory(installDirectory);
+                WritePlugHubInstallMarkers(installDirectory);
+
+                var zipPath = Path.Combine(temp.Path, "framework.zip");
+                WriteUpdatePackage(zipPath, new[]
+                {
+                    "PlugHub.Revit2020.dll",
+                    "PlugHub.Framework.dll",
+                    "PlugHub.Contracts.dll",
+                    "PlugHub.Wpf.dll"
+                });
+
+                var failed = false;
+                try
+                {
+                    RunManagerFrameworkUpdate(zipPath, installDirectory);
+                }
+                catch (InvalidOperationException ex) when (ex.Message.Contains("PlugHub.Manager.exe"))
+                {
+                    failed = true;
+                }
+
+                Require(failed, "manager updater must validate maintenance payload before copying framework files.");
             }
         }
 

@@ -30,7 +30,7 @@ jobs:
 
     steps:
       - name: Checkout full history
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -108,13 +108,13 @@ jobs:
   build-sign-release:
     name: Build, sign, and publish
     needs: resolve-release-tag
-    runs-on: windows-latest
+    runs-on: windows-2022
     env:
       PLUGHUB_RELEASE_TAG: ${{ needs.resolve-release-tag.outputs.tag }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ needs.resolve-release-tag.outputs.tag }}
           fetch-depth: 0
@@ -151,7 +151,7 @@ jobs:
         run: .\scripts\build-revit2020.ps1 -UseRevitApiNuGet -UseRelativeAddinAssembly
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@v4
 
       - name: Package release artifact
         shell: pwsh
@@ -205,7 +205,7 @@ jobs:
           cosign sign-blob --yes --bundle "$installerExe.sigstore.json" "$installerExe"
 
       - name: Publish GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.PLUGHUB_RELEASE_TAG }}
           name: PlugHub ${{ env.PLUGHUB_RELEASE_TAG }}
