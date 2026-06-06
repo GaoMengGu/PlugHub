@@ -257,14 +257,26 @@ jobs:
               $existingRelease = Invoke-RestMethod -Method Get -Uri "$ReleaseBaseUri/tags/$EscapedTag?access_token=$EscapedToken"
             }
             catch {
-              return
+              $statusCode = 0
+              if ($null -ne $_.Exception.Response) {
+                $statusCode = [int]$_.Exception.Response.StatusCode
+              }
+
+              if ($statusCode -eq 404) {
+                return
+              }
+
+              throw
             }
 
             if ($null -eq $existingRelease -or [string]::IsNullOrWhiteSpace([string]$existingRelease.id)) {
               return
             }
 
-            Invoke-RestMethod -Method Delete -Uri "$ReleaseBaseUri/$($existingRelease.id)?access_token=$EscapedToken" | Out-Null
+            $deleteBody = New-FormBody @{
+              access_token = $env:GITEE_TOKEN
+            }
+            Invoke-RestMethod -Method Delete -Uri "$ReleaseBaseUri/$($existingRelease.id)" -ContentType "application/x-www-form-urlencoded; charset=utf-8" -Body $deleteBody | Out-Null
             Write-Host "Deleted existing Gitee release: $($existingRelease.id)"
           }
 
