@@ -206,13 +206,8 @@ namespace PlugHub.Framework.Updates
         {
             if (release == null) return null;
             var expectedName = "PlugHub-Revit2020-" + latestVersion + ".zip";
-            var exact = release.Assets.FirstOrDefault(item =>
-                string.Equals(item.Name, expectedName, StringComparison.OrdinalIgnoreCase));
-            if (exact != null) return exact;
-
             return release.Assets.FirstOrDefault(item =>
-                item.Name.StartsWith("PlugHub-Revit2020-", StringComparison.OrdinalIgnoreCase)
-                && item.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
+                string.Equals(item.Name, expectedName, StringComparison.OrdinalIgnoreCase));
         }
 
         private static List<string> DownloadFallbackUrls(FrameworkUpdateSource source, string latestVersion, string assetName, string primaryUrl)

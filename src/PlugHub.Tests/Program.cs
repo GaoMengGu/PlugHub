@@ -46,6 +46,7 @@ namespace PlugHub.Tests
                 new TestCase("package repository service rejects dot segment package ids", PackageRepositoryServiceRejectsDotSegmentPackageIds),
                 new TestCase("ribbon layout composer builds configured layout and default fallback", RibbonLayoutComposerBuildsConfiguredLayoutAndDefaultFallback),
                 new TestCase("ribbon layout composer filters invalid container children", RibbonLayoutComposerFiltersInvalidContainerChildren),
+                new TestCase("framework update selects only exact version asset", FrameworkUpdateSelectsOnlyExactVersionAsset),
                 new TestCase("framework update package accepts single manager maintenance payload", FrameworkUpdatePackageAcceptsSingleManagerMaintenancePayload),
                 new TestCase("framework update package rejects missing manager maintenance payload", FrameworkUpdatePackageRejectsMissingManagerMaintenancePayload),
                 new TestCase("manager updater validates maintenance payload", ManagerUpdaterValidatesMaintenancePayload),
@@ -1040,6 +1041,45 @@ namespace PlugHub.Tests
 
                 Require(failed, "framework update validator must require PlugHub.Manager.exe.");
             }
+        }
+
+        private static void FrameworkUpdateSelectsOnlyExactVersionAsset()
+        {
+            var method = typeof(FrameworkUpdateService).GetMethod("SelectUpdateAsset", BindingFlags.Static | BindingFlags.NonPublic);
+            if (method == null)
+            {
+                throw new InvalidOperationException("framework update asset selector must remain verifiable.");
+            }
+
+            var release = new ReleaseInfo
+            {
+                TagName = "V2.0.0",
+                Assets = new List<ReleaseAssetInfo>
+                {
+                    new ReleaseAssetInfo
+                    {
+                        Name = "PlugHub-Revit2020-V1.9.0.zip",
+                        DownloadUrl = "https://example.com/PlugHub-Revit2020-V1.9.0.zip"
+                    },
+                    new ReleaseAssetInfo
+                    {
+                        Name = "PlugHub-Revit2020-V2.0.0.zip.sigstore.json",
+                        DownloadUrl = "https://example.com/PlugHub-Revit2020-V2.0.0.zip.sigstore.json"
+                    }
+                }
+            };
+
+            var selected = method.Invoke(null, new object[] { release, "V2.0.0" });
+            Require(selected == null, "framework update must not select a mismatched Revit2020 zip for the target release version.");
+
+            release.Assets.Add(new ReleaseAssetInfo
+            {
+                Name = "PlugHub-Revit2020-V2.0.0.zip",
+                DownloadUrl = "https://example.com/PlugHub-Revit2020-V2.0.0.zip"
+            });
+
+            selected = method.Invoke(null, new object[] { release, "V2.0.0" });
+            Require(selected is ReleaseAssetInfo asset && asset.Name == "PlugHub-Revit2020-V2.0.0.zip", "framework update must select the exact Revit2020 zip for the target release version.");
         }
 
         private static void ManagerUpdaterRemovesStaleStandaloneMaintenancePdbs()

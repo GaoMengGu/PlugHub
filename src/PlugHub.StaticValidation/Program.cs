@@ -3041,6 +3041,7 @@ namespace PlugHub.StaticValidation
             Require(readme.Contains("已是最新版本") && readme.Contains("关闭弹窗则退出更新") && !readme.Contains("Revit 实机测试成功"), "README must document updater behavior without claiming Revit real-machine validation.");
 
             ValidateReleaseClientParsesUpdatePackageAndNotes();
+            ValidateFrameworkUpdateSelectsExactReleaseAsset();
             ValidateFrameworkUpdatePackageRejectsUnsafeZip();
             ValidateFrameworkUpdatePackageAcceptsSingleManagerMaintenancePayload();
             ValidateFrameworkUpdatePackageRequiresManager();
@@ -3060,6 +3061,47 @@ namespace PlugHub.StaticValidation
                 "https://gitee.com/GaoMengGu/PlugHub/releases/download/{tag}/{asset}");
             Require(giteeRelease.TagName == "V1.4.10", "release client must select the newest semantic V* tag from Gitee tags.");
             Require(giteeRelease.Assets.Any(asset => asset.DownloadUrl == "https://gitee.com/GaoMengGu/PlugHub/releases/download/V1.4.10/PlugHub-Revit2020-V1.4.10.zip"), "release client must generate the Gitee release zip download URL.");
+        }
+
+        private static void ValidateFrameworkUpdateSelectsExactReleaseAsset()
+        {
+            var method = typeof(PlugHub.Framework.Updates.FrameworkUpdateService).GetMethod(
+                "SelectUpdateAsset",
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+            if (method == null)
+            {
+                throw new InvalidOperationException("framework update asset selector must remain verifiable.");
+            }
+
+            var release = new PlugHub.Framework.Updates.ReleaseInfo
+            {
+                TagName = "V2.0.0",
+                Assets = new List<PlugHub.Framework.Updates.ReleaseAssetInfo>
+                {
+                    new PlugHub.Framework.Updates.ReleaseAssetInfo
+                    {
+                        Name = "PlugHub-Revit2020-V1.9.0.zip",
+                        DownloadUrl = "https://example.com/PlugHub-Revit2020-V1.9.0.zip"
+                    },
+                    new PlugHub.Framework.Updates.ReleaseAssetInfo
+                    {
+                        Name = "PlugHub-Revit2020-V2.0.0.zip.sigstore.json",
+                        DownloadUrl = "https://example.com/PlugHub-Revit2020-V2.0.0.zip.sigstore.json"
+                    }
+                }
+            };
+
+            var selected = method.Invoke(null, new object[] { release, "V2.0.0" });
+            Require(selected == null, "framework update check must not accept a mismatched Revit2020 zip when the exact target release asset is missing.");
+
+            release.Assets.Add(new PlugHub.Framework.Updates.ReleaseAssetInfo
+            {
+                Name = "PlugHub-Revit2020-V2.0.0.zip",
+                DownloadUrl = "https://example.com/PlugHub-Revit2020-V2.0.0.zip"
+            });
+
+            selected = method.Invoke(null, new object[] { release, "V2.0.0" });
+            Require(selected is PlugHub.Framework.Updates.ReleaseAssetInfo asset && asset.Name == "PlugHub-Revit2020-V2.0.0.zip", "framework update check must select the exact target release zip.");
         }
 
         private static void ValidateFrameworkUpdatePackageRejectsUnsafeZip()
