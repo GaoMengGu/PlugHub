@@ -126,17 +126,17 @@ jobs:
           $testTag = "${{ steps.resolve.outputs.test_tag }}"
           $releaseUri = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/tags/$testTag"
           @(
-            "## PlugHub test update build",
-            "",
-            "This prerelease is for update-flow validation only.",
-            "",
-            "To make a test build check this release first, set:",
-            "",
-            "```powershell",
+            '## PlugHub test update build',
+            '',
+            'This prerelease is for update-flow validation only.',
+            '',
+            'To make a test build check this release first, set:',
+            '',
+            '```powershell',
             "[Environment]::SetEnvironmentVariable('PLUGHUB_TEST_UPDATE_RELEASE_URI', '$releaseUri', 'User')",
-            "```",
-            "",
-            "Unset `PLUGHUB_TEST_UPDATE_RELEASE_URI` to return to the stable update channel."
+            '```',
+            '',
+            'Unset `PLUGHUB_TEST_UPDATE_RELEASE_URI` to return to the stable update channel.'
           ) | Set-Content -LiteralPath "PlugHub-TestReleaseNotes-$testTag.md" -Encoding utf8
 
       - name: Delete previous test prerelease
