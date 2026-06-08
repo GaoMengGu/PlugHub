@@ -51,6 +51,7 @@ namespace PlugHub.Tests
                 new TestCase("ribbon layout composer builds configured layout and default fallback", RibbonLayoutComposerBuildsConfiguredLayoutAndDefaultFallback),
                 new TestCase("ribbon layout composer filters invalid container children", RibbonLayoutComposerFiltersInvalidContainerChildren),
                 new TestCase("framework update selects only exact version asset", FrameworkUpdateSelectsOnlyExactVersionAsset),
+                new TestCase("release client selects latest test prerelease", ReleaseClientSelectsLatestTestPrerelease),
                 new TestCase("framework update treats test channel tags as comparable versions", FrameworkUpdateTreatsTestChannelTagsAsComparableVersions),
                 new TestCase("framework update package accepts single manager maintenance payload", FrameworkUpdatePackageAcceptsSingleManagerMaintenancePayload),
                 new TestCase("framework update package rejects missing manager maintenance payload", FrameworkUpdatePackageRejectsMissingManagerMaintenancePayload),
@@ -1199,6 +1200,25 @@ namespace PlugHub.Tests
 
             selected = method.Invoke(null, new object[] { release, "V2.0.0" });
             Require(selected is ReleaseAssetInfo asset && asset.Name == "PlugHub-Revit2020-V2.0.0.zip", "framework update must select the exact Revit2020 zip for the target release version.");
+        }
+
+        private static void ReleaseClientSelectsLatestTestPrerelease()
+        {
+            var client = new ReleaseClient();
+            var release = client.ParseLatestTestPrereleaseJson(
+                "[" +
+                "{\"tag_name\":\"V1.5.2\",\"prerelease\":false,\"draft\":false,\"body\":\"stable\",\"assets\":[{\"name\":\"PlugHub-Revit2020-V1.5.2.zip\",\"browser_download_url\":\"https://example.com/stable.zip\"}]}," +
+                "{\"tag_name\":\"TV1.5.2\",\"prerelease\":true,\"draft\":false,\"body\":\"old test\",\"assets\":[{\"name\":\"PlugHub-Revit2020-TV1.5.2.zip\",\"browser_download_url\":\"https://example.com/old.zip\"}]}," +
+                "{\"tag_name\":\"TV1.5.4\",\"prerelease\":true,\"draft\":true,\"body\":\"draft test\",\"assets\":[{\"name\":\"PlugHub-Revit2020-TV1.5.4.zip\",\"browser_download_url\":\"https://example.com/draft.zip\"}]}," +
+                "{\"tag_name\":\"TV1.5.3\",\"prerelease\":true,\"draft\":false,\"body\":\"latest test\",\"assets\":[{\"name\":\"PlugHub-Revit2020-TV1.5.3.zip\",\"browser_download_url\":\"https://example.com/latest.zip\"}]}" +
+                "]");
+
+            Require(release.TagName == "TV1.5.3", "test update release list must select the newest non-draft TV prerelease.");
+            Require(release.Body == "latest test", "test update release list must preserve the selected release notes.");
+            Require(release.Assets.Count == 1
+                && release.Assets[0].Name == "PlugHub-Revit2020-TV1.5.3.zip"
+                && release.Assets[0].DownloadUrl == "https://example.com/latest.zip",
+                "test update release list must preserve the selected release asset.");
         }
 
         private static void FrameworkUpdateTreatsTestChannelTagsAsComparableVersions()

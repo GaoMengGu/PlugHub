@@ -182,6 +182,11 @@ namespace PlugHub.Framework.Updates
                 return _releaseClient.GetGiteeTags(source.Uri, source.DownloadUrlTemplate);
             }
 
+            if (source.Kind == FrameworkUpdateSourceKind.GitHubTestPrereleaseList)
+            {
+                return _releaseClient.GetLatestTestPrerelease(source.Uri);
+            }
+
             return _releaseClient.GetLatestRelease(source.Uri);
         }
 
@@ -220,7 +225,9 @@ namespace PlugHub.Framework.Updates
                 && string.Equals(parsedTestReleaseUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
             {
                 sources.Add(new FrameworkUpdateSource(
-                    FrameworkUpdateSourceKind.GitHubLatestRelease,
+                    IsGitHubReleaseListUri(parsedTestReleaseUri)
+                        ? FrameworkUpdateSourceKind.GitHubTestPrereleaseList
+                        : FrameworkUpdateSourceKind.GitHubLatestRelease,
                     "GitHub Test",
                     parsedTestReleaseUri,
                     Environment.GetEnvironmentVariable(TestUpdateDownloadTemplateEnvironmentVariable) ?? string.Empty,
@@ -333,6 +340,12 @@ namespace PlugHub.Framework.Updates
             return (version ?? string.Empty).Trim().StartsWith("TV", StringComparison.OrdinalIgnoreCase);
         }
 
+        private static bool IsGitHubReleaseListUri(Uri uri)
+        {
+            var path = (uri?.AbsolutePath ?? string.Empty).TrimEnd('/');
+            return path.EndsWith("/releases", StringComparison.OrdinalIgnoreCase);
+        }
+
         private static string SafeSegment(string value)
         {
             foreach (var invalid in Path.GetInvalidFileNameChars())
@@ -346,7 +359,8 @@ namespace PlugHub.Framework.Updates
         private enum FrameworkUpdateSourceKind
         {
             GiteeTagList,
-            GitHubLatestRelease
+            GitHubLatestRelease,
+            GitHubTestPrereleaseList
         }
 
         private sealed class FrameworkUpdateSource

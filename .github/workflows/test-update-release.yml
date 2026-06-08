@@ -7,8 +7,8 @@ on:
   workflow_dispatch:
     inputs:
       test_tag:
-        description: "Test release tag, for example TV1.5.2. Must not use the production V* tag namespace."
-        required: true
+        description: "Optional test release tag, for example TV1.5.2. Leave empty to increment the latest test version."
+        required: false
         type: string
 
 permissions:
@@ -35,24 +35,48 @@ jobs:
         env:
           PLUGHUB_TEST_TAG: ${{ github.event.inputs.test_tag || '' }}
         run: |
+          function Read-PlugHubVersion([string]$tag, [string]$pattern) {
+            $match = [regex]::Match($tag, $pattern)
+            if (!$match.Success) {
+              throw "Release tag does not match the expected pattern: $tag"
+            }
+
+            return [version]::new(
+              [int]$match.Groups["major"].Value,
+              [int]$match.Groups["minor"].Value,
+              [int]$match.Groups["patch"].Value)
+          }
+
+          function Increment-Patch([version]$version) {
+            return [version]::new($version.Major, $version.Minor, $version.Build + 1)
+          }
+
+          function New-TestTag([version]$version) {
+            return "TV$($version.Major).$($version.Minor).$($version.Build)"
+          }
+
           $testTag = ([string]$env:PLUGHUB_TEST_TAG).Trim()
           if ([string]::IsNullOrWhiteSpace($testTag)) {
             git fetch --force --tags origin
+            $candidateVersion = [version]::new(1, 0, 0)
             $latest = git tag --list "V[0-9]*.[0-9]*.[0-9]*" --sort=-v:refname | Select-Object -First 1
-            if ([string]::IsNullOrWhiteSpace($latest)) {
-              $testTag = "TV1.0.0"
+            if (![string]::IsNullOrWhiteSpace($latest)) {
+              $candidateVersion = Increment-Patch (Read-PlugHubVersion $latest "^V(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)$")
             }
-            else {
-              $match = [regex]::Match($latest, "^V(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)$")
-              if (!$match.Success) {
-                throw "Latest release tag does not match Vx.y.z: $latest"
-              }
 
-              $major = [int]$match.Groups["major"].Value
-              $minor = [int]$match.Groups["minor"].Value
-              $patch = [int]$match.Groups["patch"].Value + 1
-              $testTag = "TV$major.$minor.$patch"
+            $latestTest = git tag --list "TV[0-9]*.[0-9]*.[0-9]*" --sort=-v:refname | Select-Object -First 1
+            if (![string]::IsNullOrWhiteSpace($latestTest)) {
+              $latestTestVersion = Read-PlugHubVersion $latestTest "^TV(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)$"
+              if ($latestTestVersion.CompareTo($candidateVersion) -ge 0) {
+                $candidateVersion = Increment-Patch $latestTestVersion
+              }
             }
+
+            while (![string]::IsNullOrWhiteSpace((git tag --list (New-TestTag $candidateVersion) | Select-Object -First 1))) {
+              $candidateVersion = Increment-Patch $candidateVersion
+            }
+
+            $testTag = New-TestTag $candidateVersion
           }
 
           if ($testTag -notmatch "^TV\d+\.\d+\.\d+$") {
@@ -124,11 +148,12 @@ jobs:
         shell: pwsh
         run: |
           $testTag = "${{ steps.resolve.outputs.test_tag }}"
-          $releaseUri = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/tags/$testTag"
+          $releaseUri = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases"
           @(
             '## PlugHub test update build',
             '',
             'This prerelease is for update-flow validation only.',
+            'The test channel automatically selects the newest TV* prerelease.',
             '',
             'To make a test build check this release first, set:',
             '',
