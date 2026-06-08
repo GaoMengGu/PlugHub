@@ -28,6 +28,7 @@
         "required": ["id", "provider", "visibility", "repository", "enabled"],
         "properties": {
           "id": {"type": "string"},
+          "displayName": {"type": "string"},
           "provider": {"enum": ["github", "gitee"]},
           "visibility": {"enum": ["public", "private"]},
           "repository": {"type": "string"},

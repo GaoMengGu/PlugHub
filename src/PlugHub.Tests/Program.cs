@@ -12,6 +12,7 @@ using PlugHub.Framework.Packages;
 using PlugHub.Framework.Settings;
 using PlugHub.Framework.Sources;
 using PlugHub.Framework.Updates;
+using PlugHub.Manager.Settings;
 
 namespace PlugHub.Tests
 {
@@ -29,6 +30,8 @@ namespace PlugHub.Tests
                 new TestCase("settings configuration store ignores git manifests", SettingsConfigurationStoreIgnoresGitManifests),
                 new TestCase("module source resolver rejects manifest path escape", ModuleSourceResolverRejectsManifestPathEscape),
                 new TestCase("settings configuration store rejects manifest path escape", SettingsConfigurationStoreRejectsManifestPathEscape),
+                new TestCase("settings metrics count unique modules features and enabled repositories", SettingsMetricsCountUniqueModulesFeaturesAndEnabledRepositories),
+                new TestCase("repository display name uses custom name before fallback", RepositoryDisplayNameUsesCustomNameBeforeFallback),
                 new TestCase("package install service copies selected module payload only", PackageInstallServiceCopiesSelectedModulePayloadOnly),
                 new TestCase("package install service rejects rooted payload paths", PackageInstallServiceRejectsRootedPayloadPaths),
                 new TestCase("package repository service maintains install update uninstall state", PackageRepositoryServiceMaintainsInstallUpdateUninstallState),
@@ -370,6 +373,69 @@ namespace PlugHub.Tests
                 Require(!documents.Any(document => SamePath(document.Path, Path.Combine(temp.Path, "outside.packages.json"))), "settings store must not load escaped explicit manifests.");
                 Require(!documents.Any(document => document.Modules.Modules.Any(module => module.Id == "module.escape")), "settings store must not load escaped manifest modules.");
             }
+        }
+
+        private static void SettingsMetricsCountUniqueModulesFeaturesAndEnabledRepositories()
+        {
+            var modules = new[]
+            {
+                new ModuleConfiguration
+                {
+                    Id = "module.same",
+                    Features = new List<FeatureConfiguration>
+                    {
+                        new FeatureConfiguration { Id = "feature.same" }
+                    }
+                },
+                new ModuleConfiguration
+                {
+                    Id = "module.same",
+                    Features = new List<FeatureConfiguration>
+                    {
+                        new FeatureConfiguration { Id = "feature.same" },
+                        new FeatureConfiguration { Id = "feature.other" }
+                    }
+                },
+                new ModuleConfiguration
+                {
+                    Id = "module.other",
+                    Features = new List<FeatureConfiguration>
+                    {
+                        new FeatureConfiguration { Id = "feature.same" }
+                    }
+                }
+            };
+            var repositories = new[]
+            {
+                new PackageRepositoryConfiguration { Id = "enabled-a", Enabled = true },
+                new PackageRepositoryConfiguration { Id = "disabled", Enabled = false },
+                new PackageRepositoryConfiguration { Id = "enabled-b", Enabled = true }
+            };
+
+            Require(SettingsMetrics.CountUniqueModules(modules) == 2, "settings metrics must count duplicate module ids only once.");
+            Require(SettingsMetrics.CountUniqueFeatures(modules) == 2, "settings metrics must count duplicate feature ids only once.");
+            Require(SettingsMetrics.CountEnabledRepositories(repositories) == 2, "settings metrics must count only enabled repositories.");
+        }
+
+        private static void RepositoryDisplayNameUsesCustomNameBeforeFallback()
+        {
+            Require(SettingsMetrics.RepositoryDisplayName(new PackageRepositoryConfiguration
+            {
+                Id = "repo-id",
+                DisplayName = "公司插件仓库",
+                Repository = "https://gitee.com/company/packages"
+            }) == "公司插件仓库", "custom repository display name must win over id and url.");
+
+            Require(SettingsMetrics.RepositoryDisplayName(new PackageRepositoryConfiguration
+            {
+                Id = "repo-id",
+                Repository = "https://gitee.com/company/packages"
+            }) == "repo-id", "repository id must remain the first fallback display name.");
+
+            Require(SettingsMetrics.RepositoryDisplayName(new PackageRepositoryConfiguration
+            {
+                Repository = "https://gitee.com/company/packages"
+            }) == "packages", "repository url tail must remain the fallback when no custom name or id exists.");
         }
 
         private static void PackageInstallServiceCopiesSelectedModulePayloadOnly()

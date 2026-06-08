@@ -20,6 +20,7 @@ namespace PlugHub.Manager.Settings.Rows
         public string EncryptedApiKey { get; set; } = string.Empty;
         public string ApiKeyProtection { get; set; } = string.Empty;
         public string Status { get; set; } = string.Empty;
+        public string CustomName { get; set; } = string.Empty;
         public string DisplayName { get; set; } = string.Empty;
 
         public PackageRepositoryConfiguration ToConfiguration()
@@ -27,6 +28,7 @@ namespace PlugHub.Manager.Settings.Rows
             return new PackageRepositoryConfiguration
             {
                 Id = Id ?? string.Empty,
+                DisplayName = CustomName ?? string.Empty,
                 Enabled = Enabled,
                 Provider = string.IsNullOrWhiteSpace(Provider) ? DefaultRepositoryProvider : Provider,
                 Visibility = string.Equals(Visibility, "private", StringComparison.OrdinalIgnoreCase) ? "private" : "public",

@@ -254,6 +254,7 @@ namespace PlugHub.StaticValidation
                 "src/PlugHub.Manager/FrameworkSettingsWindow.cs",
                 "src/PlugHub.Manager/Settings/FrameworkSettingsViewModel.cs",
                 "src/PlugHub.Manager/Settings/RepositorySettingsController.cs",
+                "src/PlugHub.Manager/Settings/SettingsMetrics.cs",
                 "src/PlugHub.Manager/Settings/Rows/ModuleRow.cs",
                 "src/PlugHub.Manager/Settings/Rows/FeatureRow.cs",
                 "src/PlugHub.Manager/Settings/Rows/GroupRow.cs",
@@ -381,6 +382,7 @@ namespace PlugHub.StaticValidation
             Require(SequenceValue(modules, "packageDirectories").SequenceEqual(new[] { "packages" }), "runtime package discovery must be limited to the packages folder.");
             Require(ArrayValue(modules, "moduleSources").Count == 0, "moduleSources must not configure startup repository loading.");
             Require(Repositories(modules).Count() >= 2, "repositories must include public and private examples.");
+            Require(Repositories(modules).All(repository => repository.ContainsKey("displayName")), "repositories must include editable displayName examples.");
             Require(Repositories(modules).Any(repository => StringValue(repository, "visibility") == "public"), "repositories must include a public repository example.");
             Require(Repositories(modules).Any(repository => StringValue(repository, "visibility") == "private" && repository.ContainsKey("apiKey")), "repositories must include a private repository example with apiKey.");
             Require(Repositories(modules).Any(repository => StringValue(repository, "provider") == "gitee"), "repositories must include a Gitee repository example.");
@@ -1912,6 +1914,7 @@ namespace PlugHub.StaticValidation
             var modulesText = ReadText("config/sources.example.json");
             var settingsWindow = ReadText("src/PlugHub.Manager/FrameworkSettingsWindow.cs");
             var repositorySettingsController = ReadText("src/PlugHub.Manager/Settings/RepositorySettingsController.cs");
+            var settingsMetrics = ReadText("src/PlugHub.Manager/Settings/SettingsMetrics.cs");
             var repositoryRow = ReadText("src/PlugHub.Manager/Settings/Rows/RepositoryRow.cs");
             var repositoryPackageRow = ReadText("src/PlugHub.Manager/Settings/Rows/RepositoryPackageRow.cs");
             var sourceResolver = ReadText("src/PlugHub.Framework/Sources/ModuleSourceResolver.cs");
@@ -1931,6 +1934,7 @@ namespace PlugHub.StaticValidation
             var readme = ReadText("README.md");
 
             Require(modulesText.Contains("\"provider\": \"gitee\"") && modulesText.Contains("\"repository\": \"https://gitee.com/GaoMengGu/PlugHub_Packages\""), "default package repository must point at the public Gitee PlugHub_Packages URL.");
+            Require(modulesText.Contains("\"displayName\": \"PlugHub 公共插件仓库\""), "default package repository examples must show custom displayName usage.");
             Require(modulesText.Contains("\"packageDirectories\": [") && modulesText.Contains("\"packages\""), "installed package discovery must point at packages.");
             Require(!modulesText.Contains("packages/github/GaoMengGu_PlugHub_Packages"), "repository caches must not live under packages.");
             Require(!modulesText.Contains("GaoMengGu/PlugHub_Modules"), "default github source must not point at PlugHub_Modules.");
@@ -1946,6 +1950,7 @@ namespace PlugHub.StaticValidation
             {
                 Require(repositorySettingsController.Contains(token), "repository settings controller must own package browsing behavior: " + token);
             }
+            Require(settingsMetrics.Contains("CountUniqueModules") && settingsMetrics.Contains("CountUniqueFeatures") && settingsMetrics.Contains("CountEnabledRepositories") && settingsMetrics.Contains("RepositoryDisplayName"), "settings metrics must centralize unique module/feature counts, enabled repository count, and repository display-name fallback.");
 
             foreach (var token in new[] { "BuildRepositorySourceCards", "BuildRepositoryPackageList", "BuildRepositoryDiagnosticsMenu" })
             {
@@ -1965,7 +1970,7 @@ namespace PlugHub.StaticValidation
             Require(settingsWindow.Contains("RepositorySourceCardWidth = RepositorySourceCardSlotWidth - RepositoryCardHorizontalMarginWidth") && settingsWindow.Contains("RepositoryPackageCardWidth = RepositoryPackageCardSlotWidth - RepositoryCardHorizontalMarginWidth"), "repository source and package card widths must subtract the same horizontal margins.");
             Require(settingsWindow.Contains("BuildRepositorySourceScrollViewer") && settingsWindow.Contains("ScrollViewer.CanContentScrollProperty, false"), "repository source cards must be hosted in an explicit horizontal ScrollViewer so overflow can be scrolled.");
             Require(settingsWindow.Contains("BuildRepositorySourceMoreGlyph") && settingsWindow.Contains("ToolTip") && settingsWindow.Contains("CheckBox"), "repository source cards must use compact glyph actions and a checkbox enabled state.");
-            Require(settingsWindow.Contains("AddRepositoryEditorRow(form, 6, \"Token\", apiKey)") && !settingsWindow.Contains("AddRepositoryEditorRow(form, 6, \"ApiKey\", apiKey)"), "repository source editor must label the credential field as Token for users.");
+            Require(settingsWindow.Contains("AddRepositoryEditorRow(form, 0, \"名称\", customName)") && settingsWindow.Contains("AddRepositoryEditorRow(form, 7, \"Token\", apiKey)") && !settingsWindow.Contains("AddRepositoryEditorRow(form, 7, \"ApiKey\", apiKey)"), "repository source editor must expose a custom name field and label the credential field as Token for users.");
             Require(settingsWindow.Contains("LineStackingStrategy.BlockLineHeight") && settingsWindow.Contains("VerticalAlignmentProperty, VerticalAlignment.Top"), "repository source ellipsis glyph must align tightly to the top-right of the card.");
             Require(!settingsWindow.Contains("new Binding(nameof(RepositoryRow.Status))"), "repository source cards must not duplicate footer status text.");
             Require(!settingsWindow.Contains("RepositoryEnabledLabelConverter"), "repository source cards must not spend card width on enable/disable text buttons.");
@@ -2081,19 +2086,21 @@ namespace PlugHub.StaticValidation
             Require(packageRepositoryService.Contains("CancelPendingOperation"), "package repository service must expose pending operation cancellation.");
             Require(credentialService.Contains("ProtectedData.Protect") && credentialService.Contains("ProtectedData.Unprotect"), "repository credential service must use DPAPI.");
             Require(redactor.Contains("Redact") && redactor.Contains("x-access-token") && redactor.Contains("oauth2") && redactor.Contains("access_token"), "diagnostic redactor must mask repository tokens.");
-            Require(configurationModels.Contains("EncryptedApiKey"), "repository configuration must persist encrypted apiKey separately.");
+            Require(configurationModels.Contains("public string DisplayName { get; set; } = string.Empty;") && configurationModels.Contains("EncryptedApiKey"), "repository configuration must persist custom displayName and encrypted apiKey separately.");
             Require(repositoryArchiveSynchronizer.Contains("ResolveApiKey(repository)") && repositoryArchiveSynchronizer.Contains("SafePathSegment(repository.Id)"), "repository archive synchronizer must resolve protected credentials and stage downloads under a repository-specific cache path.");
             Require(repositoryArchiveSynchronizer.Contains("DownloadArchive") && repositoryArchiveSynchronizer.Contains("ReplaceCacheDirectory"), "repository archive synchronizer must atomically replace the local repository cache after a successful download.");
             Require(readme.Contains("不需要安装 Git") && readme.Contains("HTTP archive"), "README must state that repository browsing no longer requires user-installed Git.");
             Require(frameworkUpdateService.Contains("PLUGHUB_TEST_UPDATE_RELEASE_URI") && frameworkUpdateService.Contains("GitHub Test") && frameworkUpdateService.Contains("ContinueWhenNoUpdate"), "framework update checks must support an opt-in test update release source without changing stable defaults.");
             Require(frameworkUpdateService.Contains("ComparableVersionText") && frameworkUpdateService.Contains("IndexOfAny") && frameworkUpdateService.Contains("IsStableReleaseTag") && frameworkUpdateService.Contains("IsTestReleaseTag"), "framework update version comparison must handle TVx.y.z test tags and allow same-number stable releases to replace test builds.");
             Require(settingsWindow.Contains("RepositoryCredentialService") && settingsWindow.Contains("ProtectForSave(repository)"), "settings save must protect repository apiKey before serializing sources.");
+            Require(settingsWindow.Contains("SettingsMetrics.CountUniqueModules(EditableModules())") && settingsWindow.Contains("SettingsMetrics.CountUniqueFeatures(EditableModules())") && settingsWindow.Contains("SettingsMetrics.CountEnabledRepositories(_configuration.Modules.Repositories)"), "settings header/about metrics must count unique modules, unique features, and enabled repositories.");
             Require(settingsWindow.Contains("ApiKey = string.Empty") && settingsWindow.Contains("PlainApiKey = repository.ApiKey"), "settings repository rows must keep legacy plaintext apiKey available without echoing it in the UI.");
+            Require(settingsWindow.Contains("CustomName = repository.DisplayName") && repositoryRow.Contains("DisplayName = CustomName ?? string.Empty") && repositoryRow.Contains("CustomName"), "settings repository rows must edit and persist custom repository displayName separately from the resolved card title.");
             Require(repositoryRow.Contains("string.IsNullOrWhiteSpace(ApiKey) ? PlainApiKey"), "repository row ToConfiguration must preserve legacy plaintext apiKey when the user did not enter a replacement token.");
             Require(settingsWindow.Contains("EncryptedApiKey = repository.EncryptedApiKey") && settingsWindow.Contains("ApiKeyProtection = repository.ApiKeyProtection"), "settings repository rows must preserve encrypted apiKey metadata.");
             Require(repositoryRow.Contains("EncryptedApiKey = EncryptedApiKey ?? string.Empty") && repositoryRow.Contains("ApiKeyProtection = ApiKeyProtection ?? string.Empty"), "repository row ToConfiguration must retain encrypted apiKey metadata.");
-            Require(configurationLoader.Contains("EncryptedApiKey = repository.EncryptedApiKey") && configurationLoader.Contains("ApiKeyProtection = repository.ApiKeyProtection"), "configuration loader must preserve encrypted repository credentials when applying presets.");
-            Require(sourceResolver.Contains("EncryptedApiKey = repository.EncryptedApiKey") && sourceResolver.Contains("ApiKeyProtection = repository.ApiKeyProtection"), "module source resolver must preserve encrypted repository credentials.");
+            Require(configurationLoader.Contains("DisplayName = repository.DisplayName") && configurationLoader.Contains("EncryptedApiKey = repository.EncryptedApiKey") && configurationLoader.Contains("ApiKeyProtection = repository.ApiKeyProtection"), "configuration loader must preserve repository displayName and encrypted credentials when applying presets.");
+            Require(sourceResolver.Contains("DisplayName = repository.DisplayName") && sourceResolver.Contains("EncryptedApiKey = repository.EncryptedApiKey") && sourceResolver.Contains("ApiKeyProtection = repository.ApiKeyProtection"), "module source resolver must preserve repository displayName and encrypted credentials.");
             ValidateRepositoryCredentialAndRedactionBehavior();
             var pendingStore = ReadText("src/PlugHub.Framework/Packages/PendingPackageOperationStore.cs");
             Require(pendingStore.Contains("pending-operations.json"), "pending operation store must own the pending operation file name.");

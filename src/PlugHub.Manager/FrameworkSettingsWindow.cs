@@ -2906,6 +2906,7 @@ namespace PlugHub.Manager
             var row = new RepositoryRow
             {
                 Id = repository.Id,
+                CustomName = repository.DisplayName,
                 Enabled = repository.Enabled,
                 Provider = string.IsNullOrWhiteSpace(repository.Provider) ? DefaultRepositoryProvider : repository.Provider,
                 Visibility = string.Equals(repository.Visibility, "private", StringComparison.OrdinalIgnoreCase) ? "private" : "public",
@@ -4097,6 +4098,7 @@ namespace PlugHub.Manager
             {
                 Id = id,
                 Enabled = true,
+                CustomName = string.Empty,
                 Provider = DefaultRepositoryProvider,
                 Visibility = "public",
                 Repository = DefaultPublicRepository,
@@ -4178,9 +4180,9 @@ namespace PlugHub.Manager
                 Owner = this,
                 Title = "编辑仓库源",
                 Width = 520,
-                Height = 430,
+                Height = 460,
                 MinWidth = 480,
-                MinHeight = 390,
+                MinHeight = 420,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner
             };
             RevitUiTheme.Apply(dialog);
@@ -4192,11 +4194,12 @@ namespace PlugHub.Manager
             var form = new Grid();
             form.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(96) });
             form.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            for (var i = 0; i < 7; i++)
+            for (var i = 0; i < 8; i++)
             {
                 form.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             }
 
+            var customName = new TextBox { Text = row.CustomName, Height = 26, VerticalContentAlignment = VerticalAlignment.Center };
             var enabled = new CheckBox { IsChecked = row.Enabled, VerticalAlignment = VerticalAlignment.Center };
             var provider = new ComboBox { ItemsSource = new[] { "gitee", "github" }, SelectedItem = string.IsNullOrWhiteSpace(row.Provider) ? DefaultRepositoryProvider : row.Provider, Height = 26 };
             var visibility = new ComboBox { ItemsSource = new[] { "public", "private" }, SelectedItem = string.IsNullOrWhiteSpace(row.Visibility) ? "public" : row.Visibility, Height = 26 };
@@ -4205,13 +4208,14 @@ namespace PlugHub.Manager
             var manifestPath = new TextBox { Text = row.ManifestPath, Height = 26, VerticalContentAlignment = VerticalAlignment.Center };
             var apiKey = new TextBox { Text = string.Empty, Height = 26, VerticalContentAlignment = VerticalAlignment.Center };
 
-            AddRepositoryEditorRow(form, 0, "启用", enabled);
-            AddRepositoryEditorRow(form, 1, "类型", provider);
-            AddRepositoryEditorRow(form, 2, "可见性", visibility);
-            AddRepositoryEditorRow(form, 3, "仓库", repository);
-            AddRepositoryEditorRow(form, 4, "分支", gitRef);
-            AddRepositoryEditorRow(form, 5, "清单", manifestPath);
-            AddRepositoryEditorRow(form, 6, "Token", apiKey);
+            AddRepositoryEditorRow(form, 0, "名称", customName);
+            AddRepositoryEditorRow(form, 1, "启用", enabled);
+            AddRepositoryEditorRow(form, 2, "类型", provider);
+            AddRepositoryEditorRow(form, 3, "可见性", visibility);
+            AddRepositoryEditorRow(form, 4, "仓库", repository);
+            AddRepositoryEditorRow(form, 5, "分支", gitRef);
+            AddRepositoryEditorRow(form, 6, "清单", manifestPath);
+            AddRepositoryEditorRow(form, 7, "Token", apiKey);
             Grid.SetRow(form, 0);
             root.Children.Add(form);
 
@@ -4224,6 +4228,7 @@ namespace PlugHub.Manager
             var cancel = CreateButton("取消", (sender, args) => dialog.DialogResult = false);
             var save = CreateButton("保存", (sender, args) =>
             {
+                row.CustomName = (customName.Text ?? string.Empty).Trim();
                 row.Enabled = enabled.IsChecked == true;
                 row.Provider = Convert.ToString(provider.SelectedItem) ?? DefaultRepositoryProvider;
                 row.Visibility = Convert.ToString(visibility.SelectedItem) ?? "public";
@@ -5431,17 +5436,17 @@ namespace PlugHub.Manager
 
         private int ConfiguredModuleCount()
         {
-            return EditableModules().Count();
+            return SettingsMetrics.CountUniqueModules(EditableModules());
         }
 
         private int ConfiguredFeatureCount()
         {
-            return EditableModules().Sum(module => (module.Features ?? new List<FeatureConfiguration>()).Count);
+            return SettingsMetrics.CountUniqueFeatures(EditableModules());
         }
 
         private int ConfiguredRepositoryCount()
         {
-            return (_configuration.Modules.Repositories ?? new List<PackageRepositoryConfiguration>()).Count;
+            return SettingsMetrics.CountEnabledRepositories(_configuration.Modules.Repositories);
         }
 
         private static string AssemblyVersionText()
