@@ -1485,6 +1485,7 @@ namespace PlugHub.StaticValidation
             var externalSettingsProject = ReadText("src/PlugHub.Manager/PlugHub.Manager.csproj");
             var settingsAppProgram = ReadText("src/PlugHub.Manager/Program.cs");
             var settingsStore = ReadText("src/PlugHub.Framework/Settings/SettingsConfigurationStore.cs");
+            var repositoryPackageRow = ReadText("src/PlugHub.Manager/Settings/Rows/RepositoryPackageRow.cs");
             var statusWindow = ReadText("src/PlugHub.Wpf/FrameworkStatusWindow.cs");
             var featureCommand = ReadText("src/PlugHub.Revit2020/FrameworkFeatureCommand.cs");
             var ribbonBuilder = ReadText("src/PlugHub.Revit2020/FeatureRibbonBuilder.cs");
@@ -1507,7 +1508,7 @@ namespace PlugHub.StaticValidation
             Require(!externalSettingsProject.Contains("PlugHub.SettingsApp") && !externalSettingsProject.Contains("PlugHub.SettingsUi") && !externalSettingsProject.Contains("SharedSettings"), "PlugHub Manager project must not keep legacy SettingsApp/SettingsUi naming or linked Revit settings sources.");
             Require(settingsAppProgram.Contains("ManagerMaintenanceArguments.Parse") && settingsAppProgram.Contains("ManagerMaintenanceRunner") && settingsAppProgram.Contains("FrameworkSettingsWindow") && settingsAppProgram.Contains("new FrameworkRuntime().Load(configDirectory, ShouldApplyPendingPackageOperations(hostProcessId))") && !File.Exists(FullPath("src/PlugHub.Manager/SettingsMainWindow.cs")), "PlugHub Manager must route maintenance mode before loading a local runtime snapshot and hosting the existing FrameworkSettingsWindow.");
             Require(settingsAppProgram.Contains("ShouldApplyPendingPackageOperations") && settingsAppProgram.Contains("Process.GetProcessById(hostProcessId)"), "PlugHub Manager must only apply pending package operations when the associated Revit host is not running.");
-            Require(settingsWindow.Contains("IsRevitHostProcessRunning") && settingsWindow.Contains("!IsRevitHostProcessRunning()) return true"), "external Manager must not mark installed packages as pending restart when no associated Revit host process is running.");
+            Require(settingsWindow.Contains("var isRevitHostRunning = IsRevitHostProcessRunning();") && settingsWindow.Contains("!IsRevitHostProcessRunning()) return false") && repositoryPackageRow.Contains("bool isRevitHostRunning, bool isLoadedInCurrentRuntime"), "external Manager must separate Revit host liveness from runtime-loaded package state so absent Revit does not create false pending restart states.");
             Require(settingsStore.Contains("namespace PlugHub.Framework.Settings") && settingsStore.Contains("public sealed class SettingsConfigurationStore") && !settingsStore.Contains("Autodesk.Revit"), "shared settings store must live in PlugHub.Framework.Settings and stay Revit-independent.");
             Require(featureCommand.Contains("ShowRuntimeStatus"), "status command must use the focused runtime status view.");
             Require(featureCommand.Contains("FrameworkStatusWindow") && !featureCommand.Contains("TaskDialog.Show"), "framework fallback feature feedback must use WPF.");
@@ -2097,7 +2098,7 @@ namespace PlugHub.StaticValidation
             var pendingStore = ReadText("src/PlugHub.Framework/Packages/PendingPackageOperationStore.cs");
             Require(pendingStore.Contains("pending-operations.json"), "pending operation store must own the pending operation file name.");
             Require(pendingStore.Contains("AddOrReplace") && pendingStore.Contains("Remove") && pendingStore.Contains("Read"), "pending operation store must read, add, and remove operations.");
-            Require(repositoryPackageRow.Contains("已安装待重启") && repositoryPackageRow.Contains("PendingOperation") && settingsWindow.Contains("IsLoadedInCurrentRuntime"), "repository package status must distinguish installed from installed-pending-restart.");
+            Require(repositoryPackageRow.Contains("已安装待重启") && repositoryPackageRow.Contains("PendingOperation") && repositoryPackageRow.Contains("isRevitHostRunning && !isInstalled && isLoadedInCurrentRuntime") && repositoryPackageRow.Contains("isRevitHostRunning && !isLoadedInCurrentRuntime") && settingsWindow.Contains("IsLoadedInCurrentRuntime"), "repository package status must distinguish installed, uninstalled, and pending-restart states without treating absent Revit as a loaded runtime.");
             var frameworkRuntime = ReadText("src/PlugHub.Framework/Runtime/FrameworkRuntime.cs");
             Require(frameworkRuntime.Contains("ApplyPendingOperations"), "runtime startup must apply deferred package operations before module discovery.");
             Require(frameworkRuntime.Contains("applyPendingPackageOperations") && frameworkRuntime.Contains("Load(baseDirectory, configDirectory, true)"), "external Manager must be able to load a local runtime snapshot without applying deferred package operations while Revit is still running.");

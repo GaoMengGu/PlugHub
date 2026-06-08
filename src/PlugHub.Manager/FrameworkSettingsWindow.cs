@@ -2848,11 +2848,12 @@ namespace PlugHub.Manager
 
         private void LoadRepositoryPackageRows(IEnumerable<RepositoryPackageDescriptor> packages)
         {
+            var isRevitHostRunning = IsRevitHostProcessRunning();
             _repositoryPackageRows.Clear();
             _repositoryPackageRows.AddRange((packages ?? new List<RepositoryPackageDescriptor>())
                 .Select(package =>
                 {
-                    var row = RepositoryPackageRow.FromDescriptor(package, IsLoadedInCurrentRuntime(package.PackageId, package.ModuleId));
+                    var row = RepositoryPackageRow.FromDescriptor(package, isRevitHostRunning, IsLoadedInCurrentRuntime(package.PackageId, package.ModuleId));
                     _repositorySettingsController.PreparePackageRow(row, _viewModel.Repositories);
                     return row;
                 }));
@@ -4451,6 +4452,7 @@ namespace PlugHub.Manager
 
         private void RefreshRepositoryPackageInstallState(string packageId, string installDirectory)
         {
+            var isRevitHostRunning = IsRevitHostProcessRunning();
             var rows = _repositoryPackageRows.Count > 0 ? _repositoryPackageRows : _viewModel.RepositoryPackages.AsEnumerable();
             foreach (var row in rows.Where(item =>
                 string.Equals(item.PackageId, packageId, StringComparison.OrdinalIgnoreCase)
@@ -4460,7 +4462,7 @@ namespace PlugHub.Manager
                 row.IsInstalled = refreshed.IsInstalled;
                 row.InstalledVersion = refreshed.InstalledVersion;
                 row.PendingOperation = refreshed.PendingOperation;
-                row.InstallState = RepositoryPackageRow.InstallStateFor(row.IsInstalled, row.Version, row.InstalledVersion, row.PendingOperation, IsLoadedInCurrentRuntime(row.PackageId, row.ModuleId));
+                row.InstallState = RepositoryPackageRow.InstallStateFor(row.IsInstalled, row.Version, row.InstalledVersion, row.PendingOperation, isRevitHostRunning, IsLoadedInCurrentRuntime(row.PackageId, row.ModuleId));
                 _repositorySettingsController.PreparePackageRow(row, _viewModel.Repositories);
             }
         }
@@ -4470,7 +4472,7 @@ namespace PlugHub.Manager
             var id = string.IsNullOrWhiteSpace(moduleId) ? packageId : moduleId;
             if (string.IsNullOrWhiteSpace(id)) return false;
 
-            if (!IsRevitHostProcessRunning()) return true;
+            if (!IsRevitHostProcessRunning()) return false;
 
             return (FrameworkRuntimeState.Current?.Configuration.EffectiveModules.Modules ?? new List<ModuleConfiguration>())
                 .Any(module => string.Equals(module.Id, id, StringComparison.OrdinalIgnoreCase));

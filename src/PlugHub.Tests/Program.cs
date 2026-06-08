@@ -44,6 +44,7 @@ namespace PlugHub.Tests
                 new TestCase("package repository service rejects cancelled update staging path escape", PackageRepositoryServiceRejectsCancelledUpdateStagingPathEscape),
                 new TestCase("package repository service rejects dot segment cache ids", PackageRepositoryServiceRejectsDotSegmentCacheIds),
                 new TestCase("package repository service rejects dot segment package ids", PackageRepositoryServiceRejectsDotSegmentPackageIds),
+                new TestCase("repository package row treats absent Revit host as settled state", RepositoryPackageRowTreatsAbsentRevitHostAsSettledState),
                 new TestCase("ribbon layout composer builds configured layout and default fallback", RibbonLayoutComposerBuildsConfiguredLayoutAndDefaultFallback),
                 new TestCase("ribbon layout composer filters invalid container children", RibbonLayoutComposerFiltersInvalidContainerChildren),
                 new TestCase("framework update selects only exact version asset", FrameworkUpdateSelectsOnlyExactVersionAsset),
@@ -865,6 +866,58 @@ namespace PlugHub.Tests
                 service.RefreshInstallState(baseDirectory, package);
                 Require(SamePath(package.InstallDirectory, expectedInstallDirectory), "dot-only package ids must not resolve to the PlugHub base directory when refreshing install state.");
             }
+        }
+
+        private static void RepositoryPackageRowTreatsAbsentRevitHostAsSettledState()
+        {
+            Require(RepositoryPackageInstallState(false, string.Empty, string.Empty, false, true) == "未安装",
+                "absent Revit host must not turn a missing package into pending restart.");
+            Require(RepositoryPackageInstallState(true, "1.0.0", "1.0.0", false, false) == "已安装",
+                "absent Revit host must not mark an installed package as pending restart.");
+            Require(RepositoryPackageInstallState(false, string.Empty, string.Empty, true, true) == "待重启卸载",
+                "running Revit host must still show pending uninstall when the module remains loaded.");
+            Require(RepositoryPackageInstallState(true, "1.0.0", "1.0.0", true, false) == "已安装待重启",
+                "running Revit host must still show pending restart when an installed package is not loaded yet.");
+        }
+
+        private static string RepositoryPackageInstallState(
+            bool isInstalled,
+            string version,
+            string installedVersion,
+            bool isRevitHostRunning,
+            bool isLoadedInCurrentRuntime)
+        {
+            var rowType = typeof(PlugHub.Manager.FrameworkSettingsWindow).Assembly.GetType(
+                "PlugHub.Manager.Settings.Rows.RepositoryPackageRow",
+                throwOnError: true)!;
+            var method = rowType.GetMethod(
+                "InstallStateFor",
+                BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic,
+                binder: null,
+                types: new[]
+                {
+                    typeof(bool),
+                    typeof(string),
+                    typeof(string),
+                    typeof(string),
+                    typeof(bool),
+                    typeof(bool)
+                },
+                modifiers: null);
+            if (method == null)
+            {
+                throw new InvalidOperationException("repository package install-state function must expose host-running and runtime-loaded inputs.");
+            }
+
+            return (string)(method.Invoke(null, new object[]
+            {
+                isInstalled,
+                version,
+                installedVersion,
+                string.Empty,
+                isRevitHostRunning,
+                isLoadedInCurrentRuntime
+            }) ?? string.Empty);
         }
 
         private static void RibbonLayoutComposerBuildsConfiguredLayoutAndDefaultFallback()
