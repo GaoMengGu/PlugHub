@@ -65,6 +65,7 @@ namespace PlugHub.StaticValidation
                 ValidateSettingsCreationAndSortingSpecification();
                 ValidateSettingsGroupFeatureEditingBehavior();
                 ValidateDefaultIconSpecification();
+                ValidateRasterBrandIconSpecification();
                 ValidateRevitWpfUiDesignSpecification();
                 ValidatePackageSourceAndReleaseBehavior();
                 ValidatePendingPackageOperationStoreBehavior();
@@ -1860,6 +1861,31 @@ namespace PlugHub.StaticValidation
             var featureIconOptions = MethodBody(settingsWindow, "BuiltinIconOptions");
             Require(featureIconOptions.Contains("DefaultRibbonIconProvider.FeatureIconKeys") && !featureIconOptions.Contains("DefaultRibbonIconProvider.BuiltinIconKeys"), "feature icon menus must not include UI-only icons such as settings/save/install/about.");
             Require(!modulesText.Contains("commandAssembly"), "framework config must not ship command-backed feature entries.");
+        }
+
+        private static void ValidateRasterBrandIconSpecification()
+        {
+            var iconProvider = ReadText("src/PlugHub.Wpf/DefaultRibbonIconProvider.cs");
+            var wpfProject = ReadText("src/PlugHub.Wpf/PlugHub.Wpf.csproj");
+            var managerProject = ReadText("src/PlugHub.Manager/PlugHub.Manager.csproj");
+            var settingsWindow = ReadText("src/PlugHub.Manager/FrameworkSettingsWindow.cs");
+
+            foreach (var rootIcon in new[] { "SETTINGS.png", "LOGO.png", "LOGO.ico" })
+            {
+                Require(!File.Exists(FullPath(rootIcon)), "brand icon assets must not remain at the repository root: " + rootIcon);
+            }
+
+            foreach (var wpfResource in new[] { "src/PlugHub.Wpf/Resources/SETTINGS.png", "src/PlugHub.Wpf/Resources/LOGO.png" })
+            {
+                Require(File.Exists(FullPath(wpfResource)), "shared WPF icon resource is missing: " + wpfResource);
+            }
+
+            Require(File.Exists(FullPath("src/PlugHub.Manager/Resources/LOGO.ico")), "Manager executable icon resource is missing.");
+            Require(wpfProject.Contains("Resources\\SETTINGS.png") && wpfProject.Contains("Resources\\LOGO.png"), "PlugHub.Wpf must embed the raster settings and logo PNG resources.");
+            Require(managerProject.Contains("<ApplicationIcon>Resources\\LOGO.ico</ApplicationIcon>"), "PlugHub.Manager must use the logo ICO as its executable icon.");
+            Require(managerProject.Contains("Resources\\LOGO.ico"), "PlugHub.Manager project must include the logo ICO resource.");
+            Require(iconProvider.Contains("SettingsResourcePath") && iconProvider.Contains("LogoResourcePath") && iconProvider.Contains("CreateRasterIcon"), "default ribbon icon provider must load the supplied settings and logo raster resources.");
+            Require(settingsWindow.Contains("DefaultRibbonIconProvider.CreateLogoIcon") && settingsWindow.Contains("BuildHeaderLogo"), "PlugHub Manager must apply the logo to the window and header.");
         }
 
         private static void ValidateRevitWpfUiDesignSpecification()

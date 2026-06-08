@@ -2,12 +2,17 @@ using System;
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 
 namespace PlugHub.Wpf
 {
     public static class DefaultRibbonIconProvider
     {
         private const string BuiltinPrefix = "builtin:";
+        private const string LogoIconKey = "logo";
+        private const string SettingsIconKey = "settings";
+        private const string LogoResourcePath = "PlugHub.Wpf.Resources.LOGO.png";
+        private const string SettingsResourcePath = "PlugHub.Wpf.Resources.SETTINGS.png";
 
         public static readonly IReadOnlyList<string> FeatureIconKeys = new[]
         {
@@ -31,6 +36,7 @@ namespace PlugHub.Wpf
             "package",
             "diagnostics",
             "about",
+            "logo",
             "refresh",
             "save",
             "install",
@@ -58,6 +64,7 @@ namespace PlugHub.Wpf
             "package",
             "diagnostics",
             "about",
+            "logo",
             "refresh",
             "save",
             "install",
@@ -87,6 +94,11 @@ namespace PlugHub.Wpf
             return CreateIcon(NormalizeKey(key), 32, 4.0);
         }
 
+        public static ImageSource CreateLogoIcon()
+        {
+            return CreateIcon(LogoIconKey, 32, 0.0);
+        }
+
         public static bool TryCreateIcon(string iconPath, bool large, out ImageSource? icon)
         {
             icon = null;
@@ -107,6 +119,12 @@ namespace PlugHub.Wpf
 
         private static ImageSource CreateIcon(string key, double size, double padding)
         {
+            var rasterIcon = CreateRasterIcon(key, size);
+            if (rasterIcon != null)
+            {
+                return rasterIcon;
+            }
+
             var group = new DrawingGroup();
             using (var context = group.Open())
             {
@@ -127,6 +145,50 @@ namespace PlugHub.Wpf
             var image = new DrawingImage(group);
             image.Freeze();
             return image;
+        }
+
+        private static ImageSource? CreateRasterIcon(string key, double size)
+        {
+            string? resourcePath = null;
+            if (string.Equals(key, SettingsIconKey, StringComparison.OrdinalIgnoreCase))
+            {
+                resourcePath = SettingsResourcePath;
+            }
+            else if (string.Equals(key, "default", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(key, LogoIconKey, StringComparison.OrdinalIgnoreCase))
+            {
+                resourcePath = LogoResourcePath;
+            }
+
+            if (string.IsNullOrWhiteSpace(resourcePath))
+            {
+                return null;
+            }
+
+            try
+            {
+                using (var stream = typeof(DefaultRibbonIconProvider).Assembly.GetManifestResourceStream(resourcePath))
+                {
+                    if (stream == null)
+                    {
+                        return null;
+                    }
+
+                    var image = new BitmapImage();
+                    image.BeginInit();
+                    image.CacheOption = BitmapCacheOption.OnLoad;
+                    image.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
+                    image.DecodePixelWidth = Math.Max(1, (int)Math.Ceiling(size));
+                    image.StreamSource = stream;
+                    image.EndInit();
+                    image.Freeze();
+                    return image;
+                }
+            }
+            catch (Exception)
+            {
+                return null;
+            }
         }
 
         private static void DrawSymbol(DrawingContext context, string key, double size, Brush foreground, Brush accent)

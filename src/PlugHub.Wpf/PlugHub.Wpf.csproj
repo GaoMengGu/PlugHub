@@ -18,4 +18,8 @@
     <ProjectReference Include="..\PlugHub.Contracts\PlugHub.Contracts.csproj" />
     <ProjectReference Include="..\PlugHub.Framework\PlugHub.Framework.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\LOGO.png" LogicalName="PlugHub.Wpf.Resources.LOGO.png" />
+    <EmbeddedResource Include="Resources\SETTINGS.png" LogicalName="PlugHub.Wpf.Resources.SETTINGS.png" />
+  </ItemGroup>
 </Project>

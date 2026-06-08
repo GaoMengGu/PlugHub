@@ -113,6 +113,7 @@ namespace PlugHub.Manager
             _moduleDocuments = _configurationStore.LoadModuleDocuments(_configuration);
 
             Title = "PlugHub Manager";
+            Icon = DefaultRibbonIconProvider.CreateLogoIcon();
             Width = RepositorySettingsDefaultWidth;
             Height = RepositorySettingsDefaultHeight;
             MinWidth = 1000;
@@ -165,6 +166,13 @@ namespace PlugHub.Manager
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
+            var titleArea = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            titleArea.Children.Add(BuildHeaderLogo());
+
             var titleStack = new StackPanel { Orientation = Orientation.Vertical };
             titleStack.Children.Add(new TextBlock
             {
@@ -179,8 +187,9 @@ namespace PlugHub.Manager
                 Margin = new Thickness(0, 3, 0, 0),
                 Foreground = theme.MutedTextBrush
             });
-            Grid.SetColumn(titleStack, 0);
-            header.Children.Add(titleStack);
+            titleArea.Children.Add(titleStack);
+            Grid.SetColumn(titleArea, 0);
+            header.Children.Add(titleArea);
 
             var metrics = new StackPanel
             {
@@ -195,6 +204,19 @@ namespace PlugHub.Manager
             header.Children.Add(metrics);
 
             return header;
+        }
+
+        private static UIElement BuildHeaderLogo()
+        {
+            return new Image
+            {
+                Source = DefaultRibbonIconProvider.CreateLogoIcon(),
+                Width = 34,
+                Height = 34,
+                Margin = new Thickness(0, 0, 10, 0),
+                Stretch = Stretch.Uniform,
+                VerticalAlignment = VerticalAlignment.Center
+            };
         }
 
         private static UIElement BuildHeaderMetric(string label, string value)
