@@ -1920,6 +1920,7 @@ namespace PlugHub.StaticValidation
             var repositoryArchiveSynchronizer = ReadText("src/PlugHub.Framework/Packages/RepositoryArchiveSynchronizer.cs");
             var packageManifestReader = ReadText("src/PlugHub.Framework/Packages/PackageManifestReader.cs");
             var packageInstallService = ReadText("src/PlugHub.Framework/Packages/PackageInstallService.cs");
+            var frameworkUpdateService = ReadText("src/PlugHub.Framework/Updates/FrameworkUpdateService.cs");
             var credentialService = ReadText("src/PlugHub.Framework/Packages/RepositoryCredentialService.cs");
             var redactor = ReadText("src/PlugHub.Framework/Diagnostics/SensitiveTextRedactor.cs");
             var configurationModels = ReadText("src/PlugHub.Framework/Configuration/ConfigurationModels.cs");
@@ -2083,6 +2084,8 @@ namespace PlugHub.StaticValidation
             Require(repositoryArchiveSynchronizer.Contains("ResolveApiKey(repository)") && repositoryArchiveSynchronizer.Contains("SafePathSegment(repository.Id)"), "repository archive synchronizer must resolve protected credentials and stage downloads under a repository-specific cache path.");
             Require(repositoryArchiveSynchronizer.Contains("DownloadArchive") && repositoryArchiveSynchronizer.Contains("ReplaceCacheDirectory"), "repository archive synchronizer must atomically replace the local repository cache after a successful download.");
             Require(readme.Contains("不需要安装 Git") && readme.Contains("HTTP archive"), "README must state that repository browsing no longer requires user-installed Git.");
+            Require(frameworkUpdateService.Contains("PLUGHUB_TEST_UPDATE_RELEASE_URI") && frameworkUpdateService.Contains("GitHub Test") && frameworkUpdateService.Contains("ContinueWhenNoUpdate"), "framework update checks must support an opt-in test update release source without changing stable defaults.");
+            Require(frameworkUpdateService.Contains("ComparableVersionText") && frameworkUpdateService.Contains("IndexOfAny") && frameworkUpdateService.Contains("IsStableReleaseTag") && frameworkUpdateService.Contains("IsTestReleaseTag"), "framework update version comparison must handle TVx.y.z test tags and allow same-number stable releases to replace test builds.");
             Require(settingsWindow.Contains("RepositoryCredentialService") && settingsWindow.Contains("ProtectForSave(repository)"), "settings save must protect repository apiKey before serializing sources.");
             Require(settingsWindow.Contains("ApiKey = string.Empty") && settingsWindow.Contains("PlainApiKey = repository.ApiKey"), "settings repository rows must keep legacy plaintext apiKey available without echoing it in the UI.");
             Require(repositoryRow.Contains("string.IsNullOrWhiteSpace(ApiKey) ? PlainApiKey"), "repository row ToConfiguration must preserve legacy plaintext apiKey when the user did not enter a replacement token.");
@@ -2858,6 +2861,7 @@ namespace PlugHub.StaticValidation
             var installerPayload = ReadText("src/PlugHub.Installer/InstallerPayload.cs");
             var addinWriter = ReadText("src/PlugHub.Installer/AddinManifestWriter.cs");
             var workflow = ReadText(".github/workflows/release.yml");
+            var testUpdateWorkflow = ReadText(".github/workflows/test-update-release.yml");
             var solution = ReadText("PlugHub.sln");
             var solutionX = ReadText("PlugHub.slnx");
             var readme = ReadText("README.md");
@@ -2879,6 +2883,11 @@ namespace PlugHub.StaticValidation
             Require(workflow.Contains("sigstore/cosign-installer@v4.1.2") && !workflow.Contains("sigstore/cosign-installer@v3"), "release workflow must pin the resolvable cosign installer v4 action line.");
             Require(workflow.Contains("softprops/action-gh-release@v3") && !workflow.Contains("softprops/action-gh-release@v2"), "release workflow must use the Node 24 GitHub release action line.");
             Require(workflow.Contains("Build PlugHub installer") && workflow.Contains("-t:Rebuild") && workflow.Contains("InstallerPayloadZip") && workflow.Contains("PlugHub-Setup-$tag.exe"), "release workflow must rebuild and upload PlugHub installer EXE.");
+            Require(testUpdateWorkflow.Contains("push:") && testUpdateWorkflow.Contains("- codex") && testUpdateWorkflow.Contains("workflow_dispatch") && testUpdateWorkflow.Contains("TV\\d+\\.\\d+\\.\\d+") && testUpdateWorkflow.Contains("$releaseTag = $testTag") && testUpdateWorkflow.Contains("--prerelease"), "test update workflow must publish TVx.y.z prerelease assets from codex pushes or manual dispatch without using the production V* namespace.");
+            Require(testUpdateWorkflow.Contains("git fetch --force --tags origin") && testUpdateWorkflow.Contains("$testTag = \"TV$major.$minor.$patch\""), "test update workflow must derive a codex push test tag from the latest production Vx.y.z tag.");
+            Require(testUpdateWorkflow.Contains("Delete previous test prerelease") && testUpdateWorkflow.Contains("continue-on-error: true") && testUpdateWorkflow.Contains("--cleanup-tag"), "test update workflow must tolerate the first publish when no previous TVx.y.z prerelease exists.");
+            Require(testUpdateWorkflow.Contains("actions/checkout@v6") && testUpdateWorkflow.Contains("PlugHub-Revit2020-$testTag.zip") && testUpdateWorkflow.Contains("PlugHub-Setup-$testTag.exe"), "test update workflow must use current checkout and publish test zip plus installer assets.");
+            Require(testUpdateWorkflow.Contains("PLUGHUB_TEST_UPDATE_RELEASE_URI") && testUpdateWorkflow.Contains("releases/tags/$testTag"), "test update workflow release notes must tell testers how to point Manager at the test update source.");
             Require(readme.Contains("PlugHub-Setup") && readme.Contains(@"D:\Program Files\PlugHub"), "README must document the installer EXE and default install directory.");
             Require(readme.Contains("PlugHub-Setup") && readme.Contains("写入 addin") && readme.Contains("Revit 2020"), "README must document release installer behavior.");
         }
@@ -3041,7 +3050,7 @@ namespace PlugHub.StaticValidation
             Require(!buildScript.Contains("PlugHub.Updater.csproj") && !buildScript.Contains("PlugHub.Uninstaller.csproj"), "local Revit 2020 build script must not build standalone maintenance executables.");
             Require(buildScript.Contains("PlugHub.Manager.csproj") && buildScript.Contains("PlugHub.Manager.exe"), "local Revit 2020 build script must stage PlugHub.Manager.exe.");
             Require(buildScript.Contains("PlugHub.Updater.exe") && buildScript.Contains("PlugHub-Uninstall.exe") && buildScript.Contains("StaleOutputPaths"), "local Revit 2020 build script must remove stale standalone maintenance executables from dist.");
-            Require(buildScript.Contains("Resolve-PlugHubReleaseVersion") && buildScript.Contains("/p:PlugHubVersion=$($PlugHubReleaseVersion.Version)") && buildScript.Contains("/p:PlugHubReleaseTag=$($PlugHubReleaseVersion.ReleaseTag)"), "local and release builds must stamp PlugHub DLLs with the release tag version.");
+            Require(buildScript.Contains("Resolve-PlugHubReleaseVersion") && buildScript.Contains("^T?V(?<version>\\d+\\.\\d+\\.\\d+)$") && buildScript.Contains("/p:PlugHubVersion=$($PlugHubReleaseVersion.Version)") && buildScript.Contains("/p:PlugHubReleaseTag=$($PlugHubReleaseVersion.ReleaseTag)"), "local, release, and test update builds must stamp PlugHub DLLs with the release tag version.");
             Require(readme.Contains("检查更新小图标") && readme.Contains("卸载小图标") && readme.Contains("自动弹出目标版本号") && readme.Contains("框架 DLL 和 PlugHub Manager") && !readme.Contains("PlugHub.Updater.exe") && !readme.Contains("PlugHub-Uninstall.exe"), "README must document single-Manager framework update and uninstall behavior.");
             Require(readme.Contains("已是最新版本") && readme.Contains("关闭弹窗则退出更新") && !readme.Contains("Revit 实机测试成功"), "README must document updater behavior without claiming Revit real-machine validation.");
 

@@ -47,6 +47,7 @@ namespace PlugHub.Tests
                 new TestCase("ribbon layout composer builds configured layout and default fallback", RibbonLayoutComposerBuildsConfiguredLayoutAndDefaultFallback),
                 new TestCase("ribbon layout composer filters invalid container children", RibbonLayoutComposerFiltersInvalidContainerChildren),
                 new TestCase("framework update selects only exact version asset", FrameworkUpdateSelectsOnlyExactVersionAsset),
+                new TestCase("framework update treats test channel tags as comparable versions", FrameworkUpdateTreatsTestChannelTagsAsComparableVersions),
                 new TestCase("framework update package accepts single manager maintenance payload", FrameworkUpdatePackageAcceptsSingleManagerMaintenancePayload),
                 new TestCase("framework update package rejects missing manager maintenance payload", FrameworkUpdatePackageRejectsMissingManagerMaintenancePayload),
                 new TestCase("manager updater validates maintenance payload", ManagerUpdaterValidatesMaintenancePayload),
@@ -1079,6 +1080,27 @@ namespace PlugHub.Tests
 
             selected = method.Invoke(null, new object[] { release, "V2.0.0" });
             Require(selected is ReleaseAssetInfo asset && asset.Name == "PlugHub-Revit2020-V2.0.0.zip", "framework update must select the exact Revit2020 zip for the target release version.");
+        }
+
+        private static void FrameworkUpdateTreatsTestChannelTagsAsComparableVersions()
+        {
+            var method = typeof(FrameworkUpdateService).GetMethod("IsNewerVersion", BindingFlags.Static | BindingFlags.NonPublic);
+            if (method == null)
+            {
+                throw new InvalidOperationException("framework update version comparator must remain verifiable.");
+            }
+
+            var isNewer = (bool)(method.Invoke(null, new object[] { "TV1.5.2", "V1.5.1" }) ?? false);
+            Require(isNewer, "test update tag TV1.5.2 must compare newer than stable tag V1.5.1.");
+
+            var sameVersion = (bool)(method.Invoke(null, new object[] { "TV1.5.2", "V1.5.2" }) ?? true);
+            Require(!sameVersion, "test update tag TV1.5.2 must not compare newer than stable tag V1.5.2.");
+
+            var stableSameVersion = (bool)(method.Invoke(null, new object[] { "V1.5.2", "TV1.5.2" }) ?? false);
+            Require(stableSameVersion, "stable tag V1.5.2 must compare newer than test tag TV1.5.2 so testers can return to the official channel.");
+
+            var olderStable = (bool)(method.Invoke(null, new object[] { "V1.5.1", "TV1.5.2" }) ?? true);
+            Require(!olderStable, "stable tag V1.5.1 must not compare newer than test tag TV1.5.2.");
         }
 
         private static void ManagerUpdaterRemovesStaleStandaloneMaintenancePdbs()

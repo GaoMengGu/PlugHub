@@ -1,0 +1,164 @@
+name: Test Update Release
+
+on:
+  push:
+    branches:
+      - codex
+  workflow_dispatch:
+    inputs:
+      test_tag:
+        description: "Test release tag, for example TV1.5.2. Must not use the production V* tag namespace."
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: test-update-release-${{ github.event.inputs.test_tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  build-test-update:
+    name: Build test update assets
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Resolve test release version
+        id: resolve
+        shell: pwsh
+        env:
+          PLUGHUB_TEST_TAG: ${{ github.event.inputs.test_tag || '' }}
+        run: |
+          $testTag = ([string]$env:PLUGHUB_TEST_TAG).Trim()
+          if ([string]::IsNullOrWhiteSpace($testTag)) {
+            git fetch --force --tags origin
+            $latest = git tag --list "V[0-9]*.[0-9]*.[0-9]*" --sort=-v:refname | Select-Object -First 1
+            if ([string]::IsNullOrWhiteSpace($latest)) {
+              $testTag = "TV1.0.0"
+            }
+            else {
+              $match = [regex]::Match($latest, "^V(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)$")
+              if (!$match.Success) {
+                throw "Latest release tag does not match Vx.y.z: $latest"
+              }
+
+              $major = [int]$match.Groups["major"].Value
+              $minor = [int]$match.Groups["minor"].Value
+              $patch = [int]$match.Groups["patch"].Value + 1
+              $testTag = "TV$major.$minor.$patch"
+            }
+          }
+
+          if ($testTag -notmatch "^TV\d+\.\d+\.\d+$") {
+            throw "Test release tag must match TVx.y.z and must not use V*: $testTag"
+          }
+
+          $releaseTag = $testTag
+          $version = $testTag.Substring(2)
+          "test_tag=$testTag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "release_tag=$releaseTag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "Test tag: $testTag"
+          Write-Host "Build release tag: $releaseTag"
+
+      - name: Build Revit 2020 package
+        shell: pwsh
+        run: .\scripts\build-revit2020.ps1 -UseRevitApiNuGet -UseRelativeAddinAssembly -PlugHubReleaseTag "${{ steps.resolve.outputs.release_tag }}"
+
+      - name: Package test update zip
+        shell: pwsh
+        run: |
+          $testTag = "${{ steps.resolve.outputs.test_tag }}"
+          $zipPath = "PlugHub-Revit2020-$testTag.zip"
+          $sourceRoot = (Resolve-Path "dist\Revit2020").Path
+          $artifactDir = Join-Path $env:RUNNER_TEMP "PlugHub-Revit2020-$testTag"
+          if (Test-Path $zipPath) {
+            Remove-Item -LiteralPath $zipPath -Force
+          }
+
+          if (Test-Path $artifactDir) {
+            Remove-Item -LiteralPath $artifactDir -Recurse -Force
+          }
+
+          New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
+          Get-ChildItem -LiteralPath $sourceRoot -Recurse -File |
+            Where-Object { $_.Name -notlike "*.sigstore.json" -and $_.Name -notlike "*.pdb" } |
+            ForEach-Object {
+              $relativePath = $_.FullName.Substring($sourceRoot.Length).TrimStart("\", "/")
+              $targetPath = Join-Path $artifactDir $relativePath
+              New-Item -ItemType Directory -Force -Path (Split-Path $targetPath -Parent) | Out-Null
+              Copy-Item -LiteralPath $_.FullName -Destination $targetPath -Force
+            }
+
+          Compress-Archive -Path "$artifactDir\*" -DestinationPath $zipPath -Force
+
+      - name: Build PlugHub installer
+        shell: pwsh
+        run: |
+          $testTag = "${{ steps.resolve.outputs.test_tag }}"
+          $version = "${{ steps.resolve.outputs.version }}"
+          $releaseTag = "${{ steps.resolve.outputs.release_tag }}"
+          $payloadZip = (Resolve-Path "PlugHub-Revit2020-$testTag.zip").Path
+          $installerOutput = Join-Path $env:RUNNER_TEMP "PlugHubInstaller"
+          $installerExe = "PlugHub-Setup-$testTag.exe"
+          if (Test-Path $installerOutput) {
+            Remove-Item -LiteralPath $installerOutput -Recurse -Force
+          }
+
+          New-Item -ItemType Directory -Force -Path $installerOutput | Out-Null
+          dotnet build src\PlugHub.Installer\PlugHub.Installer.csproj -c Release -t:Rebuild /p:InstallerPayloadZip="$payloadZip" /p:OutDir="$installerOutput\" /p:PlugHubVersion="$version" /p:PlugHubReleaseTag="$releaseTag"
+          $builtInstaller = Join-Path $installerOutput "PlugHub.Installer.exe"
+          if (!(Test-Path $builtInstaller)) {
+            throw "Installer build finished but $builtInstaller was not found."
+          }
+
+          Copy-Item -LiteralPath $builtInstaller -Destination $installerExe -Force
+
+      - name: Write test release notes
+        shell: pwsh
+        run: |
+          $testTag = "${{ steps.resolve.outputs.test_tag }}"
+          $releaseUri = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/tags/$testTag"
+          @(
+            "## PlugHub test update build",
+            "",
+            "This prerelease is for update-flow validation only.",
+            "",
+            "To make a test build check this release first, set:",
+            "",
+            "```powershell",
+            "[Environment]::SetEnvironmentVariable('PLUGHUB_TEST_UPDATE_RELEASE_URI', '$releaseUri', 'User')",
+            "```",
+            "",
+            "Unset `PLUGHUB_TEST_UPDATE_RELEASE_URI` to return to the stable update channel."
+          ) | Set-Content -LiteralPath "PlugHub-TestReleaseNotes-$testTag.md" -Encoding utf8
+
+      - name: Delete previous test prerelease
+        continue-on-error: true
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $testTag = "${{ steps.resolve.outputs.test_tag }}"
+          gh release delete $testTag --yes --cleanup-tag
+
+      - name: Publish GitHub prerelease
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $testTag = "${{ steps.resolve.outputs.test_tag }}"
+          $notesPath = "PlugHub-TestReleaseNotes-$testTag.md"
+          gh release create $testTag `
+            "PlugHub-Revit2020-$testTag.zip" `
+            "PlugHub-Setup-$testTag.exe" `
+            --target $env:GITHUB_SHA `
+            --title "PlugHub Test $testTag" `
+            --notes-file $notesPath `
+            --prerelease
