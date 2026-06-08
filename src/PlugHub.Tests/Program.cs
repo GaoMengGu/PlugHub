@@ -507,8 +507,7 @@ namespace PlugHub.Tests
                 Require(File.ReadAllText(Path.Combine(baseDirectory, "packages", "module.repo", "bin", "Module.dll")) == "module v1", "installed payload must be copied.");
                 Require(service.IsInstalled(baseDirectory, package, out var installedVersion), "installed package must be discoverable.");
                 Require(installedVersion == "1.0.0", "installed version must come from installed manifest.");
-                var pendingAfterInstall = service.ListPendingOperations(baseDirectory);
-                Require(pendingAfterInstall.Count == 1 && pendingAfterInstall[0].Operation == "restart", "install must queue a restart operation.");
+                Require(service.ListPendingOperations(baseDirectory).Count == 0, "install without locks must not persist a restart-only pending operation.");
 
                 manifestPath = WriteRepositoryPackage(repositoryDirectory, "2.0.0", "module v2");
                 package = PackageDescriptor(manifestPath, repositoryDirectory, "module.repo");

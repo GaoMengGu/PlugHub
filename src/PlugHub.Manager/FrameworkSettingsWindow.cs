@@ -486,7 +486,7 @@ namespace PlugHub.Manager
             details.Children.Add(BuildAboutSection(
                 "诊断",
                 BuildAboutInfoRow("日志消息", (FrameworkRuntimeState.Current?.Diagnostics.Count ?? 0).ToString(CultureInfo.InvariantCulture)),
-                BuildAboutInfoRow("待重启操作", _packageRepositoryService.ListPendingOperations(BaseDirectory()).Count.ToString(CultureInfo.InvariantCulture)),
+                BuildAboutInfoRow("待重启操作", PendingBlockingPackageOperationCount().ToString(CultureInfo.InvariantCulture)),
                 BuildAboutInfoRow("静态验证", "dotnet run --project src/PlugHub.StaticValidation/PlugHub.StaticValidation.csproj")));
             Grid.SetColumn(details, 1);
             root.Children.Add(details);
@@ -4470,8 +4470,31 @@ namespace PlugHub.Manager
             var id = string.IsNullOrWhiteSpace(moduleId) ? packageId : moduleId;
             if (string.IsNullOrWhiteSpace(id)) return false;
 
+            if (!IsRevitHostProcessRunning()) return true;
+
             return (FrameworkRuntimeState.Current?.Configuration.EffectiveModules.Modules ?? new List<ModuleConfiguration>())
                 .Any(module => string.Equals(module.Id, id, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private bool IsRevitHostProcessRunning()
+        {
+            if (_hostProcessId <= 0 || _hostProcessId == Process.GetCurrentProcess().Id) return false;
+
+            try
+            {
+                using (var process = Process.GetProcessById(_hostProcessId))
+                {
+                    return !process.HasExited;
+                }
+            }
+            catch (ArgumentException)
+            {
+                return false;
+            }
+            catch (InvalidOperationException)
+            {
+                return false;
+            }
         }
 
         private void AddCustomGroup()
@@ -5313,10 +5336,16 @@ namespace PlugHub.Manager
 
         private string PendingPackageOperationsStatusText()
         {
-            var pendingCount = _packageRepositoryService.ListPendingOperations(BaseDirectory()).Count;
+            var pendingCount = PendingBlockingPackageOperationCount();
             return pendingCount == 0
                 ? string.Empty
                 : "待重启操作 " + pendingCount + " 项，重启 Revit 后生效。";
+        }
+
+        private int PendingBlockingPackageOperationCount()
+        {
+            return _packageRepositoryService.ListPendingOperations(BaseDirectory())
+                .Count(operation => !string.Equals(operation.Operation, "restart", StringComparison.OrdinalIgnoreCase));
         }
 
         private void RefreshStatusWithPendingPackageOperations(string message)

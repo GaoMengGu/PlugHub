@@ -1,7 +1,9 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using PlugHub.Framework.Configuration;
+using PlugHub.Framework.Runtime;
 using PlugHub.Manager.Maintenance;
 
 namespace PlugHub.Manager
@@ -21,7 +23,8 @@ namespace PlugHub.Manager
 
                 var configDirectory = ResolveConfigDirectory(args);
                 var hostProcessId = ReadIntOption(args, "--hostProcessId");
-                var configuration = FrameworkConfigurationLoader.LoadFromDirectory(configDirectory);
+                var snapshot = new FrameworkRuntime().Load(configDirectory, ShouldApplyPendingPackageOperations(hostProcessId));
+                var configuration = snapshot.Configuration.Configuration;
                 var application = new Application();
                 application.Run(new FrameworkSettingsWindow(configDirectory, configuration, hostProcessId));
                 return 0;
@@ -48,6 +51,27 @@ namespace PlugHub.Manager
         {
             var value = ReadOption(args, name);
             return int.TryParse(value, out var parsed) ? parsed : 0;
+        }
+
+        private static bool ShouldApplyPendingPackageOperations(int hostProcessId)
+        {
+            if (hostProcessId <= 0 || hostProcessId == Process.GetCurrentProcess().Id) return true;
+
+            try
+            {
+                using (var process = Process.GetProcessById(hostProcessId))
+                {
+                    return process.HasExited;
+                }
+            }
+            catch (ArgumentException)
+            {
+                return true;
+            }
+            catch (InvalidOperationException)
+            {
+                return true;
+            }
         }
 
         private static string ReadOption(string[] args, string name)
