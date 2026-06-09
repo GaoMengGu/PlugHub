@@ -7,6 +7,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Cache;
 using System.Text;
+using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using PlugHub.Contracts.Modules;
 using PlugHub.Framework.Configuration;
@@ -18,9 +19,9 @@ namespace PlugHub.Framework.Packages
     {
         private const string ArchiveDownloadUserAgent = "curl/8.0.1";
         private const string RepositoryCacheRootName = "repository-cache";
+        private const int GiteeApiDownloadParallelism = 4;
 
         private readonly RepositoryCredentialService _credentialService;
-        private readonly JavaScriptSerializer _serializer = new JavaScriptSerializer { MaxJsonLength = int.MaxValue, RecursionLimit = 128 };
 
         public RepositoryArchiveSynchronizer(RepositoryCredentialService credentialService)
         {
@@ -127,10 +128,10 @@ namespace PlugHub.Framework.Packages
                 throw new InvalidDataException("Gitee repository tree did not contain downloadable files.");
             }
 
-            foreach (var path in entries)
-            {
-                DownloadGiteeApiFile(address, gitRef, path, apiKey, stagingDirectory);
-            }
+            Parallel.ForEach(
+                entries,
+                new ParallelOptions { MaxDegreeOfParallelism = GiteeApiDownloadParallelism },
+                path => DownloadGiteeApiFile(address, gitRef, path, apiKey, stagingDirectory));
         }
 
         private void DownloadGiteeApiFile(
@@ -182,7 +183,8 @@ namespace PlugHub.Framework.Packages
 
                 using (var reader = new StreamReader(source, Encoding.UTF8))
                 {
-                    return _serializer.Deserialize<Dictionary<string, object>>(reader.ReadToEnd()) ?? new Dictionary<string, object>();
+                    var serializer = new JavaScriptSerializer { MaxJsonLength = int.MaxValue, RecursionLimit = 128 };
+                    return serializer.Deserialize<Dictionary<string, object>>(reader.ReadToEnd()) ?? new Dictionary<string, object>();
                 }
             }
         }

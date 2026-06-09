@@ -1,6 +1,8 @@
 using System;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
+using System.Threading;
 using System.Windows;
 using PlugHub.Framework.Configuration;
 using PlugHub.Framework.Runtime;
@@ -22,11 +24,26 @@ namespace PlugHub.Manager
                 }
 
                 var configDirectory = ResolveConfigDirectory(args);
-                var hostProcessId = ReadIntOption(args, "--hostProcessId");
-                var snapshot = new FrameworkRuntime().Load(configDirectory, ShouldApplyPendingPackageOperations(hostProcessId));
-                var configuration = snapshot.Configuration.Configuration;
-                var application = new Application();
-                application.Run(new FrameworkSettingsWindow(configDirectory, configuration, hostProcessId));
+                var singleInstance = TryAcquireSingleInstance(configDirectory);
+                if (singleInstance == null)
+                {
+                    return 0;
+                }
+
+                try
+                {
+                    var hostProcessId = ReadIntOption(args, "--hostProcessId");
+                    var snapshot = new FrameworkRuntime().Load(configDirectory, ShouldApplyPendingPackageOperations(hostProcessId));
+                    var configuration = snapshot.Configuration.Configuration;
+                    var application = new Application();
+                    application.Run(new FrameworkSettingsWindow(configDirectory, configuration, hostProcessId));
+                }
+                finally
+                {
+                    singleInstance.ReleaseMutex();
+                    singleInstance.Dispose();
+                }
+
                 return 0;
             }
             catch (Exception ex)
@@ -45,6 +62,44 @@ namespace PlugHub.Manager
             }
 
             return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config");
+        }
+
+        private static Mutex? TryAcquireSingleInstance(string configDirectory)
+        {
+            bool createdNew;
+            var mutex = new Mutex(true, SingleInstanceMutexName(configDirectory), out createdNew);
+            if (createdNew)
+            {
+                return mutex;
+            }
+
+            mutex.Dispose();
+            return null;
+        }
+
+        private static string SingleInstanceMutexName(string configDirectory)
+        {
+            var fullConfigDirectory = Path.GetFullPath(configDirectory ?? string.Empty)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                .ToUpperInvariant();
+            return @"Local\PlugHub.Manager." + StableHash(fullConfigDirectory);
+        }
+
+        private static string StableHash(string value)
+        {
+            unchecked
+            {
+                const ulong offset = 14695981039346656037UL;
+                const ulong prime = 1099511628211UL;
+                var hash = offset;
+                foreach (var ch in value ?? string.Empty)
+                {
+                    hash ^= ch;
+                    hash *= prime;
+                }
+
+                return hash.ToString("x16", CultureInfo.InvariantCulture);
+            }
         }
 
         private static int ReadIntOption(string[] args, string name)
