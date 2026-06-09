@@ -68,7 +68,34 @@ namespace PlugHub.Framework.Packages
                     DeleteFileQuietly(archivePath);
                     DeleteDirectoryQuietly(stagingDirectory);
                     Directory.CreateDirectory(stagingDirectory);
-                    SyncGiteeRepositoryViaApi(address, repository, stagingDirectory);
+                    try
+                    {
+                        SyncGiteeRepositoryViaApi(address, repository, stagingDirectory);
+                    }
+                    catch (Exception apiEx)
+                    {
+                        if (!ShouldUseGitHubMirrorFallback(address, repository, apiEx))
+                        {
+                            throw;
+                        }
+
+                        DeleteFileQuietly(archivePath);
+                        DeleteDirectoryQuietly(stagingDirectory);
+                        Directory.CreateDirectory(stagingDirectory);
+                        try
+                        {
+                            SyncGiteeRepositoryViaGitHubMirror(address, repository, archivePath, stagingDirectory);
+                        }
+                        catch (Exception mirrorEx)
+                        {
+                            throw new InvalidOperationException(
+                                "Gitee API fallback failed and GitHub mirror fallback failed: "
+                                + SensitiveTextRedactor.Redact(apiEx.Message)
+                                + "；"
+                                + SensitiveTextRedactor.Redact(mirrorEx.Message),
+                                mirrorEx);
+                        }
+                    }
                 }
 
                 ReplaceCacheDirectory(stagingDirectory, fullCacheDirectory);
@@ -101,6 +128,33 @@ namespace PlugHub.Framework.Packages
                 || response.StatusCode == HttpStatusCode.Unauthorized
                 || response.StatusCode == HttpStatusCode.NotFound
                 || response.StatusCode == HttpStatusCode.MethodNotAllowed;
+        }
+
+        private bool ShouldUseGitHubMirrorFallback(RepositoryAddress address, PackageRepositoryConfiguration repository, Exception exception)
+        {
+            if (!string.Equals(address.Provider, "gitee", StringComparison.OrdinalIgnoreCase)) return false;
+            if (RepositoryRequiresToken(repository)) return false;
+            if (!string.IsNullOrWhiteSpace(_credentialService.ResolveApiKey(repository))) return false;
+
+            var webException = exception as WebException;
+            var response = webException?.Response as HttpWebResponse;
+            if (response == null) return exception is InvalidDataException;
+
+            return response.StatusCode == HttpStatusCode.Forbidden
+                || (int)response.StatusCode == 429;
+        }
+
+        private void SyncGiteeRepositoryViaGitHubMirror(
+            RepositoryAddress address,
+            PackageRepositoryConfiguration repository,
+            string archivePath,
+            string stagingDirectory)
+        {
+            var mirrorAddress = new RepositoryAddress("github", address.Owner, address.Name);
+            var archiveUrl = ArchiveDownloadUrl(mirrorAddress, repository);
+            DownloadArchive(archiveUrl, mirrorAddress, repository, archivePath);
+            ValidateArchiveFile(archivePath, archiveUrl);
+            ExtractArchive(archivePath, stagingDirectory);
         }
 
         private void SyncGiteeRepositoryViaApi(RepositoryAddress address, PackageRepositoryConfiguration repository, string stagingDirectory)
@@ -480,7 +534,7 @@ namespace PlugHub.Framework.Packages
 
         private sealed class RepositoryAddress
         {
-            private RepositoryAddress(string provider, string owner, string name)
+            public RepositoryAddress(string provider, string owner, string name)
             {
                 Provider = provider;
                 Owner = owner;
