@@ -54,10 +54,9 @@ namespace PlugHub.Manager
         private const double RepositorySourceCardRowWidth = RepositoryCardRowWidth - RepositorySourceScrollbarSafetyReserve;
         private const double RepositorySourceCardSlotWidth = RepositorySourceCardRowWidth / RepositorySourceColumns;
         private const double RepositorySourceCardWidth = RepositorySourceCardSlotWidth - RepositoryCardHorizontalMarginWidth;
-        private const double RepositoryPackageGridSafetyReserve = 132.0;
-        private const double RepositoryPackageCardRowWidth = RepositoryCardRowWidth - RepositoryPackageGridSafetyReserve;
-        private const double RepositoryPackageCardSlotWidth = RepositoryPackageCardRowWidth / RepositoryPackageColumns;
-        private const double RepositoryPackageCardWidth = RepositoryPackageCardSlotWidth - RepositoryCardHorizontalMarginWidth;
+        private const double RepositoryPackageScrollbarSafetyReserve = 18.0;
+        private const double RepositoryPackageCardMinWidth = 260.0;
+        private const double RepositoryPackageDefaultCardWidth = ((RepositoryCardRowWidth - RepositoryPackageScrollbarSafetyReserve) / RepositoryPackageColumns) - RepositoryCardHorizontalMarginWidth;
         private const double RepositoryPackageActionWidth = 72.0;
         private const double RepositoryPackageActionHeight = 26.0;
         private static readonly string[] SameNameIconExtensions = { ".png", ".ico", ".jpg", ".jpeg", ".bmp" };
@@ -839,11 +838,23 @@ namespace PlugHub.Manager
             return style;
         }
 
+        private static Binding RepositoryPackageCardWidthBinding()
+        {
+            return new Binding("ActualWidth")
+            {
+                RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(ListBox), 1),
+                Converter = new RepositoryPackageCardWidthConverter(),
+                FallbackValue = RepositoryPackageDefaultCardWidth,
+                TargetNullValue = RepositoryPackageDefaultCardWidth
+            };
+        }
+
         private DataTemplate BuildRepositoryPackageTemplate()
         {
             var theme = RevitUiTheme.Current;
             var border = new FrameworkElementFactory(typeof(Border));
-            border.SetValue(Border.WidthProperty, RepositoryPackageCardWidth);
+            border.SetBinding(Border.WidthProperty, RepositoryPackageCardWidthBinding());
+            border.SetValue(Border.MinWidthProperty, RepositoryPackageCardMinWidth);
             border.SetValue(Border.MarginProperty, new Thickness(RepositoryCardHorizontalMargin, RepositoryPackageCardVerticalMargin, RepositoryCardHorizontalMargin, RepositoryPackageCardVerticalMargin));
             border.SetValue(Border.PaddingProperty, new Thickness(10, 8, 10, 8));
             border.SetValue(Border.BackgroundProperty, theme.PanelBackground);
@@ -1437,7 +1448,24 @@ namespace PlugHub.Manager
                 }
 
                 RemoveUnavailableRibbonDesignerFeatures(child, visibleFeatureIds);
+                if (ShouldRemoveEmptyRibbonDesignerContainer(child))
+                {
+                    parent.Children.RemoveAt(index);
+                }
             }
+        }
+
+        private static bool ShouldRemoveEmptyRibbonDesignerContainer(RibbonDesignerNodeRow row)
+        {
+            if (row == null || row.Children.Count > 0)
+            {
+                return false;
+            }
+
+            return RibbonDesignerMapper.IsType(row, RibbonDesignerNodeRow.Panel)
+                || RibbonDesignerMapper.IsType(row, RibbonDesignerNodeRow.PulldownButton)
+                || RibbonDesignerMapper.IsType(row, RibbonDesignerNodeRow.SplitButton)
+                || RibbonDesignerMapper.IsType(row, RibbonDesignerNodeRow.Stack);
         }
 
         private void EnsureAllVisibleFeaturesInRibbonDesignerLayout()
@@ -3139,7 +3167,7 @@ namespace PlugHub.Manager
                     }
 
                     RefreshRepositorySourceCards();
-                    RefreshStatus("仓库检查完成，找到 " + packages.Count + " 个插件。");
+                    RefreshStatus("仓库检查完成，已同步并替换本地缓存，找到 " + packages.Count + " 个插件。");
                 }));
             });
         }
@@ -4340,7 +4368,7 @@ namespace PlugHub.Manager
 
                 row.Status = diagnostics.Any()
                     ? diagnostics.Last().Message
-                    : "已浏览 " + packages.Count + " 个插件包";
+                    : "已同步并替换本地缓存，" + packages.Count + " 个插件包";
                 RefreshRepositorySourceCards();
 
                 LoadRepositoryPackageRows(packages);
@@ -5718,6 +5746,26 @@ namespace PlugHub.Manager
                 var localVersion = string.IsNullOrWhiteSpace(row.InstalledVersion) ? "-" : row.InstalledVersion.Trim();
                 var repositoryVersion = string.IsNullOrWhiteSpace(row.Version) ? "?" : row.Version.Trim();
                 return "本 " + localVersion + " · 仓 " + repositoryVersion;
+            }
+
+            public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+            {
+                return Binding.DoNothing;
+            }
+        }
+
+        private sealed class RepositoryPackageCardWidthConverter : IValueConverter
+        {
+            public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+            {
+                var listWidth = value is double actualWidth && actualWidth > 0
+                    ? actualWidth
+                    : RepositoryCardRowWidth;
+                var usableWidth = Math.Max(
+                    RepositoryPackageCardMinWidth * RepositoryPackageColumns,
+                    listWidth - RepositoryPackageScrollbarSafetyReserve);
+                var cardWidth = (usableWidth / RepositoryPackageColumns) - RepositoryCardHorizontalMarginWidth;
+                return Math.Max(RepositoryPackageCardMinWidth, cardWidth);
             }
 
             public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

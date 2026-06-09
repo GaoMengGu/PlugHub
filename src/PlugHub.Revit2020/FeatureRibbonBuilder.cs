@@ -491,18 +491,36 @@ namespace PlugHub.Revit2020
 
             try
             {
+                var size = large ? 32 : 16;
                 var image = new BitmapImage();
                 image.BeginInit();
                 image.CacheOption = BitmapCacheOption.OnLoad;
+                image.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
+                image.DecodePixelWidth = size;
                 image.UriSource = new Uri(resolvedPath, UriKind.Absolute);
                 image.EndInit();
                 image.Freeze();
-                return image;
+                return CreateSizedRasterIcon(image, size);
             }
             catch (Exception)
             {
                 return null;
             }
+        }
+
+        private static ImageSource CreateSizedRasterIcon(ImageSource source, double size)
+        {
+            var group = new DrawingGroup();
+            using (var context = group.Open())
+            {
+                context.DrawRectangle(Brushes.Transparent, null, new System.Windows.Rect(0, 0, size, size));
+                context.DrawImage(source, new System.Windows.Rect(0, 0, size, size));
+            }
+
+            group.Freeze();
+            var image = new DrawingImage(group);
+            image.Freeze();
+            return image;
         }
 
         private sealed class SlotAssignmentResult

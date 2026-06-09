@@ -15,6 +15,7 @@ namespace PlugHub.Manager.Maintenance
                 if (args.Mode == ManagerMaintenanceMode.Update)
                 {
                     new ManagerFrameworkUpdater(logger).Run(args);
+                    MessageBox.Show("PlugHub was updated successfully.", "PlugHub Manager - Update", MessageBoxButton.OK, MessageBoxImage.Information);
                     return 0;
                 }
 
@@ -28,6 +29,11 @@ namespace PlugHub.Manager.Maintenance
             catch (Exception ex)
             {
                 logger.Error("PlugHub Manager maintenance failed.", ex);
+                if (args.Mode == ManagerMaintenanceMode.Update)
+                {
+                    MessageBox.Show(ex.Message, "PlugHub Manager - Update", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+
                 if (args.Mode == ManagerMaintenanceMode.Uninstall)
                 {
                     MessageBox.Show(ex.Message, "PlugHub Manager - Uninstall", MessageBoxButton.OK, MessageBoxImage.Error);
