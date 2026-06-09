@@ -103,6 +103,7 @@ namespace PlugHub.Wpf
         private static ResourceDictionary CreateResources(RevitUiPalette palette)
         {
             var resources = new ResourceDictionary();
+            AddSystemColorResources(resources, palette);
             resources.Add(typeof(Button), ButtonStyle(palette));
             resources.Add(typeof(TextBox), TextBoxStyle(palette));
             resources.Add(typeof(ComboBox), ComboBoxStyle(palette));
@@ -118,6 +119,20 @@ namespace PlugHub.Wpf
             resources.Add(typeof(ContextMenu), ContextMenuStyle(palette));
             resources.Add(typeof(MenuItem), MenuItemStyle(palette));
             return resources;
+        }
+
+        private static void AddSystemColorResources(ResourceDictionary resources, RevitUiPalette palette)
+        {
+            resources[SystemColors.WindowBrushKey] = palette.ControlBackground;
+            resources[SystemColors.WindowTextBrushKey] = palette.TextBrush;
+            resources[SystemColors.ControlBrushKey] = palette.ControlBackground;
+            resources[SystemColors.ControlTextBrushKey] = palette.TextBrush;
+            resources[SystemColors.HighlightBrushKey] = palette.SelectionBrush;
+            resources[SystemColors.HighlightTextBrushKey] = palette.TextBrush;
+            resources[SystemColors.MenuBrushKey] = palette.PanelBackground;
+            resources[SystemColors.MenuTextBrushKey] = palette.TextBrush;
+            resources[SystemColors.GrayTextBrushKey] = palette.DisabledTextBrush;
+            resources[SystemColors.HotTrackBrushKey] = palette.AccentBrush;
         }
 
         private static Style ButtonStyle(RevitUiPalette palette)
@@ -185,7 +200,7 @@ namespace PlugHub.Wpf
         private static Style ComboBoxItemStyle(RevitUiPalette palette)
         {
             var style = new Style(typeof(ComboBoxItem));
-            style.Setters.Add(new Setter(Control.BackgroundProperty, Brushes.Transparent));
+            style.Setters.Add(new Setter(Control.BackgroundProperty, palette.ControlBackground));
             style.Setters.Add(new Setter(Control.ForegroundProperty, palette.TextBrush));
             style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(6, 3, 6, 3)));
             style.Setters.Add(new Setter(Control.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch));
@@ -222,6 +237,7 @@ namespace PlugHub.Wpf
             content.SetValue(FrameworkElement.VerticalAlignmentProperty, new TemplateBindingExtension(Control.VerticalContentAlignmentProperty));
             content.SetBinding(ContentPresenter.ContentProperty, new Binding("Content") { RelativeSource = RelativeSource.TemplatedParent });
             content.SetBinding(ContentPresenter.ContentTemplateProperty, new Binding("ContentTemplate") { RelativeSource = RelativeSource.TemplatedParent });
+            content.SetBinding(ContentPresenter.ContentTemplateSelectorProperty, new Binding("ContentTemplateSelector") { RelativeSource = RelativeSource.TemplatedParent });
             content.SetBinding(ContentPresenter.ContentStringFormatProperty, new Binding("ContentStringFormat") { RelativeSource = RelativeSource.TemplatedParent });
             root.AppendChild(content);
 

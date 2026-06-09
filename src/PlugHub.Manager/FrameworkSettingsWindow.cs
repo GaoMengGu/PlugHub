@@ -459,6 +459,8 @@ namespace PlugHub.Manager
         private TabItem BuildAboutTab()
         {
             var theme = RevitUiTheme.Current;
+            var pendingOperationCount = _packageRepositoryService.ListPendingOperations(BaseDirectory())
+                .Count(operation => !string.Equals(operation.Operation, "restart", StringComparison.OrdinalIgnoreCase));
             var root = new Grid { Margin = new Thickness(14) };
             root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.2, GridUnitType.Star) });
             root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -509,7 +511,7 @@ namespace PlugHub.Manager
             details.Children.Add(BuildAboutSection(
                 "诊断",
                 BuildAboutInfoRow("日志消息", (FrameworkRuntimeState.Current?.Diagnostics.Count ?? 0).ToString(CultureInfo.InvariantCulture)),
-                BuildAboutInfoRow("待重启操作", PendingBlockingPackageOperationCount().ToString(CultureInfo.InvariantCulture)),
+                BuildAboutInfoRow("待重启操作", pendingOperationCount.ToString(CultureInfo.InvariantCulture)),
                 BuildAboutInfoRow("静态验证", "dotnet run --project src/PlugHub.StaticValidation/PlugHub.StaticValidation.csproj")));
             Grid.SetColumn(details, 1);
             root.Children.Add(details);
@@ -5647,6 +5649,11 @@ namespace PlugHub.Manager
 
             public string Value { get; }
             public string DisplayText { get; }
+
+            public override string ToString()
+            {
+                return DisplayText;
+            }
         }
 
         private static string RepositoryPackagePrimaryActionLabel(string action, bool isMouseOver)
