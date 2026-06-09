@@ -52,8 +52,8 @@ namespace PlugHub.Framework.Packages
 
                 try
                 {
-                    var archiveUrl = WithCacheBust(ArchiveUrl(address, repository));
-                    DownloadArchive(archiveUrl, repository, archivePath);
+                    var archiveUrl = ArchiveDownloadUrl(address, repository);
+                    DownloadArchive(archiveUrl, address, repository, archivePath);
                     ValidateArchiveFile(archivePath, archiveUrl);
                     ExtractArchive(archivePath, stagingDirectory);
                 }
@@ -88,23 +88,24 @@ namespace PlugHub.Framework.Packages
         private bool ShouldUseGiteeApiFallback(RepositoryAddress address, PackageRepositoryConfiguration repository, Exception exception)
         {
             if (!string.Equals(address.Provider, "gitee", StringComparison.OrdinalIgnoreCase)) return false;
-            if (!string.Equals(repository.Visibility, "private", StringComparison.OrdinalIgnoreCase)) return false;
-            if (string.IsNullOrWhiteSpace(_credentialService.ResolveApiKey(repository))) return false;
+            if (RepositoryRequiresToken(repository) && string.IsNullOrWhiteSpace(_credentialService.ResolveApiKey(repository))) return false;
             if (exception is InvalidDataException) return true;
 
             var webException = exception as WebException;
             var response = webException?.Response as HttpWebResponse;
             if (response == null) return false;
 
-            return response.StatusCode == HttpStatusCode.Forbidden
+            return response.StatusCode == HttpStatusCode.BadRequest
+                || response.StatusCode == HttpStatusCode.Forbidden
                 || response.StatusCode == HttpStatusCode.Unauthorized
-                || response.StatusCode == HttpStatusCode.NotFound;
+                || response.StatusCode == HttpStatusCode.NotFound
+                || response.StatusCode == HttpStatusCode.MethodNotAllowed;
         }
 
         private void SyncGiteeRepositoryViaApi(RepositoryAddress address, PackageRepositoryConfiguration repository, string stagingDirectory)
         {
             var apiKey = _credentialService.ResolveApiKey(repository);
-            if (string.IsNullOrWhiteSpace(apiKey))
+            if (RepositoryRequiresToken(repository) && string.IsNullOrWhiteSpace(apiKey))
             {
                 throw new InvalidOperationException("Private Gitee repository requires an access token.");
             }
@@ -188,10 +189,15 @@ namespace PlugHub.Framework.Packages
 
         private static Uri GiteeApiUrl(RepositoryAddress address, string apiPath, string apiKey, string extraQuery)
         {
-            var query = "access_token=" + Uri.EscapeDataString(apiKey.Trim());
+            var queryParts = new List<string>();
+            if (!string.IsNullOrWhiteSpace(apiKey))
+            {
+                queryParts.Add("access_token=" + Uri.EscapeDataString(apiKey.Trim()));
+            }
+
             if (!string.IsNullOrWhiteSpace(extraQuery))
             {
-                query += "&" + extraQuery.TrimStart('&', '?');
+                queryParts.Add(extraQuery.TrimStart('&', '?'));
             }
 
             return new Uri("https://gitee.com/api/v5/repos/"
@@ -200,8 +206,7 @@ namespace PlugHub.Framework.Packages
                 + Uri.EscapeDataString(address.Name)
                 + "/"
                 + apiPath
-                + "?"
-                + query);
+                + (queryParts.Count == 0 ? string.Empty : "?" + string.Join("&", queryParts)));
         }
 
         private static string EscapePath(string path)
@@ -221,6 +226,17 @@ namespace PlugHub.Framework.Packages
         {
             if (source == null || !source.TryGetValue(key, out var value)) return string.Empty;
             return Convert.ToString(value) ?? string.Empty;
+        }
+
+        private Uri ArchiveDownloadUrl(RepositoryAddress address, PackageRepositoryConfiguration repository)
+        {
+            var archiveUrl = ArchiveUrl(address, repository);
+            return ShouldAppendArchiveCacheBust(address) ? WithCacheBust(archiveUrl) : archiveUrl;
+        }
+
+        private static bool ShouldAppendArchiveCacheBust(RepositoryAddress address)
+        {
+            return string.Equals(address.Provider, "github", StringComparison.OrdinalIgnoreCase);
         }
 
         private Uri ArchiveUrl(RepositoryAddress address, PackageRepositoryConfiguration repository)
@@ -246,7 +262,7 @@ namespace PlugHub.Framework.Packages
             return new Uri(url);
         }
 
-        private void DownloadArchive(Uri archiveUrl, PackageRepositoryConfiguration repository, string archivePath)
+        private void DownloadArchive(Uri archiveUrl, RepositoryAddress address, PackageRepositoryConfiguration repository, string archivePath)
         {
             var request = (HttpWebRequest)WebRequest.Create(archiveUrl);
             request.Method = "GET";
@@ -257,8 +273,8 @@ namespace PlugHub.Framework.Packages
             request.UserAgent = ArchiveDownloadUserAgent;
 
             var apiKey = _credentialService.ResolveApiKey(repository);
-            if (string.Equals(repository.Provider, "github", StringComparison.OrdinalIgnoreCase)
-                && string.Equals(repository.Visibility, "private", StringComparison.OrdinalIgnoreCase)
+            if (string.Equals(address.Provider, "github", StringComparison.OrdinalIgnoreCase)
+                && RepositoryRequiresToken(repository)
                 && !string.IsNullOrWhiteSpace(apiKey))
             {
                 request.Headers["Authorization"] = "Bearer " + apiKey.Trim();
@@ -284,6 +300,11 @@ namespace PlugHub.Framework.Packages
         {
             var separator = string.IsNullOrEmpty(uri.Query) ? "?" : "&";
             return new Uri(uri + separator + "plughubCacheBust=" + DateTime.UtcNow.Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        private static bool RepositoryRequiresToken(PackageRepositoryConfiguration repository)
+        {
+            return string.Equals(repository.Visibility, "private", StringComparison.OrdinalIgnoreCase);
         }
 
         private static void ExtractArchive(string archivePath, string targetDirectory)
@@ -480,8 +501,8 @@ namespace PlugHub.Framework.Packages
                         return null;
                     }
 
-                    var expectedHost = string.Equals(provider, "gitee", StringComparison.OrdinalIgnoreCase) ? "gitee.com" : "github.com";
-                    if (!string.Equals(uri.Host, expectedHost, StringComparison.OrdinalIgnoreCase))
+                    var hostProvider = ProviderFromHost(uri.Host);
+                    if (string.IsNullOrWhiteSpace(hostProvider))
                     {
                         return null;
                     }
@@ -490,7 +511,7 @@ namespace PlugHub.Framework.Packages
                         .Trim('/')
                         .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
                     return segments.Length >= 2
-                        ? new RepositoryAddress(provider, segments[0], StripRepositorySuffix(segments[1]))
+                        ? new RepositoryAddress(hostProvider, segments[0], StripRepositorySuffix(segments[1]))
                         : null;
                 }
 
@@ -506,6 +527,24 @@ namespace PlugHub.Framework.Packages
                 return value.EndsWith(".git", StringComparison.OrdinalIgnoreCase)
                     ? value.Substring(0, value.Length - ".git".Length)
                     : value;
+            }
+
+            private static string ProviderFromHost(string host)
+            {
+                var normalized = (host ?? string.Empty).Trim().TrimEnd('.');
+                if (string.Equals(normalized, "github.com", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(normalized, "www.github.com", StringComparison.OrdinalIgnoreCase))
+                {
+                    return "github";
+                }
+
+                if (string.Equals(normalized, "gitee.com", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(normalized, "www.gitee.com", StringComparison.OrdinalIgnoreCase))
+                {
+                    return "gitee";
+                }
+
+                return string.Empty;
             }
 
             private static string StripUrlUserInfo(string url)
