@@ -106,6 +106,7 @@ namespace PlugHub.Wpf
             resources.Add(typeof(Button), ButtonStyle(palette));
             resources.Add(typeof(TextBox), TextBoxStyle(palette));
             resources.Add(typeof(ComboBox), ComboBoxStyle(palette));
+            resources.Add(typeof(ComboBoxItem), ComboBoxItemStyle(palette));
             resources.Add(typeof(CheckBox), CheckBoxStyle(palette));
             resources.Add(typeof(TabControl), TabControlStyle(palette));
             resources.Add(typeof(TabItem), TabItemStyle(palette));
@@ -181,6 +182,68 @@ namespace PlugHub.Wpf
             return style;
         }
 
+        private static Style ComboBoxItemStyle(RevitUiPalette palette)
+        {
+            var style = new Style(typeof(ComboBoxItem));
+            style.Setters.Add(new Setter(Control.BackgroundProperty, Brushes.Transparent));
+            style.Setters.Add(new Setter(Control.ForegroundProperty, palette.TextBrush));
+            style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(6, 3, 6, 3)));
+            style.Setters.Add(new Setter(Control.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch));
+            style.Setters.Add(new Setter(Control.VerticalContentAlignmentProperty, VerticalAlignment.Center));
+            style.Setters.Add(new Setter(FrameworkElement.MinHeightProperty, 26.0));
+            style.Setters.Add(new Setter(Control.TemplateProperty, ComboBoxItemTemplate(palette)));
+
+            var highlighted = new Trigger { Property = ComboBoxItem.IsHighlightedProperty, Value = true };
+            highlighted.Setters.Add(new Setter(Control.BackgroundProperty, palette.SelectionBrush));
+            highlighted.Setters.Add(new Setter(Control.ForegroundProperty, palette.TextBrush));
+            style.Triggers.Add(highlighted);
+
+            var selected = new Trigger { Property = Selector.IsSelectedProperty, Value = true };
+            selected.Setters.Add(new Setter(Control.BackgroundProperty, palette.SelectionBrush));
+            selected.Setters.Add(new Setter(Control.ForegroundProperty, palette.TextBrush));
+            style.Triggers.Add(selected);
+
+            var disabled = new Trigger { Property = UIElement.IsEnabledProperty, Value = false };
+            disabled.Setters.Add(new Setter(Control.ForegroundProperty, palette.DisabledTextBrush));
+            style.Triggers.Add(disabled);
+            return style;
+        }
+
+        private static ControlTemplate ComboBoxItemTemplate(RevitUiPalette palette)
+        {
+            var root = new FrameworkElementFactory(typeof(Border));
+            root.Name = "RootBorder";
+            root.SetValue(Border.BackgroundProperty, new TemplateBindingExtension(Control.BackgroundProperty));
+            root.SetValue(Border.PaddingProperty, new TemplateBindingExtension(Control.PaddingProperty));
+
+            var content = new FrameworkElementFactory(typeof(ContentPresenter));
+            content.SetValue(ContentPresenter.RecognizesAccessKeyProperty, true);
+            content.SetValue(FrameworkElement.HorizontalAlignmentProperty, new TemplateBindingExtension(Control.HorizontalContentAlignmentProperty));
+            content.SetValue(FrameworkElement.VerticalAlignmentProperty, new TemplateBindingExtension(Control.VerticalContentAlignmentProperty));
+            content.SetBinding(ContentPresenter.ContentProperty, new Binding("Content") { RelativeSource = RelativeSource.TemplatedParent });
+            content.SetBinding(ContentPresenter.ContentTemplateProperty, new Binding("ContentTemplate") { RelativeSource = RelativeSource.TemplatedParent });
+            content.SetBinding(ContentPresenter.ContentStringFormatProperty, new Binding("ContentStringFormat") { RelativeSource = RelativeSource.TemplatedParent });
+            root.AppendChild(content);
+
+            var template = new ControlTemplate(typeof(ComboBoxItem)) { VisualTree = root };
+
+            var highlighted = new Trigger { Property = ComboBoxItem.IsHighlightedProperty, Value = true };
+            highlighted.Setters.Add(new Setter(Border.BackgroundProperty, palette.SelectionBrush, "RootBorder"));
+            highlighted.Setters.Add(new Setter(Control.ForegroundProperty, palette.TextBrush));
+            template.Triggers.Add(highlighted);
+
+            var selected = new Trigger { Property = Selector.IsSelectedProperty, Value = true };
+            selected.Setters.Add(new Setter(Border.BackgroundProperty, palette.SelectionBrush, "RootBorder"));
+            selected.Setters.Add(new Setter(Control.ForegroundProperty, palette.TextBrush));
+            template.Triggers.Add(selected);
+
+            var disabled = new Trigger { Property = UIElement.IsEnabledProperty, Value = false };
+            disabled.Setters.Add(new Setter(UIElement.OpacityProperty, 0.58, "RootBorder"));
+            disabled.Setters.Add(new Setter(Control.ForegroundProperty, palette.DisabledTextBrush));
+            template.Triggers.Add(disabled);
+            return template;
+        }
+
         private static Style CheckBoxStyle(RevitUiPalette palette)
         {
             var style = new Style(typeof(CheckBox));
@@ -204,6 +267,12 @@ namespace PlugHub.Wpf
             style.Setters.Add(new Setter(Control.ForegroundProperty, palette.MutedTextBrush));
             style.Setters.Add(new Setter(Control.BorderBrushProperty, palette.BorderBrush));
             style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(12, 5, 12, 5)));
+            style.Setters.Add(new Setter(Control.TemplateProperty, TabItemTemplate(palette)));
+
+            var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+            hover.Setters.Add(new Setter(Control.BackgroundProperty, palette.ControlHoverBackground));
+            hover.Setters.Add(new Setter(Control.ForegroundProperty, palette.TextBrush));
+            style.Triggers.Add(hover);
 
             var selected = new Trigger { Property = Selector.IsSelectedProperty, Value = true };
             selected.Setters.Add(new Setter(Control.BackgroundProperty, palette.PanelBackground));
@@ -211,6 +280,44 @@ namespace PlugHub.Wpf
             selected.Setters.Add(new Setter(Control.BorderBrushProperty, palette.AccentBrush));
             style.Triggers.Add(selected);
             return style;
+        }
+
+        private static ControlTemplate TabItemTemplate(RevitUiPalette palette)
+        {
+            var root = new FrameworkElementFactory(typeof(Border));
+            root.Name = "RootBorder";
+            root.SetValue(Border.BackgroundProperty, new TemplateBindingExtension(Control.BackgroundProperty));
+            root.SetValue(Border.BorderBrushProperty, new TemplateBindingExtension(Control.BorderBrushProperty));
+            root.SetValue(Border.BorderThicknessProperty, new Thickness(1, 1, 1, 0));
+            root.SetValue(Border.PaddingProperty, new TemplateBindingExtension(Control.PaddingProperty));
+
+            var header = new FrameworkElementFactory(typeof(ContentPresenter));
+            header.Name = "HeaderHost";
+            header.SetValue(ContentPresenter.RecognizesAccessKeyProperty, true);
+            header.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+            header.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+            header.SetBinding(ContentPresenter.ContentProperty, new Binding("Header") { RelativeSource = RelativeSource.TemplatedParent });
+            header.SetBinding(ContentPresenter.ContentTemplateProperty, new Binding("HeaderTemplate") { RelativeSource = RelativeSource.TemplatedParent });
+            header.SetBinding(ContentPresenter.ContentStringFormatProperty, new Binding("HeaderStringFormat") { RelativeSource = RelativeSource.TemplatedParent });
+            root.AppendChild(header);
+
+            var template = new ControlTemplate(typeof(TabItem)) { VisualTree = root };
+
+            var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+            hover.Setters.Add(new Setter(Border.BackgroundProperty, palette.ControlHoverBackground, "RootBorder"));
+            hover.Setters.Add(new Setter(Control.ForegroundProperty, palette.TextBrush));
+            template.Triggers.Add(hover);
+
+            var selected = new Trigger { Property = Selector.IsSelectedProperty, Value = true };
+            selected.Setters.Add(new Setter(Border.BackgroundProperty, palette.PanelBackground, "RootBorder"));
+            selected.Setters.Add(new Setter(Border.BorderBrushProperty, palette.AccentBrush, "RootBorder"));
+            selected.Setters.Add(new Setter(Control.ForegroundProperty, palette.TextBrush));
+            template.Triggers.Add(selected);
+
+            var disabled = new Trigger { Property = UIElement.IsEnabledProperty, Value = false };
+            disabled.Setters.Add(new Setter(UIElement.OpacityProperty, 0.58, "RootBorder"));
+            template.Triggers.Add(disabled);
+            return template;
         }
 
         private static Style DataGridStyle(RevitUiPalette palette)
