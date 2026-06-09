@@ -75,13 +75,7 @@ namespace PlugHub.Manager.Settings
         public string RepositoryDisplayName(RepositoryRow row)
         {
             if (row == null) return string.Empty;
-            if (!string.IsNullOrWhiteSpace(row.Id)) return row.Id.Trim();
-            if (!string.IsNullOrWhiteSpace(row.Repository))
-            {
-                return row.Repository.Trim().TrimEnd('/').Split('/').LastOrDefault() ?? row.Repository.Trim();
-            }
-
-            return "未命名仓库";
+            return SettingsMetrics.RepositoryDisplayName(row.CustomName, row.Id, row.Repository);
         }
 
         public int StatusPriority(string installState)

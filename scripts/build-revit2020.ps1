@@ -83,9 +83,9 @@ function Resolve-PlugHubReleaseVersion {
         return @{ Version = "0.0.0"; ReleaseTag = "dev" }
     }
 
-    $match = [regex]::Match($Tag.Trim(), "^V(?<version>\d+\.\d+\.\d+)$")
+    $match = [regex]::Match($Tag.Trim(), "^T?V(?<version>\d+\.\d+\.\d+)$")
     if (!$match.Success) {
-        throw "PlugHub release tag must match Vx.y.z: $Tag"
+        throw "PlugHub release tag must match Vx.y.z or TVx.y.z: $Tag"
     }
 
     return @{ Version = $match.Groups["version"].Value; ReleaseTag = $Tag.Trim() }

@@ -211,6 +211,7 @@ namespace PlugHub.Framework.Sources
                     .Select(repository => new PackageRepositoryConfiguration
                     {
                         Id = repository.Id,
+                        DisplayName = repository.DisplayName,
                         Provider = repository.Provider,
                         Visibility = repository.Visibility,
                         Repository = repository.Repository,

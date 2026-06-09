@@ -5,6 +5,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Net;
+using System.Net.Cache;
 using System.Text;
 using System.Web.Script.Serialization;
 using PlugHub.Contracts.Modules;
@@ -51,7 +52,7 @@ namespace PlugHub.Framework.Packages
 
                 try
                 {
-                    var archiveUrl = ArchiveUrl(address, repository);
+                    var archiveUrl = WithCacheBust(ArchiveUrl(address, repository));
                     DownloadArchive(archiveUrl, repository, archivePath);
                     ValidateArchiveFile(archivePath, archiveUrl);
                     ExtractArchive(archivePath, stagingDirectory);
@@ -252,6 +253,7 @@ namespace PlugHub.Framework.Packages
             request.AllowAutoRedirect = true;
             request.Timeout = 30000;
             request.ReadWriteTimeout = 30000;
+            request.CachePolicy = new RequestCachePolicy(RequestCacheLevel.Reload);
             request.UserAgent = ArchiveDownloadUserAgent;
 
             var apiKey = _credentialService.ResolveApiKey(repository);
@@ -276,6 +278,12 @@ namespace PlugHub.Framework.Packages
                     source.CopyTo(target);
                 }
             }
+        }
+
+        private static Uri WithCacheBust(Uri uri)
+        {
+            var separator = string.IsNullOrEmpty(uri.Query) ? "?" : "&";
+            return new Uri(uri + separator + "plughubCacheBust=" + DateTime.UtcNow.Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture));
         }
 
         private static void ExtractArchive(string archivePath, string targetDirectory)

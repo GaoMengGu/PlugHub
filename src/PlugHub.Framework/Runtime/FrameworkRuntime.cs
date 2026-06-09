@@ -27,12 +27,26 @@ namespace PlugHub.Framework.Runtime
             return Load(baseDirectory, configDirectory);
         }
 
+        public FrameworkRuntimeSnapshot Load(string configDirectory, bool applyPendingPackageOperations)
+        {
+            var baseDirectory = Directory.GetParent(configDirectory)?.FullName ?? configDirectory;
+            return Load(baseDirectory, configDirectory, applyPendingPackageOperations);
+        }
+
         public FrameworkRuntimeSnapshot Load(string baseDirectory, string configDirectory)
+        {
+            return Load(baseDirectory, configDirectory, true);
+        }
+
+        public FrameworkRuntimeSnapshot Load(string baseDirectory, string configDirectory, bool applyPendingPackageOperations)
         {
             var diagnostics = new DiagnosticsSink();
             var featureRegistry = new FeatureRegistry();
 
-            diagnostics.AddRange(_packageRepositoryService.ApplyPendingOperations(baseDirectory));
+            if (applyPendingPackageOperations)
+            {
+                diagnostics.AddRange(_packageRepositoryService.ApplyPendingOperations(baseDirectory));
+            }
 
             var configuration = _configurationLoader.Load(configDirectory);
             var sourceResult = _moduleSourceResolver.Resolve(baseDirectory, configuration.Modules);

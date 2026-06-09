@@ -325,17 +325,10 @@ namespace PlugHub.Framework.Packages
                 var cleanupMessage = cleanedManifests > 0 ? " 已同步清理旧整包清单中的重复插件声明。" : string.Empty;
                 if (replaceExisting)
                 {
-                    if (!targetDirectoryExists || cleanedManifests > 0)
-                    {
-                        QueuePendingOperation(baseDirectory, PendingPackageOperation.Restart(package.PackageId, moduleId, installDirectory));
-                        return PackageRepositoryOperationResult.Succeeded("插件包已更新。请重启 Revit 后加载新版本: " + package.PackageId + cleanupMessage);
-                    }
-
-                    return PackageRepositoryOperationResult.Succeeded("插件包已更新。未检测到安装目录 DLL 占用，后续点击会从更新后的文件加载: " + package.PackageId + cleanupMessage);
+                    return PackageRepositoryOperationResult.Succeeded("插件包已更新。若 Revit 正在运行，请关闭并重新打开 Revit 后显示新版本: " + package.PackageId + cleanupMessage);
                 }
 
-                QueuePendingOperation(baseDirectory, PendingPackageOperation.Restart(package.PackageId, moduleId, installDirectory));
-                return PackageRepositoryOperationResult.Succeeded("插件包已安装。请重启 Revit 后加载: " + package.PackageId + cleanupMessage);
+                return PackageRepositoryOperationResult.Succeeded("插件包已安装。若 Revit 正在运行，请关闭并重新打开 Revit 后显示新按钮: " + package.PackageId + cleanupMessage);
             }
             catch (IOException ex)
             {

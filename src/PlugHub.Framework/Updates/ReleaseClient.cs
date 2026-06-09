@@ -30,6 +30,11 @@ namespace PlugHub.Framework.Updates
             return ParseGiteeTagsJson(ReadHttpsText(tagsUri, "application/json"), downloadUrlTemplate);
         }
 
+        public ReleaseInfo GetLatestTestPrerelease(Uri releasesUri)
+        {
+            return ParseLatestTestPrereleaseJson(ReadHttpsText(releasesUri, "application/vnd.github+json"));
+        }
+
         private static string ReadHttpsText(Uri releaseUri, string accept)
         {
             if (releaseUri == null) throw new ArgumentNullException(nameof(releaseUri));
@@ -69,24 +74,21 @@ namespace PlugHub.Framework.Updates
                 throw new InvalidDataException("Release response is not a JSON object.");
             }
 
-            var release = new ReleaseInfo
-            {
-                TagName = StringValue(root, "tag_name"),
-                Body = StringValue(root, "body")
-            };
-            if (root.TryGetValue("assets", out var assetsValue))
-            {
-                foreach (var asset in AssetObjects(assetsValue))
-                {
-                    var parsed = ParseAsset(asset);
-                    if (!string.IsNullOrWhiteSpace(parsed.Name) && !string.IsNullOrWhiteSpace(parsed.DownloadUrl))
-                    {
-                        release.Assets.Add(parsed);
-                    }
-                }
-            }
+            return ParseReleaseObject(root);
+        }
 
-            return release;
+        public ReleaseInfo ParseLatestTestPrereleaseJson(string json)
+        {
+            var serializer = new JavaScriptSerializer();
+            var root = serializer.DeserializeObject(json ?? string.Empty);
+            var release = AssetObjects(root)
+                .Where(item => IsTestReleaseTag(StringValue(item, "tag_name")))
+                .Where(item => BoolValue(item, "prerelease"))
+                .Where(item => !BoolValue(item, "draft"))
+                .OrderByDescending(item => TagVersion(StringValue(item, "tag_name")))
+                .FirstOrDefault();
+
+            return release == null ? new ReleaseInfo() : ParseReleaseObject(release);
         }
 
         public ReleaseInfo ParseGiteeTagsJson(string json, string downloadUrlTemplate)
@@ -96,7 +98,7 @@ namespace PlugHub.Framework.Updates
             var tags = AssetObjects(root)
                 .Select(tag => StringValue(tag, "name"))
                 .Where(name => !string.IsNullOrWhiteSpace(name))
-                .Where(IsReleaseTag)
+                .Where(IsStableReleaseTag)
                 .OrderByDescending(TagVersion)
                 .ToList();
 
@@ -175,6 +177,28 @@ namespace PlugHub.Framework.Updates
             };
         }
 
+        private static ReleaseInfo ParseReleaseObject(Dictionary<string, object> root)
+        {
+            var release = new ReleaseInfo
+            {
+                TagName = StringValue(root, "tag_name"),
+                Body = StringValue(root, "body")
+            };
+            if (root.TryGetValue("assets", out var assetsValue))
+            {
+                foreach (var asset in AssetObjects(assetsValue))
+                {
+                    var parsed = ParseAsset(asset);
+                    if (!string.IsNullOrWhiteSpace(parsed.Name) && !string.IsNullOrWhiteSpace(parsed.DownloadUrl))
+                    {
+                        release.Assets.Add(parsed);
+                    }
+                }
+            }
+
+            return release;
+        }
+
         private static string FirstStringValue(Dictionary<string, object> source, params string[] keys)
         {
             foreach (var key in keys)
@@ -189,16 +213,40 @@ namespace PlugHub.Framework.Updates
             return string.Empty;
         }
 
-        private static bool IsReleaseTag(string value)
+        private static bool IsStableReleaseTag(string value)
         {
-            return Version.TryParse((value ?? string.Empty).Trim().TrimStart('v', 'V'), out _);
+            var text = (value ?? string.Empty).Trim();
+            return text.StartsWith("V", StringComparison.OrdinalIgnoreCase)
+                && !IsTestReleaseTag(text)
+                && Version.TryParse(ComparableVersionText(text), out _);
+        }
+
+        private static bool IsTestReleaseTag(string value)
+        {
+            var text = (value ?? string.Empty).Trim();
+            return text.StartsWith("TV", StringComparison.OrdinalIgnoreCase)
+                && Version.TryParse(ComparableVersionText(text), out _);
+        }
+
+        private static string ComparableVersionText(string value)
+        {
+            var text = (value ?? string.Empty).Trim();
+            var start = text.IndexOfAny(new[] { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' });
+            return start >= 0 ? text.Substring(start) : text.TrimStart('v', 'V');
         }
 
         private static Version TagVersion(string value)
         {
-            return Version.TryParse((value ?? string.Empty).Trim().TrimStart('v', 'V'), out var version)
+            return Version.TryParse(ComparableVersionText(value), out var version)
                 ? version
                 : new Version(0, 0, 0);
+        }
+
+        private static bool BoolValue(Dictionary<string, object> source, string key)
+        {
+            if (!source.TryGetValue(key, out var value) || value == null) return false;
+            if (value is bool boolean) return boolean;
+            return bool.TryParse(Convert.ToString(value), out var parsed) && parsed;
         }
 
         private static string StringValue(Dictionary<string, object> source, string key)

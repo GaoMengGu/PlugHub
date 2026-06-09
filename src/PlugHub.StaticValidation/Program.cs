@@ -65,6 +65,7 @@ namespace PlugHub.StaticValidation
                 ValidateSettingsCreationAndSortingSpecification();
                 ValidateSettingsGroupFeatureEditingBehavior();
                 ValidateDefaultIconSpecification();
+                ValidateRasterBrandIconSpecification();
                 ValidateRevitWpfUiDesignSpecification();
                 ValidatePackageSourceAndReleaseBehavior();
                 ValidatePendingPackageOperationStoreBehavior();
@@ -254,6 +255,7 @@ namespace PlugHub.StaticValidation
                 "src/PlugHub.Manager/FrameworkSettingsWindow.cs",
                 "src/PlugHub.Manager/Settings/FrameworkSettingsViewModel.cs",
                 "src/PlugHub.Manager/Settings/RepositorySettingsController.cs",
+                "src/PlugHub.Manager/Settings/SettingsMetrics.cs",
                 "src/PlugHub.Manager/Settings/Rows/ModuleRow.cs",
                 "src/PlugHub.Manager/Settings/Rows/FeatureRow.cs",
                 "src/PlugHub.Manager/Settings/Rows/GroupRow.cs",
@@ -381,6 +383,7 @@ namespace PlugHub.StaticValidation
             Require(SequenceValue(modules, "packageDirectories").SequenceEqual(new[] { "packages" }), "runtime package discovery must be limited to the packages folder.");
             Require(ArrayValue(modules, "moduleSources").Count == 0, "moduleSources must not configure startup repository loading.");
             Require(Repositories(modules).Count() >= 2, "repositories must include public and private examples.");
+            Require(Repositories(modules).All(repository => repository.ContainsKey("displayName")), "repositories must include editable displayName examples.");
             Require(Repositories(modules).Any(repository => StringValue(repository, "visibility") == "public"), "repositories must include a public repository example.");
             Require(Repositories(modules).Any(repository => StringValue(repository, "visibility") == "private" && repository.ContainsKey("apiKey")), "repositories must include a private repository example with apiKey.");
             Require(Repositories(modules).Any(repository => StringValue(repository, "provider") == "gitee"), "repositories must include a Gitee repository example.");
@@ -1485,6 +1488,7 @@ namespace PlugHub.StaticValidation
             var externalSettingsProject = ReadText("src/PlugHub.Manager/PlugHub.Manager.csproj");
             var settingsAppProgram = ReadText("src/PlugHub.Manager/Program.cs");
             var settingsStore = ReadText("src/PlugHub.Framework/Settings/SettingsConfigurationStore.cs");
+            var repositoryPackageRow = ReadText("src/PlugHub.Manager/Settings/Rows/RepositoryPackageRow.cs");
             var statusWindow = ReadText("src/PlugHub.Wpf/FrameworkStatusWindow.cs");
             var featureCommand = ReadText("src/PlugHub.Revit2020/FrameworkFeatureCommand.cs");
             var ribbonBuilder = ReadText("src/PlugHub.Revit2020/FeatureRibbonBuilder.cs");
@@ -1505,7 +1509,9 @@ namespace PlugHub.StaticValidation
             Require(externalSettingsProject.Contains("<TargetFramework>net48</TargetFramework>") && externalSettingsProject.Contains("<OutputType>WinExe</OutputType>") && externalSettingsProject.Contains("PresentationFramework"), "PlugHub Manager must be a net48 WPF Windows executable.");
             Require(externalSettingsProject.Contains("<AssemblyName>PlugHub.Manager</AssemblyName>") && !externalSettingsProject.Contains("ProjectReference Include=\"..\\PlugHub.Revit2020") && !externalSettingsProject.Contains("Autodesk.Revit"), "PlugHub Manager must be the WPF manager executable without depending on the Revit adapter project or Revit API.");
             Require(!externalSettingsProject.Contains("PlugHub.SettingsApp") && !externalSettingsProject.Contains("PlugHub.SettingsUi") && !externalSettingsProject.Contains("SharedSettings"), "PlugHub Manager project must not keep legacy SettingsApp/SettingsUi naming or linked Revit settings sources.");
-            Require(settingsAppProgram.Contains("ManagerMaintenanceArguments.Parse") && settingsAppProgram.Contains("ManagerMaintenanceRunner") && settingsAppProgram.Contains("FrameworkSettingsWindow") && settingsAppProgram.Contains("FrameworkConfigurationLoader.LoadFromDirectory") && !File.Exists(FullPath("src/PlugHub.Manager/SettingsMainWindow.cs")), "PlugHub Manager must route maintenance mode before hosting the existing FrameworkSettingsWindow.");
+            Require(settingsAppProgram.Contains("ManagerMaintenanceArguments.Parse") && settingsAppProgram.Contains("ManagerMaintenanceRunner") && settingsAppProgram.Contains("FrameworkSettingsWindow") && settingsAppProgram.Contains("new FrameworkRuntime().Load(configDirectory, ShouldApplyPendingPackageOperations(hostProcessId))") && !File.Exists(FullPath("src/PlugHub.Manager/SettingsMainWindow.cs")), "PlugHub Manager must route maintenance mode before loading a local runtime snapshot and hosting the existing FrameworkSettingsWindow.");
+            Require(settingsAppProgram.Contains("ShouldApplyPendingPackageOperations") && settingsAppProgram.Contains("Process.GetProcessById(hostProcessId)"), "PlugHub Manager must only apply pending package operations when the associated Revit host is not running.");
+            Require(settingsWindow.Contains("var isRevitHostRunning = IsRevitHostProcessRunning();") && settingsWindow.Contains("!IsRevitHostProcessRunning()) return false") && repositoryPackageRow.Contains("bool isRevitHostRunning, bool isLoadedInCurrentRuntime"), "external Manager must separate Revit host liveness from runtime-loaded package state so absent Revit does not create false pending restart states.");
             Require(settingsStore.Contains("namespace PlugHub.Framework.Settings") && settingsStore.Contains("public sealed class SettingsConfigurationStore") && !settingsStore.Contains("Autodesk.Revit"), "shared settings store must live in PlugHub.Framework.Settings and stay Revit-independent.");
             Require(featureCommand.Contains("ShowRuntimeStatus"), "status command must use the focused runtime status view.");
             Require(featureCommand.Contains("FrameworkStatusWindow") && !featureCommand.Contains("TaskDialog.Show"), "framework fallback feature feedback must use WPF.");
@@ -1572,6 +1578,7 @@ namespace PlugHub.StaticValidation
             Require(settingsWindow.Contains("BuildRibbonDesignerDropArrow"), "visual designer canvas must show dropdown affordances on dropdown and split controls.");
             Require(settingsWindow.Contains("_expandedRibbonDesignerNodeIds") && settingsWindow.Contains("ToggleRibbonDesignerContainerExpansion"), "visual designer canvas must simulate dropdown and split expand/collapse without persisting preview state.");
             Require(settingsWindow.Contains("LoadRibbonDesignerIcon") && settingsWindow.Contains("LoadConfiguredRibbonDesignerIcon") && settingsWindow.Contains("DefaultRibbonIconProvider.Create"), "visual designer canvas must load configured icons and fall back to built-in defaults.");
+            Require(settingsWindow.Contains("ModuleBaseDirectory = module.ResolvedBaseDirectory") && settingsWindow.Contains("feature.ModuleBaseDirectory") && settingsWindow.Contains("ResolveRibbonDesignerPackageIconPath"), "visual designer must resolve package-relative icons against the installed package base directory.");
             Require(settingsWindow.Contains("CanEditRibbonDesignerDisplayName") && settingsWindow.Contains("_selectedRibbonDesignerText.IsEnabled = CanEditRibbonDesignerDisplayName"), "visual designer properties must make control display names read-only while keeping feature button names editable.");
             Require(settingsWindow.Contains("SelectedRibbonDesignerTextKeyDown") && settingsWindow.Contains("CommitSelectedRibbonDesignerPropertiesFromEditor()"), "visual designer display-name editor must commit on Enter.");
             Require(settingsWindow.Contains("CommitSelectedRibbonDesignerPropertiesBeforeCanvasInteraction"), "visual designer canvas clicks must commit pending property edits before changing selection.");
@@ -1632,6 +1639,7 @@ namespace PlugHub.StaticValidation
             Require(!settingsWindow.Contains("恢复基础布局") && !settingsWindow.Contains("RestoreBasicRibbonLayout"), "settings window must not expose legacy group layout restore.");
 
             Require(settingsWindow.Contains("SettingsConfigurationStore"), "FrameworkSettingsWindow must use SettingsConfigurationStore.");
+            Require(settingsStore.Contains("ApplyResolvedBaseDirectory") && settingsStore.Contains("module.ResolvedBaseDirectory = baseDirectory"), "settings store must preserve each package manifest directory for Manager icon resolution.");
             Require(settingsWindow.Contains("ExportLogs"), "FrameworkSettingsWindow must expose log export.");
             Require(settingsWindow.Contains("OpenLogsDirectory"), "FrameworkSettingsWindow must expose a focused open-log-folder diagnostic action.");
             Require(!settingsWindow.Contains("BuildLogsTab") && !settingsWindow.Contains("BuildDiagnosticsTab") && !settingsWindow.Contains("BuildTab(\"日志\""), "settings must not expose logs as a primary tab for normal users.");
@@ -1831,6 +1839,7 @@ namespace PlugHub.StaticValidation
             var ribbonDesignerMapper = ReadText("src/PlugHub.Manager/Settings/RibbonDesigner/RibbonDesignerMapper.cs");
             Require(!settingsWindow.Contains("body.Children.Add(BuildRibbonDesignerPreviewButton(tab"), "layout canvas must not render a synthetic PlugHub tab button above panels.");
             Require(ribbonDesignerMapper.Contains("GroupBy(DefaultPanelKey") && ribbonDesignerMapper.Contains("GroupDisplayText") && ribbonDesignerMapper.Contains("ModuleName"), "layout designer default panels must match runtime grouped ribbon layout.");
+            Require(ribbonDesignerMapper.Contains("featuresById") && ribbonDesignerMapper.Contains("IconPathForDisplay") && ribbonDesignerMapper.Contains("feature.IconPath"), "layout designer configured rows must hydrate current package feature icons.");
         }
 
         private static void ValidateDefaultIconSpecification()
@@ -1844,6 +1853,7 @@ namespace PlugHub.StaticValidation
             Require(ribbonBuilder.Contains("\"PlugHub_Framework_Settings\"") && ribbonBuilder.Contains("\"settings\""), "settings ribbon button must use a built-in settings icon.");
             Require(!ribbonBuilder.Contains("\"PlugHub_Framework_Status\"") && !ribbonBuilder.Contains("FrameworkStatusCommand"), "status ribbon button must not be rendered.");
             Require(ribbonBuilder.Contains("LoadConfiguredIcon"), "Ribbon builder must resolve configured file icons and built-in icon keys.");
+            Require(ribbonBuilder.Contains("CreateSizedRasterIcon") && ribbonBuilder.Contains("large ? 32 : 16") && ribbonBuilder.Contains("image.DecodePixelWidth"), "Ribbon builder must resize configured package icons to fixed 16/32 canvases so stacked small buttons are not clipped.");
             Require(ribbonBuilder.Contains("LoadDllSiblingIcon") && ribbonBuilder.Contains("SameNameIconExtensions"), "Ribbon builder must auto-load same-name icons beside feature DLLs before falling back to defaults.");
             Require(ribbonBuilder.Contains("AddSingleStackChildFallback"), "Ribbon builder must render a single-item stack as its child instead of dropping the feature.");
             Require(ribbonBuilder.Contains("CreateContainerButtonData") && ribbonBuilder.Contains("ApplyRibbonItemIcon"), "Ribbon builder must apply configured icons to container ribbon buttons.");
@@ -1855,6 +1865,37 @@ namespace PlugHub.StaticValidation
             var featureIconOptions = MethodBody(settingsWindow, "BuiltinIconOptions");
             Require(featureIconOptions.Contains("DefaultRibbonIconProvider.FeatureIconKeys") && !featureIconOptions.Contains("DefaultRibbonIconProvider.BuiltinIconKeys"), "feature icon menus must not include UI-only icons such as settings/save/install/about.");
             Require(!modulesText.Contains("commandAssembly"), "framework config must not ship command-backed feature entries.");
+        }
+
+        private static void ValidateRasterBrandIconSpecification()
+        {
+            var iconProvider = ReadText("src/PlugHub.Wpf/DefaultRibbonIconProvider.cs");
+            var wpfProject = ReadText("src/PlugHub.Wpf/PlugHub.Wpf.csproj");
+            var managerProject = ReadText("src/PlugHub.Manager/PlugHub.Manager.csproj");
+            var installerProject = ReadText("src/PlugHub.Installer/PlugHub.Installer.csproj");
+            var installerForm = ReadText("src/PlugHub.Installer/InstallerForm.cs");
+            var settingsWindow = ReadText("src/PlugHub.Manager/FrameworkSettingsWindow.cs");
+
+            foreach (var rootIcon in new[] { "SETTINGS.png", "LOGO.png", "LOGO.ico" })
+            {
+                Require(!File.Exists(FullPath(rootIcon)), "brand icon assets must not remain at the repository root: " + rootIcon);
+            }
+
+            foreach (var wpfResource in new[] { "src/PlugHub.Wpf/Resources/SETTINGS.png", "src/PlugHub.Wpf/Resources/LOGO.png" })
+            {
+                Require(File.Exists(FullPath(wpfResource)), "shared WPF icon resource is missing: " + wpfResource);
+            }
+
+            Require(File.Exists(FullPath("src/PlugHub.Manager/Resources/LOGO.ico")), "Manager executable icon resource is missing.");
+            Require(File.Exists(FullPath("src/PlugHub.Installer/Resources/LOGO.ico")), "Installer executable icon resource is missing.");
+            Require(wpfProject.Contains("Resources\\SETTINGS.png") && wpfProject.Contains("Resources\\LOGO.png"), "PlugHub.Wpf must embed the raster settings and logo PNG resources.");
+            Require(managerProject.Contains("<ApplicationIcon>Resources\\LOGO.ico</ApplicationIcon>"), "PlugHub.Manager must use the logo ICO as its executable icon.");
+            Require(managerProject.Contains("Resources\\LOGO.ico"), "PlugHub.Manager project must include the logo ICO resource.");
+            Require(installerProject.Contains("<ApplicationIcon>Resources\\LOGO.ico</ApplicationIcon>"), "PlugHub.Installer must use the logo ICO as its executable icon.");
+            Require(installerForm.Contains("Icon =") && installerForm.Contains("Application.ExecutablePath"), "PlugHub installer window must apply the executable logo icon to the form.");
+            Require(iconProvider.Contains("SettingsResourcePath") && iconProvider.Contains("LogoResourcePath") && iconProvider.Contains("CreateRasterIcon"), "default ribbon icon provider must load the supplied settings and logo raster resources.");
+            Require(iconProvider.Contains("CreatePaddedRasterIcon") && iconProvider.Contains("Brushes.Transparent") && iconProvider.Contains("size - padding * 2"), "raster ribbon icons must render inside a fixed transparent canvas with safe padding so Revit does not clip the supplied artwork.");
+            Require(settingsWindow.Contains("DefaultRibbonIconProvider.CreateLogoIcon") && settingsWindow.Contains("BuildHeaderLogo"), "PlugHub Manager must apply the logo to the window and header.");
         }
 
         private static void ValidateRevitWpfUiDesignSpecification()
@@ -1888,6 +1929,7 @@ namespace PlugHub.StaticValidation
             Require(settingsWindow.Contains("BuildRibbonDesignerPropertyPanel") && settingsWindow.Contains("CommitSelectedRibbonDesignerPropertiesFromEditor"), "layout tab must edit selected visual designer element without exposing Ribbon node internals.");
             Require(settingsWindow.Contains("RefreshFeaturePositionsByGroup"), "feature ordering must be recalculated per workspace group.");
             Require(settingsWindow.Contains("SortFeatureRowsForRuntimeOrder"), "feature grid must be ordered the same way runtime ribbon composition is ordered.");
+            Require(settingsWindow.Contains("ShouldRemoveEmptyRibbonDesignerContainer") && settingsWindow.Contains("RemoveUnavailableRibbonDesignerFeatures(child, visibleFeatureIds)"), "layout designer must remove empty containers and panels after unavailable feature nodes are pruned.");
             Require(settingsWindow.Contains("IsInteractiveGridEditor"), "row drag behavior must ignore combo boxes, text boxes, check boxes, and buttons.");
             Require(settingsWindow.Contains("TrySave") && settingsWindow.Contains("ReportSettingsError"), "settings save must catch exceptions and report them inline.");
             Require(settingsWindow.Contains("SafeRefreshGrid") && settingsWindow.Contains("IsEditTransactionRefreshError"), "settings grid refresh must be safe during DataGrid edit transactions.");
@@ -1909,6 +1951,7 @@ namespace PlugHub.StaticValidation
             var modulesText = ReadText("config/sources.example.json");
             var settingsWindow = ReadText("src/PlugHub.Manager/FrameworkSettingsWindow.cs");
             var repositorySettingsController = ReadText("src/PlugHub.Manager/Settings/RepositorySettingsController.cs");
+            var settingsMetrics = ReadText("src/PlugHub.Manager/Settings/SettingsMetrics.cs");
             var repositoryRow = ReadText("src/PlugHub.Manager/Settings/Rows/RepositoryRow.cs");
             var repositoryPackageRow = ReadText("src/PlugHub.Manager/Settings/Rows/RepositoryPackageRow.cs");
             var sourceResolver = ReadText("src/PlugHub.Framework/Sources/ModuleSourceResolver.cs");
@@ -1918,6 +1961,7 @@ namespace PlugHub.StaticValidation
             var repositoryArchiveSynchronizer = ReadText("src/PlugHub.Framework/Packages/RepositoryArchiveSynchronizer.cs");
             var packageManifestReader = ReadText("src/PlugHub.Framework/Packages/PackageManifestReader.cs");
             var packageInstallService = ReadText("src/PlugHub.Framework/Packages/PackageInstallService.cs");
+            var frameworkUpdateService = ReadText("src/PlugHub.Framework/Updates/FrameworkUpdateService.cs");
             var credentialService = ReadText("src/PlugHub.Framework/Packages/RepositoryCredentialService.cs");
             var redactor = ReadText("src/PlugHub.Framework/Diagnostics/SensitiveTextRedactor.cs");
             var configurationModels = ReadText("src/PlugHub.Framework/Configuration/ConfigurationModels.cs");
@@ -1927,6 +1971,7 @@ namespace PlugHub.StaticValidation
             var readme = ReadText("README.md");
 
             Require(modulesText.Contains("\"provider\": \"gitee\"") && modulesText.Contains("\"repository\": \"https://gitee.com/GaoMengGu/PlugHub_Packages\""), "default package repository must point at the public Gitee PlugHub_Packages URL.");
+            Require(modulesText.Contains("\"displayName\": \"PlugHub 公共插件仓库\""), "default package repository examples must show custom displayName usage.");
             Require(modulesText.Contains("\"packageDirectories\": [") && modulesText.Contains("\"packages\""), "installed package discovery must point at packages.");
             Require(!modulesText.Contains("packages/github/GaoMengGu_PlugHub_Packages"), "repository caches must not live under packages.");
             Require(!modulesText.Contains("GaoMengGu/PlugHub_Modules"), "default github source must not point at PlugHub_Modules.");
@@ -1942,6 +1987,7 @@ namespace PlugHub.StaticValidation
             {
                 Require(repositorySettingsController.Contains(token), "repository settings controller must own package browsing behavior: " + token);
             }
+            Require(settingsMetrics.Contains("CountUniqueModules") && settingsMetrics.Contains("CountUniqueFeatures") && settingsMetrics.Contains("CountEnabledRepositories") && settingsMetrics.Contains("RepositoryDisplayName"), "settings metrics must centralize unique module/feature counts, enabled repository count, and repository display-name fallback.");
 
             foreach (var token in new[] { "BuildRepositorySourceCards", "BuildRepositoryPackageList", "BuildRepositoryDiagnosticsMenu" })
             {
@@ -1953,15 +1999,18 @@ namespace PlugHub.StaticValidation
             Require(settingsWindow.Contains("SettingsWindowOuterMargin = 12.0") && settingsWindow.Contains("Margin = new Thickness(SettingsWindowOuterMargin)"), "settings window outer margin must be a shared constant used by layout width calculations.");
             Require(settingsWindow.Contains("SettingsWindowOuterMarginWidth = SettingsWindowOuterMargin * 2.0") && settingsWindow.Contains("RepositoryCardRowChromeReserve = 60.0"), "repository card row width must reserve root margins and tab chrome at the default window width.");
             Require(settingsWindow.Contains("RepositoryCardRowWidth = RepositorySettingsDefaultWidth - SettingsWindowOuterMarginWidth - RepositoryCardRowChromeReserve"), "repository card row width must fit within the default settings content area so four source cards do not trigger the horizontal scrollbar.");
-            Require(settingsWindow.Contains("RepositorySourceColumns = 4.0") && settingsWindow.Contains("RepositoryPackageColumns = 3.0"), "repository layout must target four source cards and three package cards per row.");
+            Require(settingsWindow.Contains("RepositorySourceColumns = 4.0") && settingsWindow.Contains("RepositoryPackageColumns = 3"), "repository layout must target four source cards and three package cards per row.");
             Require(settingsWindow.Contains("RepositoryPackageCardVerticalMargin = 4.0") && settingsWindow.Contains("RepositoryCardHorizontalMargin = RepositoryPackageCardVerticalMargin"), "repository card horizontal half-gap must match the package card vertical half-gap.");
             Require(settingsWindow.Contains("RepositoryCardHorizontalMarginWidth = RepositoryCardHorizontalMargin * 2.0"), "repository card horizontal margins must be shared across source and package cards.");
             Require(settingsWindow.Contains("RepositorySourceScrollbarSafetyReserve = 16.0") && settingsWindow.Contains("RepositorySourceCardRowWidth = RepositoryCardRowWidth - RepositorySourceScrollbarSafetyReserve"), "repository source cards must keep a small safety reserve so four default cards do not trigger the horizontal scrollbar.");
-            Require(settingsWindow.Contains("RepositorySourceCardSlotWidth = RepositorySourceCardRowWidth / RepositorySourceColumns") && settingsWindow.Contains("RepositoryPackageCardSlotWidth = RepositoryCardRowWidth / RepositoryPackageColumns"), "repository source cards must use the safety-reserved row width while package cards keep the full repository row width.");
-            Require(settingsWindow.Contains("RepositorySourceCardWidth = RepositorySourceCardSlotWidth - RepositoryCardHorizontalMarginWidth") && settingsWindow.Contains("RepositoryPackageCardWidth = RepositoryPackageCardSlotWidth - RepositoryCardHorizontalMarginWidth"), "repository source and package card widths must subtract the same horizontal margins.");
+            Require(!settingsWindow.Contains("RepositoryPackageGridSafetyReserve"), "repository package cards must not use a fixed safety reserve that leaves large side gaps at wider manager widths.");
+            Require(settingsWindow.Contains("RepositoryPackageCardWidthBinding") && settingsWindow.Contains("RepositoryPackageCardWidthConverter"), "repository package cards must calculate width from the package list ActualWidth.");
+            Require(settingsWindow.Contains("RepositoryPackageScrollbarSafetyReserve") && settingsWindow.Contains("RepositoryPackageCardMinWidth"), "repository package card width calculation must reserve scrollbar space and keep a stable minimum card width.");
+            Require(settingsWindow.Contains("RepositorySourceCardSlotWidth = RepositorySourceCardRowWidth / RepositorySourceColumns"), "repository source cards must keep their default-width safety-reserved slot calculation.");
+            Require(settingsWindow.Contains("RepositorySourceCardWidth = RepositorySourceCardSlotWidth - RepositoryCardHorizontalMarginWidth"), "repository source cards must subtract shared horizontal margins.");
             Require(settingsWindow.Contains("BuildRepositorySourceScrollViewer") && settingsWindow.Contains("ScrollViewer.CanContentScrollProperty, false"), "repository source cards must be hosted in an explicit horizontal ScrollViewer so overflow can be scrolled.");
             Require(settingsWindow.Contains("BuildRepositorySourceMoreGlyph") && settingsWindow.Contains("ToolTip") && settingsWindow.Contains("CheckBox"), "repository source cards must use compact glyph actions and a checkbox enabled state.");
-            Require(settingsWindow.Contains("AddRepositoryEditorRow(form, 6, \"Token\", apiKey)") && !settingsWindow.Contains("AddRepositoryEditorRow(form, 6, \"ApiKey\", apiKey)"), "repository source editor must label the credential field as Token for users.");
+            Require(settingsWindow.Contains("AddRepositoryEditorRow(form, 0, \"名称\", customName)") && settingsWindow.Contains("AddRepositoryEditorRow(form, 7, \"Token\", apiKey)") && !settingsWindow.Contains("AddRepositoryEditorRow(form, 7, \"ApiKey\", apiKey)"), "repository source editor must expose a custom name field and label the credential field as Token for users.");
             Require(settingsWindow.Contains("LineStackingStrategy.BlockLineHeight") && settingsWindow.Contains("VerticalAlignmentProperty, VerticalAlignment.Top"), "repository source ellipsis glyph must align tightly to the top-right of the card.");
             Require(!settingsWindow.Contains("new Binding(nameof(RepositoryRow.Status))"), "repository source cards must not duplicate footer status text.");
             Require(!settingsWindow.Contains("RepositoryEnabledLabelConverter"), "repository source cards must not spend card width on enable/disable text buttons.");
@@ -1978,11 +2027,12 @@ namespace PlugHub.StaticValidation
             var sourceTemplate = MethodBody(settingsWindow, "BuildRepositorySourceCardTemplate");
             Require(sourceTemplate.Contains("border.SetValue(Border.WidthProperty, RepositorySourceCardWidth)") && sourceTemplate.Contains("border.SetValue(Border.MarginProperty, new Thickness(RepositoryCardHorizontalMargin, RepositoryPackageCardVerticalMargin, RepositoryCardHorizontalMargin, RepositorySourceCardBottomMargin))"), "repository source card horizontal gaps must match package card vertical gaps while preserving source-row bottom spacing.");
             var packageItemsPanel = MethodBody(settingsWindow, "BuildRepositoryPackageItemsPanel");
-            Require(packageItemsPanel.Contains("new FrameworkElementFactory(typeof(WrapPanel))") && !packageItemsPanel.Contains("WrapPanel.ItemWidthProperty"), "repository package list must let WrapPanel auto-measure each card like repository source cards instead of clipping cards into a fixed item width.");
+            Require(packageItemsPanel.Contains("new FrameworkElementFactory(typeof(UniformGrid))") && packageItemsPanel.Contains("UniformGrid.ColumnsProperty") && packageItemsPanel.Contains("RepositoryPackageColumns"), "repository package list must use a fixed three-column UniformGrid so seven repository packages render as three rows instead of two columns.");
+            Require(settingsWindow.Contains("_warehousePackageList.ItemContainerStyle = BuildRepositoryPackageItemContainerStyle()") && settingsWindow.Contains("RepositoryPackageItemContainerStyle"), "repository package list must remove default ListBoxItem chrome so three cards fit predictably.");
             Require(settingsWindow.Contains("_warehousePackageList.HorizontalContentAlignment = HorizontalAlignment.Center") && settingsWindow.Contains("FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center"), "repository package card grid must keep three columns centered with equal left/right spacing.");
             Require(settingsWindow.Contains("RepositoryPackageActionWidth = 72.0") && settingsWindow.Contains("RepositoryPackageActionHeight = 26.0"), "repository package card action buttons must stay compact with fixed dimensions.");
             var packageTemplate = MethodBody(settingsWindow, "BuildRepositoryPackageTemplate");
-            Require(packageTemplate.Contains("var border = new FrameworkElementFactory(typeof(Border))") && packageTemplate.Contains("border.SetValue(Border.WidthProperty, RepositoryPackageCardWidth)") && packageTemplate.Contains("border.SetValue(Border.MarginProperty, new Thickness(RepositoryCardHorizontalMargin, RepositoryPackageCardVerticalMargin, RepositoryCardHorizontalMargin, RepositoryPackageCardVerticalMargin))"), "repository package card horizontal gaps must match package card vertical gaps.");
+            Require(packageTemplate.Contains("var border = new FrameworkElementFactory(typeof(Border))") && packageTemplate.Contains("border.SetBinding(Border.WidthProperty, RepositoryPackageCardWidthBinding())") && packageTemplate.Contains("border.SetValue(Border.MarginProperty, new Thickness(RepositoryCardHorizontalMargin, RepositoryPackageCardVerticalMargin, RepositoryCardHorizontalMargin, RepositoryPackageCardVerticalMargin))"), "repository package card width must bind to the live manager package list width while preserving compact card gaps.");
             Require(packageTemplate.Contains("border.SetValue(Border.PaddingProperty, new Thickness(10, 8, 10, 8))") && packageTemplate.Contains("border.SetValue(Border.BorderThicknessProperty, new Thickness(1))"), "repository package cards must draw their own border with the same card padding as repository source cards.");
             Require(!packageTemplate.Contains("var slot = new FrameworkElementFactory(typeof(Border))") && packageTemplate.Contains("return new DataTemplate { VisualTree = border }"), "repository package cards must not wrap the real card in a fixed-width slot.");
             Require(!packageTemplate.Contains("rightEdge") && !packageTemplate.Contains("Panel.ZIndexProperty"), "repository package cards must not use overlay edge workarounds.");
@@ -2053,6 +2103,7 @@ namespace PlugHub.StaticValidation
             Require(repositoryBrowser.Contains("RepositoryArchiveSynchronizer") && repositoryBrowser.Contains("_archiveSynchronizer.Sync"), "repository browsing must delegate remote cache refresh to the HTTP archive synchronizer.");
             Require(repositoryArchiveSynchronizer.Contains("HttpWebRequest") && repositoryArchiveSynchronizer.Contains("ZipFile.OpenRead") && repositoryArchiveSynchronizer.Contains("ExtractArchive"), "repository archive synchronizer must download and extract repository zip archives.");
             Require(repositoryArchiveSynchronizer.Contains("ArchiveDownloadUserAgent") && repositoryArchiveSynchronizer.Contains("curl/8.0.1") && !repositoryArchiveSynchronizer.Contains("request.UserAgent = \"PlugHub\""), "repository archive downloads must use a Gitee-compatible user agent accepted by archive endpoints.");
+            Require(repositoryArchiveSynchronizer.Contains("WithCacheBust(ArchiveUrl(address, repository))") && repositoryArchiveSynchronizer.Contains("RequestCachePolicy(RequestCacheLevel.Reload)"), "repository source sync must bypass stale HTTP/archive cache before replacing the local repository cache.");
             Require(repositoryArchiveSynchronizer.Contains("ValidateArchiveFile") && repositoryArchiveSynchronizer.IndexOf("ValidateArchiveFile(archivePath, archiveUrl)", StringComparison.Ordinal) < repositoryArchiveSynchronizer.IndexOf("ExtractArchive(archivePath, stagingDirectory)", StringComparison.Ordinal), "repository archive synchronizer must validate downloaded zip content before extraction.");
             Require(repositoryArchiveSynchronizer.Contains("Downloaded repository archive is not a zip file") && repositoryArchiveSynchronizer.Contains("Check repository URL, ref, and credentials"), "repository archive synchronizer must report a clear URL/ref diagnostic for non-zip responses.");
             Require(repositoryArchiveSynchronizer.Contains("EnsureHttpsResponse(response.ResponseUri)") && repositoryArchiveSynchronizer.IndexOf("EnsureHttpsResponse(response.ResponseUri)", StringComparison.Ordinal) < repositoryArchiveSynchronizer.IndexOf("source.CopyTo(target)", StringComparison.Ordinal), "repository archive downloads must reject redirects away from HTTPS before writing archive bytes.");
@@ -2070,29 +2121,38 @@ namespace PlugHub.StaticValidation
             Require(packageManifestReader.Contains("segment.All(ch => ch == '.')") && packageRepositoryService.Contains("segment.All(ch => ch == '.')"), "repository package path segments must reject all-dot package ids.");
             Require(packageManifestReader.Contains("AdjacentPackageManifestPattern = \"*.packages.json\""), "repository manifest reader must discover adjacent *.packages.json manifests.");
             Require(packageInstallService.Contains("InstallPackagePayload") && packageInstallService.Contains("CopyPackagePayload") && packageInstallService.Contains("WriteSingleModuleManifest") && !packageInstallService.Contains("CopyDirectory("), "repository install must split selected plugins and must not copy the whole repository directory.");
-            Require(packageRepositoryService.Contains("ApplyPendingOperations") && packageRepositoryService.Contains("PendingPackageOperation.Restart"), "repository package operations must defer locked DLL deletion and replacement and mark normal installs as restart-required.");
+            Require(packageRepositoryService.Contains("ApplyPendingOperations"), "repository package operations must defer locked DLL deletion and replacement through pending operations.");
+            Require(!packageRepositoryService.Contains("PendingPackageOperation.Restart("), "normal package installs and unlocked updates must not persist restart-only pending operations from the external Manager.");
             Require(!packageRepositoryService.Contains("PendingOperationsPath(") && !packageRepositoryService.Contains("PendingOperationsFileName"), "PackageRepositoryService must not duplicate pending operation store path ownership.");
             Require(packageRepositoryService.Contains("ListPendingOperations"), "package repository service must expose pending operation listing.");
             Require(packageRepositoryService.Contains("CancelPendingOperation"), "package repository service must expose pending operation cancellation.");
             Require(credentialService.Contains("ProtectedData.Protect") && credentialService.Contains("ProtectedData.Unprotect"), "repository credential service must use DPAPI.");
             Require(redactor.Contains("Redact") && redactor.Contains("x-access-token") && redactor.Contains("oauth2") && redactor.Contains("access_token"), "diagnostic redactor must mask repository tokens.");
-            Require(configurationModels.Contains("EncryptedApiKey"), "repository configuration must persist encrypted apiKey separately.");
+            Require(configurationModels.Contains("public string DisplayName { get; set; } = string.Empty;") && configurationModels.Contains("EncryptedApiKey"), "repository configuration must persist custom displayName and encrypted apiKey separately.");
             Require(repositoryArchiveSynchronizer.Contains("ResolveApiKey(repository)") && repositoryArchiveSynchronizer.Contains("SafePathSegment(repository.Id)"), "repository archive synchronizer must resolve protected credentials and stage downloads under a repository-specific cache path.");
             Require(repositoryArchiveSynchronizer.Contains("DownloadArchive") && repositoryArchiveSynchronizer.Contains("ReplaceCacheDirectory"), "repository archive synchronizer must atomically replace the local repository cache after a successful download.");
+            Require(settingsWindow.Contains("已同步并替换本地缓存"), "repository source sync status must explicitly tell users that the local cache was refreshed.");
             Require(readme.Contains("不需要安装 Git") && readme.Contains("HTTP archive"), "README must state that repository browsing no longer requires user-installed Git.");
+            Require(frameworkUpdateService.Contains("PLUGHUB_TEST_UPDATE_RELEASE_URI") && frameworkUpdateService.Contains("GitHub Test") && frameworkUpdateService.Contains("ContinueWhenNoUpdate") && frameworkUpdateService.Contains("GitHubTestPrereleaseList") && frameworkUpdateService.Contains("GetLatestTestPrerelease"), "framework update checks must support a latest-TV test update source without changing stable defaults.");
+            Require(frameworkUpdateService.Contains("BuildDefaultCheckSources") && frameworkUpdateService.Contains("BuildCheckSources(currentVersion, _updateSources)") && frameworkUpdateService.Contains("GitHubReleaseListUri"), "TV builds must query the GitHub prerelease list before Gitee stable tags.");
+            Require(frameworkUpdateService.Contains("ComparableVersionText") && frameworkUpdateService.Contains("IndexOfAny") && frameworkUpdateService.Contains("IsStableReleaseTag") && frameworkUpdateService.Contains("IsTestReleaseTag"), "framework update version comparison must handle TVx.y.z test tags and allow same-number stable releases to replace test builds.");
             Require(settingsWindow.Contains("RepositoryCredentialService") && settingsWindow.Contains("ProtectForSave(repository)"), "settings save must protect repository apiKey before serializing sources.");
+            Require(settingsWindow.Contains("SettingsMetrics.CountUniqueModules(EditableModules())") && settingsWindow.Contains("SettingsMetrics.CountUniqueFeatures(EditableModules())") && settingsWindow.Contains("SettingsMetrics.CountEnabledRepositories(_configuration.Modules.Repositories)"), "settings header/about metrics must count unique modules, unique features, and enabled repositories.");
             Require(settingsWindow.Contains("ApiKey = string.Empty") && settingsWindow.Contains("PlainApiKey = repository.ApiKey"), "settings repository rows must keep legacy plaintext apiKey available without echoing it in the UI.");
+            Require(settingsWindow.Contains("CustomName = repository.DisplayName") && repositoryRow.Contains("DisplayName = CustomName ?? string.Empty") && repositoryRow.Contains("CustomName"), "settings repository rows must edit and persist custom repository displayName separately from the resolved card title.");
             Require(repositoryRow.Contains("string.IsNullOrWhiteSpace(ApiKey) ? PlainApiKey"), "repository row ToConfiguration must preserve legacy plaintext apiKey when the user did not enter a replacement token.");
             Require(settingsWindow.Contains("EncryptedApiKey = repository.EncryptedApiKey") && settingsWindow.Contains("ApiKeyProtection = repository.ApiKeyProtection"), "settings repository rows must preserve encrypted apiKey metadata.");
             Require(repositoryRow.Contains("EncryptedApiKey = EncryptedApiKey ?? string.Empty") && repositoryRow.Contains("ApiKeyProtection = ApiKeyProtection ?? string.Empty"), "repository row ToConfiguration must retain encrypted apiKey metadata.");
-            Require(configurationLoader.Contains("EncryptedApiKey = repository.EncryptedApiKey") && configurationLoader.Contains("ApiKeyProtection = repository.ApiKeyProtection"), "configuration loader must preserve encrypted repository credentials when applying presets.");
-            Require(sourceResolver.Contains("EncryptedApiKey = repository.EncryptedApiKey") && sourceResolver.Contains("ApiKeyProtection = repository.ApiKeyProtection"), "module source resolver must preserve encrypted repository credentials.");
+            Require(configurationLoader.Contains("DisplayName = repository.DisplayName") && configurationLoader.Contains("EncryptedApiKey = repository.EncryptedApiKey") && configurationLoader.Contains("ApiKeyProtection = repository.ApiKeyProtection"), "configuration loader must preserve repository displayName and encrypted credentials when applying presets.");
+            Require(sourceResolver.Contains("DisplayName = repository.DisplayName") && sourceResolver.Contains("EncryptedApiKey = repository.EncryptedApiKey") && sourceResolver.Contains("ApiKeyProtection = repository.ApiKeyProtection"), "module source resolver must preserve repository displayName and encrypted credentials.");
             ValidateRepositoryCredentialAndRedactionBehavior();
             var pendingStore = ReadText("src/PlugHub.Framework/Packages/PendingPackageOperationStore.cs");
             Require(pendingStore.Contains("pending-operations.json"), "pending operation store must own the pending operation file name.");
             Require(pendingStore.Contains("AddOrReplace") && pendingStore.Contains("Remove") && pendingStore.Contains("Read"), "pending operation store must read, add, and remove operations.");
-            Require(repositoryPackageRow.Contains("已安装待重启") && repositoryPackageRow.Contains("PendingOperation") && settingsWindow.Contains("IsLoadedInCurrentRuntime"), "repository package status must distinguish installed from installed-pending-restart.");
-            Require(ReadText("src/PlugHub.Framework/Runtime/FrameworkRuntime.cs").Contains("ApplyPendingOperations"), "runtime startup must apply deferred package operations before module discovery.");
+            Require(repositoryPackageRow.Contains("已安装待重启") && repositoryPackageRow.Contains("PendingOperation") && repositoryPackageRow.Contains("isRevitHostRunning && !isInstalled && isLoadedInCurrentRuntime") && repositoryPackageRow.Contains("isRevitHostRunning && !isLoadedInCurrentRuntime") && settingsWindow.Contains("IsLoadedInCurrentRuntime"), "repository package status must distinguish installed, uninstalled, and pending-restart states without treating absent Revit as a loaded runtime.");
+            var frameworkRuntime = ReadText("src/PlugHub.Framework/Runtime/FrameworkRuntime.cs");
+            Require(frameworkRuntime.Contains("ApplyPendingOperations"), "runtime startup must apply deferred package operations before module discovery.");
+            Require(frameworkRuntime.Contains("applyPendingPackageOperations") && frameworkRuntime.Contains("Load(baseDirectory, configDirectory, true)"), "external Manager must be able to load a local runtime snapshot without applying deferred package operations while Revit is still running.");
             Require(!settingsWindow.Contains("LoadDiagnosticRows(FrameworkRuntimeState.Current);\r\n            LoadSourceRows();"), "settings save must not reload stale runtime diagnostics after saving configuration.");
 
             Require(workflow.Contains("-UseRelativeAddinAssembly"), "release workflow must build a package with relative addin assembly path.");
@@ -2853,6 +2913,7 @@ namespace PlugHub.StaticValidation
             var installerPayload = ReadText("src/PlugHub.Installer/InstallerPayload.cs");
             var addinWriter = ReadText("src/PlugHub.Installer/AddinManifestWriter.cs");
             var workflow = ReadText(".github/workflows/release.yml");
+            var testUpdateWorkflow = ReadText(".github/workflows/test-update-release.yml");
             var solution = ReadText("PlugHub.sln");
             var solutionX = ReadText("PlugHub.slnx");
             var readme = ReadText("README.md");
@@ -2874,6 +2935,11 @@ namespace PlugHub.StaticValidation
             Require(workflow.Contains("sigstore/cosign-installer@v4.1.2") && !workflow.Contains("sigstore/cosign-installer@v3"), "release workflow must pin the resolvable cosign installer v4 action line.");
             Require(workflow.Contains("softprops/action-gh-release@v3") && !workflow.Contains("softprops/action-gh-release@v2"), "release workflow must use the Node 24 GitHub release action line.");
             Require(workflow.Contains("Build PlugHub installer") && workflow.Contains("-t:Rebuild") && workflow.Contains("InstallerPayloadZip") && workflow.Contains("PlugHub-Setup-$tag.exe"), "release workflow must rebuild and upload PlugHub installer EXE.");
+            Require(testUpdateWorkflow.Contains("push:") && testUpdateWorkflow.Contains("- codex") && testUpdateWorkflow.Contains("workflow_dispatch") && testUpdateWorkflow.Contains("TV\\d+\\.\\d+\\.\\d+") && testUpdateWorkflow.Contains("$releaseTag = $testTag") && testUpdateWorkflow.Contains("--prerelease"), "test update workflow must publish TVx.y.z prerelease assets from codex pushes or manual dispatch without using the production V* namespace.");
+            Require(testUpdateWorkflow.Contains("git fetch --force --tags origin") && testUpdateWorkflow.Contains("$latestTest") && testUpdateWorkflow.Contains("Increment-Patch") && testUpdateWorkflow.Contains("New-TestTag"), "test update workflow must increment from the latest production or test TV tag on codex pushes.");
+            Require(testUpdateWorkflow.Contains("Delete previous test prerelease") && testUpdateWorkflow.Contains("continue-on-error: true") && testUpdateWorkflow.Contains("--cleanup-tag"), "test update workflow must tolerate the first publish when no previous TVx.y.z prerelease exists.");
+            Require(testUpdateWorkflow.Contains("actions/checkout@v6") && testUpdateWorkflow.Contains("PlugHub-Revit2020-$testTag.zip") && testUpdateWorkflow.Contains("PlugHub-Setup-$testTag.exe"), "test update workflow must use current checkout and publish test zip plus installer assets.");
+            Require(testUpdateWorkflow.Contains("PLUGHUB_TEST_UPDATE_RELEASE_URI") && testUpdateWorkflow.Contains("The test channel automatically selects the newest TV* prerelease.") && testUpdateWorkflow.Contains("https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases") && !testUpdateWorkflow.Contains("releases/tags/$testTag"), "test update workflow release notes must point Manager at the stable latest-test release list.");
             Require(readme.Contains("PlugHub-Setup") && readme.Contains(@"D:\Program Files\PlugHub"), "README must document the installer EXE and default install directory.");
             Require(readme.Contains("PlugHub-Setup") && readme.Contains("写入 addin") && readme.Contains("Revit 2020"), "README must document release installer behavior.");
         }
@@ -3011,10 +3077,12 @@ namespace PlugHub.StaticValidation
             Require(maintenanceLauncher.Contains("StartUpdate") && maintenanceLauncher.Contains("CreateTemporaryManagerCopy") && maintenanceLauncher.Contains("Path.GetTempPath()") && maintenanceLauncher.Contains("Directory.GetFiles(sourceDirectory, \"PlugHub.*.dll\")"), "Manager maintenance launcher must run a temporary manager copy with required framework DLLs.");
             Require(service.Contains("https://gitee.com/api/v5/repos/GaoMengGu/PlugHub/tags") && service.Contains("https://api.github.com/repos/GaoMengGu/PlugHub/releases/latest") && service.Contains("PlugHub-Revit2020-"), "framework update service must use Gitee first and GitHub as fallback for latest release assets.");
             Require(service.Contains("DefaultUpdateSources") && service.Contains("GiteeTagList") && service.Contains("GitHubLatestRelease"), "framework update service must name update source types explicitly.");
+            Require(service.Contains("BuildDefaultCheckSources") && service.Contains("BuildCheckSources(currentVersion, _updateSources)") && service.Contains("GitHubReleaseListUri"), "TV builds must query GitHub test prereleases before stable Gitee/GitHub release sources.");
             Require(service.Contains("AssetDownloadUrls") && service.Contains("DownloadFallbackUrls"), "framework update service must preserve fallback asset URLs for blocked or failed hosts.");
             Require(service.Contains("SelectUpdateAsset") && service.Contains("ReleaseNotes = release.Body"), "framework update service must select the update zip and preserve release notes.");
             Require(!service.Contains("升级图标"), "framework update check message must not reference the removed upgrade icon.");
             Require(releaseClient.Contains("Body = StringValue(root, \"body\")") && releaseClient.Contains("AssetObjects("), "release client must parse release body and release assets from GitHub/Gitee JSON.");
+            Require(releaseClient.Contains("ParseLatestTestPrereleaseJson") && releaseClient.Contains("prerelease") && releaseClient.Contains("draft") && releaseClient.Contains("IsTestReleaseTag"), "release client must parse the newest non-draft TV prerelease from GitHub release lists.");
             Require(releaseClient.Contains("ParseGiteeTagsJson") && releaseClient.Contains("CreateGiteeReleaseDownloadUrl"), "release client must parse Gitee tags and generate Gitee release asset URLs.");
             Require(!service.Contains("PlugHub.Updater.exe") && !service.Contains("StartUpdater") && !service.Contains("CreateTemporaryUpdaterCopy"), "framework update service must not know about a standalone updater executable.");
             Require(releaseClient.Contains("HttpWebRequest") && releaseClient.Contains("UserAgent") && releaseClient.Contains("JavaScriptSerializer"), "release client must use net48-compatible HTTP and JSON APIs.");
@@ -3024,6 +3092,7 @@ namespace PlugHub.StaticValidation
             Require(validator.Contains("PlugHub.Revit2020.dll") && validator.Contains("PlugHub.Framework.dll") && validator.Contains("PlugHub.Contracts.dll") && validator.Contains("PlugHub.Wpf.dll") && !validator.Contains("PlugHub.Manager.dll") && !validator.Contains("PlugHub.Updater.exe") && validator.Contains("PlugHub.Manager.exe") && !validator.Contains("PlugHub-Uninstall.exe"), "update package validator must require the core framework DLLs and manager app only.");
             Require(validator.Contains("IsSafeZipEntry") && validator.Contains("Path.DirectorySeparatorChar"), "update package validator must reject unsafe zip paths.");
             Require(maintenanceRunner.Contains("ManagerFrameworkUpdater") && maintenanceRunner.Contains("ManagerUninstaller") && maintenanceRunner.Contains("PlugHub Manager maintenance failed"), "Manager maintenance runner must dispatch update and uninstall maintenance modes.");
+            Require(maintenanceRunner.Contains("PlugHub Manager - Update") && maintenanceRunner.Contains("PlugHub was updated successfully"), "Manager update maintenance must show a completion prompt after files are replaced.");
             Require(managerUpdater.Contains("WaitForExit") && managerUpdater.Contains("CopyFrameworkFiles") && managerUpdater.Contains("ShouldCopyUpdateEntry"), "Manager update maintenance must wait for locking processes before copying framework files.");
             Require(managerUpdater.Contains("FrameworkUpdatePackageValidator") && managerUpdater.IndexOf("new FrameworkUpdatePackageValidator().Validate(args.PayloadZip)", StringComparison.Ordinal) < managerUpdater.IndexOf("CopyFrameworkFiles(args.PayloadZip", StringComparison.Ordinal), "Manager update maintenance must validate payload zip before copying framework files.");
             Require(managerUpdater.Contains("RequiredInstallMarkers") && managerUpdater.Contains("ContainsPlugHubInstallMarkers") && managerUpdater.Contains("IsAllowedInstallRootName") && managerUpdater.Contains("Revit2020"), "Manager update maintenance must refuse marker-validated parent directories that are not PlugHub install roots.");
@@ -3036,7 +3105,7 @@ namespace PlugHub.StaticValidation
             Require(!buildScript.Contains("PlugHub.Updater.csproj") && !buildScript.Contains("PlugHub.Uninstaller.csproj"), "local Revit 2020 build script must not build standalone maintenance executables.");
             Require(buildScript.Contains("PlugHub.Manager.csproj") && buildScript.Contains("PlugHub.Manager.exe"), "local Revit 2020 build script must stage PlugHub.Manager.exe.");
             Require(buildScript.Contains("PlugHub.Updater.exe") && buildScript.Contains("PlugHub-Uninstall.exe") && buildScript.Contains("StaleOutputPaths"), "local Revit 2020 build script must remove stale standalone maintenance executables from dist.");
-            Require(buildScript.Contains("Resolve-PlugHubReleaseVersion") && buildScript.Contains("/p:PlugHubVersion=$($PlugHubReleaseVersion.Version)") && buildScript.Contains("/p:PlugHubReleaseTag=$($PlugHubReleaseVersion.ReleaseTag)"), "local and release builds must stamp PlugHub DLLs with the release tag version.");
+            Require(buildScript.Contains("Resolve-PlugHubReleaseVersion") && buildScript.Contains("^T?V(?<version>\\d+\\.\\d+\\.\\d+)$") && buildScript.Contains("/p:PlugHubVersion=$($PlugHubReleaseVersion.Version)") && buildScript.Contains("/p:PlugHubReleaseTag=$($PlugHubReleaseVersion.ReleaseTag)"), "local, release, and test update builds must stamp PlugHub DLLs with the release tag version.");
             Require(readme.Contains("检查更新小图标") && readme.Contains("卸载小图标") && readme.Contains("自动弹出目标版本号") && readme.Contains("框架 DLL 和 PlugHub Manager") && !readme.Contains("PlugHub.Updater.exe") && !readme.Contains("PlugHub-Uninstall.exe"), "README must document single-Manager framework update and uninstall behavior.");
             Require(readme.Contains("已是最新版本") && readme.Contains("关闭弹窗则退出更新") && !readme.Contains("Revit 实机测试成功"), "README must document updater behavior without claiming Revit real-machine validation.");
 

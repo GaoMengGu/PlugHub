@@ -5,6 +5,7 @@
     <AssemblyName>PlugHub.Manager</AssemblyName>
     <RootNamespace>PlugHub.Manager</RootNamespace>
     <OutputType>WinExe</OutputType>
+    <ApplicationIcon>Resources\LOGO.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="System" />

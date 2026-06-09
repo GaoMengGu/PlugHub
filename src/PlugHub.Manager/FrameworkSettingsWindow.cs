@@ -45,7 +45,7 @@ namespace PlugHub.Manager
         private const double RepositoryCardRowChromeReserve = 60.0;
         private const double RepositoryCardRowWidth = RepositorySettingsDefaultWidth - SettingsWindowOuterMarginWidth - RepositoryCardRowChromeReserve;
         private const double RepositorySourceColumns = 4.0;
-        private const double RepositoryPackageColumns = 3.0;
+        private const int RepositoryPackageColumns = 3;
         private const double RepositoryPackageCardVerticalMargin = 4.0;
         private const double RepositorySourceCardBottomMargin = RepositoryPackageCardVerticalMargin * 2.0;
         private const double RepositoryCardHorizontalMargin = RepositoryPackageCardVerticalMargin;
@@ -54,8 +54,9 @@ namespace PlugHub.Manager
         private const double RepositorySourceCardRowWidth = RepositoryCardRowWidth - RepositorySourceScrollbarSafetyReserve;
         private const double RepositorySourceCardSlotWidth = RepositorySourceCardRowWidth / RepositorySourceColumns;
         private const double RepositorySourceCardWidth = RepositorySourceCardSlotWidth - RepositoryCardHorizontalMarginWidth;
-        private const double RepositoryPackageCardSlotWidth = RepositoryCardRowWidth / RepositoryPackageColumns;
-        private const double RepositoryPackageCardWidth = RepositoryPackageCardSlotWidth - RepositoryCardHorizontalMarginWidth;
+        private const double RepositoryPackageScrollbarSafetyReserve = 18.0;
+        private const double RepositoryPackageCardMinWidth = 260.0;
+        private const double RepositoryPackageDefaultCardWidth = ((RepositoryCardRowWidth - RepositoryPackageScrollbarSafetyReserve) / RepositoryPackageColumns) - RepositoryCardHorizontalMarginWidth;
         private const double RepositoryPackageActionWidth = 72.0;
         private const double RepositoryPackageActionHeight = 26.0;
         private static readonly string[] SameNameIconExtensions = { ".png", ".ico", ".jpg", ".jpeg", ".bmp" };
@@ -113,6 +114,7 @@ namespace PlugHub.Manager
             _moduleDocuments = _configurationStore.LoadModuleDocuments(_configuration);
 
             Title = "PlugHub Manager";
+            Icon = DefaultRibbonIconProvider.CreateLogoIcon();
             Width = RepositorySettingsDefaultWidth;
             Height = RepositorySettingsDefaultHeight;
             MinWidth = 1000;
@@ -165,6 +167,13 @@ namespace PlugHub.Manager
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
+            var titleArea = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            titleArea.Children.Add(BuildHeaderLogo());
+
             var titleStack = new StackPanel { Orientation = Orientation.Vertical };
             titleStack.Children.Add(new TextBlock
             {
@@ -179,8 +188,9 @@ namespace PlugHub.Manager
                 Margin = new Thickness(0, 3, 0, 0),
                 Foreground = theme.MutedTextBrush
             });
-            Grid.SetColumn(titleStack, 0);
-            header.Children.Add(titleStack);
+            titleArea.Children.Add(titleStack);
+            Grid.SetColumn(titleArea, 0);
+            header.Children.Add(titleArea);
 
             var metrics = new StackPanel
             {
@@ -195,6 +205,19 @@ namespace PlugHub.Manager
             header.Children.Add(metrics);
 
             return header;
+        }
+
+        private static UIElement BuildHeaderLogo()
+        {
+            return new Image
+            {
+                Source = DefaultRibbonIconProvider.CreateLogoIcon(),
+                Width = 34,
+                Height = 34,
+                Margin = new Thickness(0, 0, 10, 0),
+                Stretch = Stretch.Uniform,
+                VerticalAlignment = VerticalAlignment.Center
+            };
         }
 
         private static UIElement BuildHeaderMetric(string label, string value)
@@ -486,7 +509,7 @@ namespace PlugHub.Manager
             details.Children.Add(BuildAboutSection(
                 "诊断",
                 BuildAboutInfoRow("日志消息", (FrameworkRuntimeState.Current?.Diagnostics.Count ?? 0).ToString(CultureInfo.InvariantCulture)),
-                BuildAboutInfoRow("待重启操作", _packageRepositoryService.ListPendingOperations(BaseDirectory()).Count.ToString(CultureInfo.InvariantCulture)),
+                BuildAboutInfoRow("待重启操作", PendingBlockingPackageOperationCount().ToString(CultureInfo.InvariantCulture)),
                 BuildAboutInfoRow("静态验证", "dotnet run --project src/PlugHub.StaticValidation/PlugHub.StaticValidation.csproj")));
             Grid.SetColumn(details, 1);
             root.Children.Add(details);
@@ -782,6 +805,7 @@ namespace PlugHub.Manager
             _warehousePackageList.BorderThickness = new Thickness(0);
             _warehousePackageList.Background = RevitUiTheme.Current.PanelBackground;
             _warehousePackageList.ContextMenu = BuildRepositoryPackageMenu();
+            _warehousePackageList.ItemContainerStyle = BuildRepositoryPackageItemContainerStyle();
             _warehousePackageList.ItemTemplate = BuildRepositoryPackageTemplate();
             _warehousePackageList.ItemsPanel = BuildRepositoryPackageItemsPanel();
             _warehousePackageList.SelectionMode = SelectionMode.Single;
@@ -795,17 +819,42 @@ namespace PlugHub.Manager
 
         private static ItemsPanelTemplate BuildRepositoryPackageItemsPanel()
         {
-            var panelFactory = new FrameworkElementFactory(typeof(WrapPanel));
-            panelFactory.SetValue(WrapPanel.OrientationProperty, Orientation.Horizontal);
+            var panelFactory = new FrameworkElementFactory(typeof(UniformGrid));
+            panelFactory.SetValue(UniformGrid.ColumnsProperty, RepositoryPackageColumns);
             panelFactory.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
             return new ItemsPanelTemplate(panelFactory);
+        }
+
+        private static Style BuildRepositoryPackageItemContainerStyle()
+        {
+            var style = new Style(typeof(ListBoxItem));
+            style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(0)));
+            style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(0)));
+            style.Setters.Add(new Setter(Control.BackgroundProperty, Brushes.Transparent));
+            style.Setters.Add(new Setter(FrameworkElement.MarginProperty, new Thickness(0)));
+            style.Setters.Add(new Setter(Control.HorizontalContentAlignmentProperty, HorizontalAlignment.Center));
+            style.Setters.Add(new Setter(Control.VerticalContentAlignmentProperty, VerticalAlignment.Stretch));
+            style.Setters.Add(new Setter(UIElement.SnapsToDevicePixelsProperty, true));
+            return style;
+        }
+
+        private static Binding RepositoryPackageCardWidthBinding()
+        {
+            return new Binding("ActualWidth")
+            {
+                RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(ListBox), 1),
+                Converter = new RepositoryPackageCardWidthConverter(),
+                FallbackValue = RepositoryPackageDefaultCardWidth,
+                TargetNullValue = RepositoryPackageDefaultCardWidth
+            };
         }
 
         private DataTemplate BuildRepositoryPackageTemplate()
         {
             var theme = RevitUiTheme.Current;
             var border = new FrameworkElementFactory(typeof(Border));
-            border.SetValue(Border.WidthProperty, RepositoryPackageCardWidth);
+            border.SetBinding(Border.WidthProperty, RepositoryPackageCardWidthBinding());
+            border.SetValue(Border.MinWidthProperty, RepositoryPackageCardMinWidth);
             border.SetValue(Border.MarginProperty, new Thickness(RepositoryCardHorizontalMargin, RepositoryPackageCardVerticalMargin, RepositoryCardHorizontalMargin, RepositoryPackageCardVerticalMargin));
             border.SetValue(Border.PaddingProperty, new Thickness(10, 8, 10, 8));
             border.SetValue(Border.BackgroundProperty, theme.PanelBackground);
@@ -1290,6 +1339,7 @@ namespace PlugHub.Manager
                     Tags = new List<string>(feature.Tags ?? new List<string>()),
                     Visible = string.Equals(feature.DefaultState, "Visible", StringComparison.OrdinalIgnoreCase),
                     IconPath = feature.IconPath,
+                    ModuleBaseDirectory = module.ResolvedBaseDirectory,
                     Order = feature.Order,
                     ButtonSize = NormalizeButtonSize(feature.ButtonSize),
                     CommandKey = feature.CommandKey,
@@ -1350,6 +1400,7 @@ namespace PlugHub.Manager
                     DisplayName = displayName,
                     SearchText = (displayName + " " + feature.Name + " " + feature.ModuleName + " " + feature.FeatureId).Trim(),
                     IconPath = feature.IconPath,
+                    ModuleBaseDirectory = feature.ModuleBaseDirectory,
                     ButtonSize = NormalizeButtonSize(feature.ButtonSize),
                     DisplayText = displayName
                 });
@@ -1397,7 +1448,24 @@ namespace PlugHub.Manager
                 }
 
                 RemoveUnavailableRibbonDesignerFeatures(child, visibleFeatureIds);
+                if (ShouldRemoveEmptyRibbonDesignerContainer(child))
+                {
+                    parent.Children.RemoveAt(index);
+                }
             }
+        }
+
+        private static bool ShouldRemoveEmptyRibbonDesignerContainer(RibbonDesignerNodeRow row)
+        {
+            if (row == null || row.Children.Count > 0)
+            {
+                return false;
+            }
+
+            return RibbonDesignerMapper.IsType(row, RibbonDesignerNodeRow.Panel)
+                || RibbonDesignerMapper.IsType(row, RibbonDesignerNodeRow.PulldownButton)
+                || RibbonDesignerMapper.IsType(row, RibbonDesignerNodeRow.SplitButton)
+                || RibbonDesignerMapper.IsType(row, RibbonDesignerNodeRow.Stack);
         }
 
         private void EnsureAllVisibleFeaturesInRibbonDesignerLayout()
@@ -1795,7 +1863,9 @@ namespace PlugHub.Manager
                 .FirstOrDefault(item => string.Equals(item.FeatureId, row.FeatureId, StringComparison.OrdinalIgnoreCase));
             if (feature == null || string.IsNullOrWhiteSpace(feature.ModuleId)) return string.Empty;
 
-            var moduleDirectory = ModuleManifestDirectory(feature.ModuleId);
+            var moduleDirectory = string.IsNullOrWhiteSpace(feature.ModuleBaseDirectory)
+                ? ModuleManifestDirectory(feature.ModuleId)
+                : feature.ModuleBaseDirectory;
             if (string.IsNullOrWhiteSpace(moduleDirectory)) return string.Empty;
 
             var resolvedPath = Path.GetFullPath(Path.Combine(moduleDirectory, iconPath));
@@ -1820,14 +1890,16 @@ namespace PlugHub.Manager
         private ImageSource? LoadDllSiblingRibbonDesignerIcon(RibbonDesignerNodeRow row, bool large)
         {
             if (row == null || string.IsNullOrWhiteSpace(row.FeatureId)) return null;
-            var commandAssembly = _viewModel.Features
-                .FirstOrDefault(feature => string.Equals(feature.FeatureId, row.FeatureId, StringComparison.OrdinalIgnoreCase))
-                ?.CommandAssembly ?? string.Empty;
+            var feature = _viewModel.Features
+                .FirstOrDefault(item => string.Equals(item.FeatureId, row.FeatureId, StringComparison.OrdinalIgnoreCase));
+            var commandAssembly = feature?.CommandAssembly ?? string.Empty;
             if (string.IsNullOrWhiteSpace(commandAssembly)) return null;
 
             var resolvedAssembly = Path.IsPathRooted(commandAssembly)
                 ? commandAssembly
-                : Path.GetFullPath(Path.Combine(BaseDirectory(), commandAssembly));
+                : Path.GetFullPath(Path.Combine(
+                    string.IsNullOrWhiteSpace(feature?.ModuleBaseDirectory) ? BaseDirectory() : feature!.ModuleBaseDirectory,
+                    commandAssembly));
             var directory = Path.GetDirectoryName(resolvedAssembly);
             var stem = Path.GetFileNameWithoutExtension(resolvedAssembly);
             if (string.IsNullOrWhiteSpace(directory) || string.IsNullOrWhiteSpace(stem)) return null;
@@ -2848,11 +2920,12 @@ namespace PlugHub.Manager
 
         private void LoadRepositoryPackageRows(IEnumerable<RepositoryPackageDescriptor> packages)
         {
+            var isRevitHostRunning = IsRevitHostProcessRunning();
             _repositoryPackageRows.Clear();
             _repositoryPackageRows.AddRange((packages ?? new List<RepositoryPackageDescriptor>())
                 .Select(package =>
                 {
-                    var row = RepositoryPackageRow.FromDescriptor(package, IsLoadedInCurrentRuntime(package.PackageId, package.ModuleId));
+                    var row = RepositoryPackageRow.FromDescriptor(package, isRevitHostRunning, IsLoadedInCurrentRuntime(package.PackageId, package.ModuleId));
                     _repositorySettingsController.PreparePackageRow(row, _viewModel.Repositories);
                     return row;
                 }));
@@ -2905,6 +2978,7 @@ namespace PlugHub.Manager
             var row = new RepositoryRow
             {
                 Id = repository.Id,
+                CustomName = repository.DisplayName,
                 Enabled = repository.Enabled,
                 Provider = string.IsNullOrWhiteSpace(repository.Provider) ? DefaultRepositoryProvider : repository.Provider,
                 Visibility = string.Equals(repository.Visibility, "private", StringComparison.OrdinalIgnoreCase) ? "private" : "public",
@@ -3093,7 +3167,7 @@ namespace PlugHub.Manager
                     }
 
                     RefreshRepositorySourceCards();
-                    RefreshStatus("仓库检查完成，找到 " + packages.Count + " 个插件。");
+                    RefreshStatus("仓库检查完成，已同步并替换本地缓存，找到 " + packages.Count + " 个插件。");
                 }));
             });
         }
@@ -4096,6 +4170,7 @@ namespace PlugHub.Manager
             {
                 Id = id,
                 Enabled = true,
+                CustomName = string.Empty,
                 Provider = DefaultRepositoryProvider,
                 Visibility = "public",
                 Repository = DefaultPublicRepository,
@@ -4177,9 +4252,9 @@ namespace PlugHub.Manager
                 Owner = this,
                 Title = "编辑仓库源",
                 Width = 520,
-                Height = 430,
+                Height = 460,
                 MinWidth = 480,
-                MinHeight = 390,
+                MinHeight = 420,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner
             };
             RevitUiTheme.Apply(dialog);
@@ -4191,11 +4266,12 @@ namespace PlugHub.Manager
             var form = new Grid();
             form.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(96) });
             form.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            for (var i = 0; i < 7; i++)
+            for (var i = 0; i < 8; i++)
             {
                 form.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             }
 
+            var customName = new TextBox { Text = row.CustomName, Height = 26, VerticalContentAlignment = VerticalAlignment.Center };
             var enabled = new CheckBox { IsChecked = row.Enabled, VerticalAlignment = VerticalAlignment.Center };
             var provider = new ComboBox { ItemsSource = new[] { "gitee", "github" }, SelectedItem = string.IsNullOrWhiteSpace(row.Provider) ? DefaultRepositoryProvider : row.Provider, Height = 26 };
             var visibility = new ComboBox { ItemsSource = new[] { "public", "private" }, SelectedItem = string.IsNullOrWhiteSpace(row.Visibility) ? "public" : row.Visibility, Height = 26 };
@@ -4204,13 +4280,14 @@ namespace PlugHub.Manager
             var manifestPath = new TextBox { Text = row.ManifestPath, Height = 26, VerticalContentAlignment = VerticalAlignment.Center };
             var apiKey = new TextBox { Text = string.Empty, Height = 26, VerticalContentAlignment = VerticalAlignment.Center };
 
-            AddRepositoryEditorRow(form, 0, "启用", enabled);
-            AddRepositoryEditorRow(form, 1, "类型", provider);
-            AddRepositoryEditorRow(form, 2, "可见性", visibility);
-            AddRepositoryEditorRow(form, 3, "仓库", repository);
-            AddRepositoryEditorRow(form, 4, "分支", gitRef);
-            AddRepositoryEditorRow(form, 5, "清单", manifestPath);
-            AddRepositoryEditorRow(form, 6, "Token", apiKey);
+            AddRepositoryEditorRow(form, 0, "名称", customName);
+            AddRepositoryEditorRow(form, 1, "启用", enabled);
+            AddRepositoryEditorRow(form, 2, "类型", provider);
+            AddRepositoryEditorRow(form, 3, "可见性", visibility);
+            AddRepositoryEditorRow(form, 4, "仓库", repository);
+            AddRepositoryEditorRow(form, 5, "分支", gitRef);
+            AddRepositoryEditorRow(form, 6, "清单", manifestPath);
+            AddRepositoryEditorRow(form, 7, "Token", apiKey);
             Grid.SetRow(form, 0);
             root.Children.Add(form);
 
@@ -4223,6 +4300,7 @@ namespace PlugHub.Manager
             var cancel = CreateButton("取消", (sender, args) => dialog.DialogResult = false);
             var save = CreateButton("保存", (sender, args) =>
             {
+                row.CustomName = (customName.Text ?? string.Empty).Trim();
                 row.Enabled = enabled.IsChecked == true;
                 row.Provider = Convert.ToString(provider.SelectedItem) ?? DefaultRepositoryProvider;
                 row.Visibility = Convert.ToString(visibility.SelectedItem) ?? "public";
@@ -4290,7 +4368,7 @@ namespace PlugHub.Manager
 
                 row.Status = diagnostics.Any()
                     ? diagnostics.Last().Message
-                    : "已浏览 " + packages.Count + " 个插件包";
+                    : "已同步并替换本地缓存，" + packages.Count + " 个插件包";
                 RefreshRepositorySourceCards();
 
                 LoadRepositoryPackageRows(packages);
@@ -4451,6 +4529,7 @@ namespace PlugHub.Manager
 
         private void RefreshRepositoryPackageInstallState(string packageId, string installDirectory)
         {
+            var isRevitHostRunning = IsRevitHostProcessRunning();
             var rows = _repositoryPackageRows.Count > 0 ? _repositoryPackageRows : _viewModel.RepositoryPackages.AsEnumerable();
             foreach (var row in rows.Where(item =>
                 string.Equals(item.PackageId, packageId, StringComparison.OrdinalIgnoreCase)
@@ -4460,7 +4539,7 @@ namespace PlugHub.Manager
                 row.IsInstalled = refreshed.IsInstalled;
                 row.InstalledVersion = refreshed.InstalledVersion;
                 row.PendingOperation = refreshed.PendingOperation;
-                row.InstallState = RepositoryPackageRow.InstallStateFor(row.IsInstalled, row.Version, row.InstalledVersion, row.PendingOperation, IsLoadedInCurrentRuntime(row.PackageId, row.ModuleId));
+                row.InstallState = RepositoryPackageRow.InstallStateFor(row.IsInstalled, row.Version, row.InstalledVersion, row.PendingOperation, isRevitHostRunning, IsLoadedInCurrentRuntime(row.PackageId, row.ModuleId));
                 _repositorySettingsController.PreparePackageRow(row, _viewModel.Repositories);
             }
         }
@@ -4470,8 +4549,31 @@ namespace PlugHub.Manager
             var id = string.IsNullOrWhiteSpace(moduleId) ? packageId : moduleId;
             if (string.IsNullOrWhiteSpace(id)) return false;
 
+            if (!IsRevitHostProcessRunning()) return false;
+
             return (FrameworkRuntimeState.Current?.Configuration.EffectiveModules.Modules ?? new List<ModuleConfiguration>())
                 .Any(module => string.Equals(module.Id, id, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private bool IsRevitHostProcessRunning()
+        {
+            if (_hostProcessId <= 0 || _hostProcessId == Process.GetCurrentProcess().Id) return false;
+
+            try
+            {
+                using (var process = Process.GetProcessById(_hostProcessId))
+                {
+                    return !process.HasExited;
+                }
+            }
+            catch (ArgumentException)
+            {
+                return false;
+            }
+            catch (InvalidOperationException)
+            {
+                return false;
+            }
         }
 
         private void AddCustomGroup()
@@ -5313,10 +5415,16 @@ namespace PlugHub.Manager
 
         private string PendingPackageOperationsStatusText()
         {
-            var pendingCount = _packageRepositoryService.ListPendingOperations(BaseDirectory()).Count;
+            var pendingCount = PendingBlockingPackageOperationCount();
             return pendingCount == 0
                 ? string.Empty
                 : "待重启操作 " + pendingCount + " 项，重启 Revit 后生效。";
+        }
+
+        private int PendingBlockingPackageOperationCount()
+        {
+            return _packageRepositoryService.ListPendingOperations(BaseDirectory())
+                .Count(operation => !string.Equals(operation.Operation, "restart", StringComparison.OrdinalIgnoreCase));
         }
 
         private void RefreshStatusWithPendingPackageOperations(string message)
@@ -5400,17 +5508,17 @@ namespace PlugHub.Manager
 
         private int ConfiguredModuleCount()
         {
-            return EditableModules().Count();
+            return SettingsMetrics.CountUniqueModules(EditableModules());
         }
 
         private int ConfiguredFeatureCount()
         {
-            return EditableModules().Sum(module => (module.Features ?? new List<FeatureConfiguration>()).Count);
+            return SettingsMetrics.CountUniqueFeatures(EditableModules());
         }
 
         private int ConfiguredRepositoryCount()
         {
-            return (_configuration.Modules.Repositories ?? new List<PackageRepositoryConfiguration>()).Count;
+            return SettingsMetrics.CountEnabledRepositories(_configuration.Modules.Repositories);
         }
 
         private static string AssemblyVersionText()
@@ -5638,6 +5746,26 @@ namespace PlugHub.Manager
                 var localVersion = string.IsNullOrWhiteSpace(row.InstalledVersion) ? "-" : row.InstalledVersion.Trim();
                 var repositoryVersion = string.IsNullOrWhiteSpace(row.Version) ? "?" : row.Version.Trim();
                 return "本 " + localVersion + " · 仓 " + repositoryVersion;
+            }
+
+            public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+            {
+                return Binding.DoNothing;
+            }
+        }
+
+        private sealed class RepositoryPackageCardWidthConverter : IValueConverter
+        {
+            public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+            {
+                var listWidth = value is double actualWidth && actualWidth > 0
+                    ? actualWidth
+                    : RepositoryCardRowWidth;
+                var usableWidth = Math.Max(
+                    RepositoryPackageCardMinWidth * RepositoryPackageColumns,
+                    listWidth - RepositoryPackageScrollbarSafetyReserve);
+                var cardWidth = (usableWidth / RepositoryPackageColumns) - RepositoryCardHorizontalMarginWidth;
+                return Math.Max(RepositoryPackageCardMinWidth, cardWidth);
             }
 
             public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

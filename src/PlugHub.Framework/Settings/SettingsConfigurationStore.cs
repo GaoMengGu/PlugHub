@@ -148,7 +148,21 @@ namespace PlugHub.Framework.Settings
 
             var modules = _serializer.Deserialize<ModulesConfiguration>(File.ReadAllText(path));
             NormalizePackageManifestDefaults(root, modules);
+            ApplyResolvedBaseDirectory(path, modules);
             return modules;
+        }
+
+        private static void ApplyResolvedBaseDirectory(string path, ModulesConfiguration? modules)
+        {
+            if (modules == null) return;
+            var baseDirectory = Path.GetDirectoryName(Path.GetFullPath(path)) ?? string.Empty;
+            foreach (var module in modules.Modules ?? new List<ModuleConfiguration>())
+            {
+                if (string.IsNullOrWhiteSpace(module.ResolvedBaseDirectory))
+                {
+                    module.ResolvedBaseDirectory = baseDirectory;
+                }
+            }
         }
 
         private static void NormalizePackageManifestDefaults(Dictionary<string, object> root, ModulesConfiguration? modules)

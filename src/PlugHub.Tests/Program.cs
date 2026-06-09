@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
@@ -12,6 +13,7 @@ using PlugHub.Framework.Packages;
 using PlugHub.Framework.Settings;
 using PlugHub.Framework.Sources;
 using PlugHub.Framework.Updates;
+using PlugHub.Manager.Settings;
 
 namespace PlugHub.Tests
 {
@@ -27,8 +29,11 @@ namespace PlugHub.Tests
                 new TestCase("package manifest reader discovers nested manifests", PackageManifestReaderDiscoversNestedManifests),
                 new TestCase("module source resolver ignores git manifests", ModuleSourceResolverIgnoresGitManifests),
                 new TestCase("settings configuration store ignores git manifests", SettingsConfigurationStoreIgnoresGitManifests),
+                new TestCase("settings configuration store resolves package manifest base directories", SettingsConfigurationStoreResolvesPackageManifestBaseDirectories),
                 new TestCase("module source resolver rejects manifest path escape", ModuleSourceResolverRejectsManifestPathEscape),
                 new TestCase("settings configuration store rejects manifest path escape", SettingsConfigurationStoreRejectsManifestPathEscape),
+                new TestCase("settings metrics count unique modules features and enabled repositories", SettingsMetricsCountUniqueModulesFeaturesAndEnabledRepositories),
+                new TestCase("repository display name uses custom name before fallback", RepositoryDisplayNameUsesCustomNameBeforeFallback),
                 new TestCase("package install service copies selected module payload only", PackageInstallServiceCopiesSelectedModulePayloadOnly),
                 new TestCase("package install service rejects rooted payload paths", PackageInstallServiceRejectsRootedPayloadPaths),
                 new TestCase("package repository service maintains install update uninstall state", PackageRepositoryServiceMaintainsInstallUpdateUninstallState),
@@ -44,9 +49,14 @@ namespace PlugHub.Tests
                 new TestCase("package repository service rejects cancelled update staging path escape", PackageRepositoryServiceRejectsCancelledUpdateStagingPathEscape),
                 new TestCase("package repository service rejects dot segment cache ids", PackageRepositoryServiceRejectsDotSegmentCacheIds),
                 new TestCase("package repository service rejects dot segment package ids", PackageRepositoryServiceRejectsDotSegmentPackageIds),
+                new TestCase("repository package row treats absent Revit host as settled state", RepositoryPackageRowTreatsAbsentRevitHostAsSettledState),
                 new TestCase("ribbon layout composer builds configured layout and default fallback", RibbonLayoutComposerBuildsConfiguredLayoutAndDefaultFallback),
                 new TestCase("ribbon layout composer filters invalid container children", RibbonLayoutComposerFiltersInvalidContainerChildren),
                 new TestCase("framework update selects only exact version asset", FrameworkUpdateSelectsOnlyExactVersionAsset),
+                new TestCase("release client selects latest test prerelease", ReleaseClientSelectsLatestTestPrerelease),
+                new TestCase("framework update checks GitHub test prereleases for TV builds", FrameworkUpdateChecksGitHubTestPrereleasesForTvBuilds),
+                new TestCase("framework update treats test channel tags as comparable versions", FrameworkUpdateTreatsTestChannelTagsAsComparableVersions),
+                new TestCase("ribbon designer mapper hydrates configured feature icons", RibbonDesignerMapperHydratesConfiguredFeatureIcons),
                 new TestCase("framework update package accepts single manager maintenance payload", FrameworkUpdatePackageAcceptsSingleManagerMaintenancePayload),
                 new TestCase("framework update package rejects missing manager maintenance payload", FrameworkUpdatePackageRejectsMissingManagerMaintenancePayload),
                 new TestCase("manager updater validates maintenance payload", ManagerUpdaterValidatesMaintenancePayload),
@@ -309,6 +319,31 @@ namespace PlugHub.Tests
             }
         }
 
+        private static void SettingsConfigurationStoreResolvesPackageManifestBaseDirectories()
+        {
+            using (var temp = TempDirectory.Create())
+            {
+                var configDirectory = Path.Combine(temp.Path, "config");
+                var packageDirectory = Path.Combine(temp.Path, "packages", "icon-package");
+                WriteText(Path.Combine(configDirectory, "sources.json"), "{\"schemaVersion\":\"1.0\",\"packageDirectories\":[\"packages\"],\"modules\":[]}");
+                WriteText(
+                    Path.Combine(packageDirectory, "packages.json"),
+                    "{\"schemaVersion\":\"1.1\",\"modules\":[{\"id\":\"icon-package\",\"assembly\":\"IconPackage.dll\",\"features\":[{\"id\":\"icon-package.run\",\"iconPath\":\"icons/package.png\"}]}]}");
+
+                var configuration = new FrameworkConfiguration
+                {
+                    Modules = new ModulesConfiguration
+                    {
+                        PackageDirectories = new List<string> { "packages" }
+                    }
+                };
+
+                var documents = new SettingsConfigurationStore(configDirectory).LoadModuleDocuments(configuration);
+                var module = documents.SelectMany(document => document.Modules.Modules).Single(item => item.Id == "icon-package");
+                Require(SamePath(module.ResolvedBaseDirectory, packageDirectory), "settings package documents must remember their manifest directory for Manager icon resolution.");
+            }
+        }
+
         private static void ModuleSourceResolverRejectsManifestPathEscape()
         {
             using (var temp = TempDirectory.Create())
@@ -368,6 +403,69 @@ namespace PlugHub.Tests
                 Require(!documents.Any(document => SamePath(document.Path, Path.Combine(temp.Path, "outside.packages.json"))), "settings store must not load escaped explicit manifests.");
                 Require(!documents.Any(document => document.Modules.Modules.Any(module => module.Id == "module.escape")), "settings store must not load escaped manifest modules.");
             }
+        }
+
+        private static void SettingsMetricsCountUniqueModulesFeaturesAndEnabledRepositories()
+        {
+            var modules = new[]
+            {
+                new ModuleConfiguration
+                {
+                    Id = "module.same",
+                    Features = new List<FeatureConfiguration>
+                    {
+                        new FeatureConfiguration { Id = "feature.same" }
+                    }
+                },
+                new ModuleConfiguration
+                {
+                    Id = "module.same",
+                    Features = new List<FeatureConfiguration>
+                    {
+                        new FeatureConfiguration { Id = "feature.same" },
+                        new FeatureConfiguration { Id = "feature.other" }
+                    }
+                },
+                new ModuleConfiguration
+                {
+                    Id = "module.other",
+                    Features = new List<FeatureConfiguration>
+                    {
+                        new FeatureConfiguration { Id = "feature.same" }
+                    }
+                }
+            };
+            var repositories = new[]
+            {
+                new PackageRepositoryConfiguration { Id = "enabled-a", Enabled = true },
+                new PackageRepositoryConfiguration { Id = "disabled", Enabled = false },
+                new PackageRepositoryConfiguration { Id = "enabled-b", Enabled = true }
+            };
+
+            Require(SettingsMetrics.CountUniqueModules(modules) == 2, "settings metrics must count duplicate module ids only once.");
+            Require(SettingsMetrics.CountUniqueFeatures(modules) == 2, "settings metrics must count duplicate feature ids only once.");
+            Require(SettingsMetrics.CountEnabledRepositories(repositories) == 2, "settings metrics must count only enabled repositories.");
+        }
+
+        private static void RepositoryDisplayNameUsesCustomNameBeforeFallback()
+        {
+            Require(SettingsMetrics.RepositoryDisplayName(new PackageRepositoryConfiguration
+            {
+                Id = "repo-id",
+                DisplayName = "公司插件仓库",
+                Repository = "https://gitee.com/company/packages"
+            }) == "公司插件仓库", "custom repository display name must win over id and url.");
+
+            Require(SettingsMetrics.RepositoryDisplayName(new PackageRepositoryConfiguration
+            {
+                Id = "repo-id",
+                Repository = "https://gitee.com/company/packages"
+            }) == "repo-id", "repository id must remain the first fallback display name.");
+
+            Require(SettingsMetrics.RepositoryDisplayName(new PackageRepositoryConfiguration
+            {
+                Repository = "https://gitee.com/company/packages"
+            }) == "packages", "repository url tail must remain the fallback when no custom name or id exists.");
         }
 
         private static void PackageInstallServiceCopiesSelectedModulePayloadOnly()
@@ -507,8 +605,7 @@ namespace PlugHub.Tests
                 Require(File.ReadAllText(Path.Combine(baseDirectory, "packages", "module.repo", "bin", "Module.dll")) == "module v1", "installed payload must be copied.");
                 Require(service.IsInstalled(baseDirectory, package, out var installedVersion), "installed package must be discoverable.");
                 Require(installedVersion == "1.0.0", "installed version must come from installed manifest.");
-                var pendingAfterInstall = service.ListPendingOperations(baseDirectory);
-                Require(pendingAfterInstall.Count == 1 && pendingAfterInstall[0].Operation == "restart", "install must queue a restart operation.");
+                Require(service.ListPendingOperations(baseDirectory).Count == 0, "install without locks must not persist a restart-only pending operation.");
 
                 manifestPath = WriteRepositoryPackage(repositoryDirectory, "2.0.0", "module v2");
                 package = PackageDescriptor(manifestPath, repositoryDirectory, "module.repo");
@@ -867,6 +964,58 @@ namespace PlugHub.Tests
             }
         }
 
+        private static void RepositoryPackageRowTreatsAbsentRevitHostAsSettledState()
+        {
+            Require(RepositoryPackageInstallState(false, string.Empty, string.Empty, false, true) == "未安装",
+                "absent Revit host must not turn a missing package into pending restart.");
+            Require(RepositoryPackageInstallState(true, "1.0.0", "1.0.0", false, false) == "已安装",
+                "absent Revit host must not mark an installed package as pending restart.");
+            Require(RepositoryPackageInstallState(false, string.Empty, string.Empty, true, true) == "待重启卸载",
+                "running Revit host must still show pending uninstall when the module remains loaded.");
+            Require(RepositoryPackageInstallState(true, "1.0.0", "1.0.0", true, false) == "已安装待重启",
+                "running Revit host must still show pending restart when an installed package is not loaded yet.");
+        }
+
+        private static string RepositoryPackageInstallState(
+            bool isInstalled,
+            string version,
+            string installedVersion,
+            bool isRevitHostRunning,
+            bool isLoadedInCurrentRuntime)
+        {
+            var rowType = typeof(PlugHub.Manager.FrameworkSettingsWindow).Assembly.GetType(
+                "PlugHub.Manager.Settings.Rows.RepositoryPackageRow",
+                throwOnError: true)!;
+            var method = rowType.GetMethod(
+                "InstallStateFor",
+                BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic,
+                binder: null,
+                types: new[]
+                {
+                    typeof(bool),
+                    typeof(string),
+                    typeof(string),
+                    typeof(string),
+                    typeof(bool),
+                    typeof(bool)
+                },
+                modifiers: null);
+            if (method == null)
+            {
+                throw new InvalidOperationException("repository package install-state function must expose host-running and runtime-loaded inputs.");
+            }
+
+            return (string)(method.Invoke(null, new object[]
+            {
+                isInstalled,
+                version,
+                installedVersion,
+                string.Empty,
+                isRevitHostRunning,
+                isLoadedInCurrentRuntime
+            }) ?? string.Empty);
+        }
+
         private static void RibbonLayoutComposerBuildsConfiguredLayoutAndDefaultFallback()
         {
             var view = new ViewConfiguration
@@ -1080,6 +1229,118 @@ namespace PlugHub.Tests
 
             selected = method.Invoke(null, new object[] { release, "V2.0.0" });
             Require(selected is ReleaseAssetInfo asset && asset.Name == "PlugHub-Revit2020-V2.0.0.zip", "framework update must select the exact Revit2020 zip for the target release version.");
+        }
+
+        private static void ReleaseClientSelectsLatestTestPrerelease()
+        {
+            var client = new ReleaseClient();
+            var release = client.ParseLatestTestPrereleaseJson(
+                "[" +
+                "{\"tag_name\":\"V1.5.2\",\"prerelease\":false,\"draft\":false,\"body\":\"stable\",\"assets\":[{\"name\":\"PlugHub-Revit2020-V1.5.2.zip\",\"browser_download_url\":\"https://example.com/stable.zip\"}]}," +
+                "{\"tag_name\":\"TV1.5.2\",\"prerelease\":true,\"draft\":false,\"body\":\"old test\",\"assets\":[{\"name\":\"PlugHub-Revit2020-TV1.5.2.zip\",\"browser_download_url\":\"https://example.com/old.zip\"}]}," +
+                "{\"tag_name\":\"TV1.5.4\",\"prerelease\":true,\"draft\":true,\"body\":\"draft test\",\"assets\":[{\"name\":\"PlugHub-Revit2020-TV1.5.4.zip\",\"browser_download_url\":\"https://example.com/draft.zip\"}]}," +
+                "{\"tag_name\":\"TV1.5.3\",\"prerelease\":true,\"draft\":false,\"body\":\"latest test\",\"assets\":[{\"name\":\"PlugHub-Revit2020-TV1.5.3.zip\",\"browser_download_url\":\"https://example.com/latest.zip\"}]}" +
+                "]");
+
+            Require(release.TagName == "TV1.5.3", "test update release list must select the newest non-draft TV prerelease.");
+            Require(release.Body == "latest test", "test update release list must preserve the selected release notes.");
+            Require(release.Assets.Count == 1
+                && release.Assets[0].Name == "PlugHub-Revit2020-TV1.5.3.zip"
+                && release.Assets[0].DownloadUrl == "https://example.com/latest.zip",
+                "test update release list must preserve the selected release asset.");
+        }
+
+        private static void FrameworkUpdateChecksGitHubTestPrereleasesForTvBuilds()
+        {
+            var method = typeof(FrameworkUpdateService).GetMethod("BuildDefaultCheckSources", BindingFlags.Static | BindingFlags.NonPublic);
+            Require(method != null, "framework update service must expose default check source ordering for TV build verification.");
+
+            var sources = ((IEnumerable)(method!.Invoke(null, new object[] { "TV1.5.3" }) ?? Array.Empty<object>()))
+                .Cast<object>()
+                .ToList();
+            var firstStableSourceIndex = sources.FindIndex(source => !string.Equals(GetPropertyValue(source, "Kind"), "GitHubTestPrereleaseList", StringComparison.OrdinalIgnoreCase));
+            var firstTestSourceIndex = sources.FindIndex(source => string.Equals(GetPropertyValue(source, "Kind"), "GitHubTestPrereleaseList", StringComparison.OrdinalIgnoreCase));
+
+            Require(firstTestSourceIndex >= 0, "TV builds must query a GitHub test prerelease source.");
+            Require(firstStableSourceIndex < 0 || firstTestSourceIndex < firstStableSourceIndex, "TV builds must query GitHub test prereleases before Gitee or stable GitHub sources.");
+
+            var testSource = sources[firstTestSourceIndex];
+            Require(GetPropertyValue(testSource, "Name") == "GitHub Test", "TV build test source must be named GitHub Test.");
+            Require(GetPropertyValue(testSource, "Uri") == "https://api.github.com/repos/GaoMengGu/PlugHub/releases", "TV build test source must use the GitHub release list API.");
+            Require(GetPropertyValue(testSource, "ContinueWhenNoUpdate") == "True", "TV build test source must continue to stable sources when no newer test release exists.");
+        }
+
+        private static void FrameworkUpdateTreatsTestChannelTagsAsComparableVersions()
+        {
+            var method = typeof(FrameworkUpdateService).GetMethod("IsNewerVersion", BindingFlags.Static | BindingFlags.NonPublic);
+            if (method == null)
+            {
+                throw new InvalidOperationException("framework update version comparator must remain verifiable.");
+            }
+
+            var isNewer = (bool)(method.Invoke(null, new object[] { "TV1.5.2", "V1.5.1" }) ?? false);
+            Require(isNewer, "test update tag TV1.5.2 must compare newer than stable tag V1.5.1.");
+
+            var sameVersion = (bool)(method.Invoke(null, new object[] { "TV1.5.2", "V1.5.2" }) ?? true);
+            Require(!sameVersion, "test update tag TV1.5.2 must not compare newer than stable tag V1.5.2.");
+
+            var stableSameVersion = (bool)(method.Invoke(null, new object[] { "V1.5.2", "TV1.5.2" }) ?? false);
+            Require(stableSameVersion, "stable tag V1.5.2 must compare newer than test tag TV1.5.2 so testers can return to the official channel.");
+
+            var olderStable = (bool)(method.Invoke(null, new object[] { "V1.5.1", "TV1.5.2" }) ?? true);
+            Require(!olderStable, "stable tag V1.5.1 must not compare newer than test tag TV1.5.2.");
+        }
+
+        private static void RibbonDesignerMapperHydratesConfiguredFeatureIcons()
+        {
+            var managerAssembly = Assembly.Load("PlugHub.Manager");
+            var mapperType = managerAssembly.GetType("PlugHub.Manager.Settings.RibbonDesigner.RibbonDesignerMapper", true)!;
+            var featureRowType = managerAssembly.GetType("PlugHub.Manager.Settings.Rows.FeatureRow", true)!;
+
+            var mapper = Activator.CreateInstance(mapperType, true);
+            var featureRows = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(featureRowType))!;
+            var featureRow = Activator.CreateInstance(featureRowType, true)!;
+            SetPropertyValue(featureRow, "FeatureId", "icon-package.run");
+            SetPropertyValue(featureRow, "Name", "Run Icon Package");
+            SetPropertyValue(featureRow, "DisplayName", "Run Icon Package");
+            SetPropertyValue(featureRow, "ModuleName", "Icon Package");
+            SetPropertyValue(featureRow, "Visible", true);
+            SetPropertyValue(featureRow, "ButtonSize", "large");
+            SetPropertyValue(featureRow, "IconPath", "icons/package.png");
+            featureRows.Add(featureRow);
+
+            var ribbon = new RibbonConfiguration
+            {
+                Panels = new List<RibbonPanelLayoutConfiguration>
+                {
+                    new RibbonPanelLayoutConfiguration
+                    {
+                        Id = "tools",
+                        Name = "Tools",
+                        Order = 100,
+                        Items = new List<RibbonItemLayoutConfiguration>
+                        {
+                            new RibbonItemLayoutConfiguration
+                            {
+                                Type = "pushButton",
+                                Id = "icon-package.run",
+                                FeatureId = "icon-package.run",
+                                TextOverride = "Run Icon Package",
+                                Size = "large",
+                                Order = 100
+                            }
+                        }
+                    }
+                }
+            };
+
+            var tabs = ((IEnumerable)mapperType.GetMethod("FromConfiguration")!.Invoke(mapper, new object[] { ribbon, featureRows })!)
+                .Cast<object>()
+                .ToList();
+            var panel = ((IEnumerable)GetPropertyObject(tabs[0], "Children")).Cast<object>().Single();
+            var button = ((IEnumerable)GetPropertyObject(panel, "Children")).Cast<object>().Single();
+
+            Require(GetPropertyValue(button, "IconPath") == "icons/package.png", "configured layout buttons without an explicit icon override must hydrate the current package feature icon.");
         }
 
         private static void ManagerUpdaterRemovesStaleStandaloneMaintenancePdbs()
@@ -1464,6 +1725,39 @@ namespace PlugHub.Tests
             {
                 throw new InvalidOperationException(message);
             }
+        }
+
+        private static void SetPropertyValue(object target, string propertyName, object value)
+        {
+            var property = target.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            if (property == null)
+            {
+                throw new InvalidOperationException("Missing property " + propertyName + " on " + target.GetType().FullName);
+            }
+
+            property.SetValue(target, value);
+        }
+
+        private static string GetPropertyValue(object target, string propertyName)
+        {
+            var value = GetPropertyObject(target, propertyName);
+            if (value is Uri uri)
+            {
+                return uri.AbsoluteUri;
+            }
+
+            return Convert.ToString(value) ?? string.Empty;
+        }
+
+        private static object GetPropertyObject(object target, string propertyName)
+        {
+            var property = target.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            if (property == null)
+            {
+                throw new InvalidOperationException("Missing property " + propertyName + " on " + target.GetType().FullName);
+            }
+
+            return property.GetValue(target) ?? string.Empty;
         }
 
         private static bool SamePath(string left, string right)
