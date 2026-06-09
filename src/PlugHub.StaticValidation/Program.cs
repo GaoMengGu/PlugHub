@@ -1871,6 +1871,8 @@ namespace PlugHub.StaticValidation
             var iconProvider = ReadText("src/PlugHub.Wpf/DefaultRibbonIconProvider.cs");
             var wpfProject = ReadText("src/PlugHub.Wpf/PlugHub.Wpf.csproj");
             var managerProject = ReadText("src/PlugHub.Manager/PlugHub.Manager.csproj");
+            var installerProject = ReadText("src/PlugHub.Installer/PlugHub.Installer.csproj");
+            var installerForm = ReadText("src/PlugHub.Installer/InstallerForm.cs");
             var settingsWindow = ReadText("src/PlugHub.Manager/FrameworkSettingsWindow.cs");
 
             foreach (var rootIcon in new[] { "SETTINGS.png", "LOGO.png", "LOGO.ico" })
@@ -1884,10 +1886,14 @@ namespace PlugHub.StaticValidation
             }
 
             Require(File.Exists(FullPath("src/PlugHub.Manager/Resources/LOGO.ico")), "Manager executable icon resource is missing.");
+            Require(File.Exists(FullPath("src/PlugHub.Installer/Resources/LOGO.ico")), "Installer executable icon resource is missing.");
             Require(wpfProject.Contains("Resources\\SETTINGS.png") && wpfProject.Contains("Resources\\LOGO.png"), "PlugHub.Wpf must embed the raster settings and logo PNG resources.");
             Require(managerProject.Contains("<ApplicationIcon>Resources\\LOGO.ico</ApplicationIcon>"), "PlugHub.Manager must use the logo ICO as its executable icon.");
             Require(managerProject.Contains("Resources\\LOGO.ico"), "PlugHub.Manager project must include the logo ICO resource.");
+            Require(installerProject.Contains("<ApplicationIcon>Resources\\LOGO.ico</ApplicationIcon>"), "PlugHub.Installer must use the logo ICO as its executable icon.");
+            Require(installerForm.Contains("Icon =") && installerForm.Contains("Application.ExecutablePath"), "PlugHub installer window must apply the executable logo icon to the form.");
             Require(iconProvider.Contains("SettingsResourcePath") && iconProvider.Contains("LogoResourcePath") && iconProvider.Contains("CreateRasterIcon"), "default ribbon icon provider must load the supplied settings and logo raster resources.");
+            Require(iconProvider.Contains("CreatePaddedRasterIcon") && iconProvider.Contains("Brushes.Transparent") && iconProvider.Contains("size - padding * 2"), "raster ribbon icons must render inside a fixed transparent canvas with safe padding so Revit does not clip the supplied artwork.");
             Require(settingsWindow.Contains("DefaultRibbonIconProvider.CreateLogoIcon") && settingsWindow.Contains("BuildHeaderLogo"), "PlugHub Manager must apply the logo to the window and header.");
         }
 
@@ -1991,11 +1997,12 @@ namespace PlugHub.StaticValidation
             Require(settingsWindow.Contains("SettingsWindowOuterMargin = 12.0") && settingsWindow.Contains("Margin = new Thickness(SettingsWindowOuterMargin)"), "settings window outer margin must be a shared constant used by layout width calculations.");
             Require(settingsWindow.Contains("SettingsWindowOuterMarginWidth = SettingsWindowOuterMargin * 2.0") && settingsWindow.Contains("RepositoryCardRowChromeReserve = 60.0"), "repository card row width must reserve root margins and tab chrome at the default window width.");
             Require(settingsWindow.Contains("RepositoryCardRowWidth = RepositorySettingsDefaultWidth - SettingsWindowOuterMarginWidth - RepositoryCardRowChromeReserve"), "repository card row width must fit within the default settings content area so four source cards do not trigger the horizontal scrollbar.");
-            Require(settingsWindow.Contains("RepositorySourceColumns = 4.0") && settingsWindow.Contains("RepositoryPackageColumns = 3.0"), "repository layout must target four source cards and three package cards per row.");
+            Require(settingsWindow.Contains("RepositorySourceColumns = 4.0") && settingsWindow.Contains("RepositoryPackageColumns = 3"), "repository layout must target four source cards and three package cards per row.");
             Require(settingsWindow.Contains("RepositoryPackageCardVerticalMargin = 4.0") && settingsWindow.Contains("RepositoryCardHorizontalMargin = RepositoryPackageCardVerticalMargin"), "repository card horizontal half-gap must match the package card vertical half-gap.");
             Require(settingsWindow.Contains("RepositoryCardHorizontalMarginWidth = RepositoryCardHorizontalMargin * 2.0"), "repository card horizontal margins must be shared across source and package cards.");
             Require(settingsWindow.Contains("RepositorySourceScrollbarSafetyReserve = 16.0") && settingsWindow.Contains("RepositorySourceCardRowWidth = RepositoryCardRowWidth - RepositorySourceScrollbarSafetyReserve"), "repository source cards must keep a small safety reserve so four default cards do not trigger the horizontal scrollbar.");
-            Require(settingsWindow.Contains("RepositorySourceCardSlotWidth = RepositorySourceCardRowWidth / RepositorySourceColumns") && settingsWindow.Contains("RepositoryPackageCardSlotWidth = RepositoryCardRowWidth / RepositoryPackageColumns"), "repository source cards must use the safety-reserved row width while package cards keep the full repository row width.");
+            Require(settingsWindow.Contains("RepositoryPackageGridSafetyReserve") && settingsWindow.Contains("RepositoryPackageCardRowWidth = RepositoryCardRowWidth - RepositoryPackageGridSafetyReserve"), "repository package cards must reserve grid chrome width so the default package browser can hold three columns.");
+            Require(settingsWindow.Contains("RepositorySourceCardSlotWidth = RepositorySourceCardRowWidth / RepositorySourceColumns") && settingsWindow.Contains("RepositoryPackageCardSlotWidth = RepositoryPackageCardRowWidth / RepositoryPackageColumns"), "repository source and package cards must use safety-reserved row widths before calculating card slots.");
             Require(settingsWindow.Contains("RepositorySourceCardWidth = RepositorySourceCardSlotWidth - RepositoryCardHorizontalMarginWidth") && settingsWindow.Contains("RepositoryPackageCardWidth = RepositoryPackageCardSlotWidth - RepositoryCardHorizontalMarginWidth"), "repository source and package card widths must subtract the same horizontal margins.");
             Require(settingsWindow.Contains("BuildRepositorySourceScrollViewer") && settingsWindow.Contains("ScrollViewer.CanContentScrollProperty, false"), "repository source cards must be hosted in an explicit horizontal ScrollViewer so overflow can be scrolled.");
             Require(settingsWindow.Contains("BuildRepositorySourceMoreGlyph") && settingsWindow.Contains("ToolTip") && settingsWindow.Contains("CheckBox"), "repository source cards must use compact glyph actions and a checkbox enabled state.");
@@ -2016,7 +2023,8 @@ namespace PlugHub.StaticValidation
             var sourceTemplate = MethodBody(settingsWindow, "BuildRepositorySourceCardTemplate");
             Require(sourceTemplate.Contains("border.SetValue(Border.WidthProperty, RepositorySourceCardWidth)") && sourceTemplate.Contains("border.SetValue(Border.MarginProperty, new Thickness(RepositoryCardHorizontalMargin, RepositoryPackageCardVerticalMargin, RepositoryCardHorizontalMargin, RepositorySourceCardBottomMargin))"), "repository source card horizontal gaps must match package card vertical gaps while preserving source-row bottom spacing.");
             var packageItemsPanel = MethodBody(settingsWindow, "BuildRepositoryPackageItemsPanel");
-            Require(packageItemsPanel.Contains("new FrameworkElementFactory(typeof(WrapPanel))") && !packageItemsPanel.Contains("WrapPanel.ItemWidthProperty"), "repository package list must let WrapPanel auto-measure each card like repository source cards instead of clipping cards into a fixed item width.");
+            Require(packageItemsPanel.Contains("new FrameworkElementFactory(typeof(UniformGrid))") && packageItemsPanel.Contains("UniformGrid.ColumnsProperty") && packageItemsPanel.Contains("RepositoryPackageColumns"), "repository package list must use a fixed three-column UniformGrid so seven repository packages render as three rows instead of two columns.");
+            Require(settingsWindow.Contains("_warehousePackageList.ItemContainerStyle = BuildRepositoryPackageItemContainerStyle()") && settingsWindow.Contains("RepositoryPackageItemContainerStyle"), "repository package list must remove default ListBoxItem chrome so three cards fit predictably.");
             Require(settingsWindow.Contains("_warehousePackageList.HorizontalContentAlignment = HorizontalAlignment.Center") && settingsWindow.Contains("FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center"), "repository package card grid must keep three columns centered with equal left/right spacing.");
             Require(settingsWindow.Contains("RepositoryPackageActionWidth = 72.0") && settingsWindow.Contains("RepositoryPackageActionHeight = 26.0"), "repository package card action buttons must stay compact with fixed dimensions.");
             var packageTemplate = MethodBody(settingsWindow, "BuildRepositoryPackageTemplate");

@@ -45,7 +45,7 @@ namespace PlugHub.Manager
         private const double RepositoryCardRowChromeReserve = 60.0;
         private const double RepositoryCardRowWidth = RepositorySettingsDefaultWidth - SettingsWindowOuterMarginWidth - RepositoryCardRowChromeReserve;
         private const double RepositorySourceColumns = 4.0;
-        private const double RepositoryPackageColumns = 3.0;
+        private const int RepositoryPackageColumns = 3;
         private const double RepositoryPackageCardVerticalMargin = 4.0;
         private const double RepositorySourceCardBottomMargin = RepositoryPackageCardVerticalMargin * 2.0;
         private const double RepositoryCardHorizontalMargin = RepositoryPackageCardVerticalMargin;
@@ -54,7 +54,9 @@ namespace PlugHub.Manager
         private const double RepositorySourceCardRowWidth = RepositoryCardRowWidth - RepositorySourceScrollbarSafetyReserve;
         private const double RepositorySourceCardSlotWidth = RepositorySourceCardRowWidth / RepositorySourceColumns;
         private const double RepositorySourceCardWidth = RepositorySourceCardSlotWidth - RepositoryCardHorizontalMarginWidth;
-        private const double RepositoryPackageCardSlotWidth = RepositoryCardRowWidth / RepositoryPackageColumns;
+        private const double RepositoryPackageGridSafetyReserve = 132.0;
+        private const double RepositoryPackageCardRowWidth = RepositoryCardRowWidth - RepositoryPackageGridSafetyReserve;
+        private const double RepositoryPackageCardSlotWidth = RepositoryPackageCardRowWidth / RepositoryPackageColumns;
         private const double RepositoryPackageCardWidth = RepositoryPackageCardSlotWidth - RepositoryCardHorizontalMarginWidth;
         private const double RepositoryPackageActionWidth = 72.0;
         private const double RepositoryPackageActionHeight = 26.0;
@@ -804,6 +806,7 @@ namespace PlugHub.Manager
             _warehousePackageList.BorderThickness = new Thickness(0);
             _warehousePackageList.Background = RevitUiTheme.Current.PanelBackground;
             _warehousePackageList.ContextMenu = BuildRepositoryPackageMenu();
+            _warehousePackageList.ItemContainerStyle = BuildRepositoryPackageItemContainerStyle();
             _warehousePackageList.ItemTemplate = BuildRepositoryPackageTemplate();
             _warehousePackageList.ItemsPanel = BuildRepositoryPackageItemsPanel();
             _warehousePackageList.SelectionMode = SelectionMode.Single;
@@ -817,10 +820,23 @@ namespace PlugHub.Manager
 
         private static ItemsPanelTemplate BuildRepositoryPackageItemsPanel()
         {
-            var panelFactory = new FrameworkElementFactory(typeof(WrapPanel));
-            panelFactory.SetValue(WrapPanel.OrientationProperty, Orientation.Horizontal);
+            var panelFactory = new FrameworkElementFactory(typeof(UniformGrid));
+            panelFactory.SetValue(UniformGrid.ColumnsProperty, RepositoryPackageColumns);
             panelFactory.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
             return new ItemsPanelTemplate(panelFactory);
+        }
+
+        private static Style BuildRepositoryPackageItemContainerStyle()
+        {
+            var style = new Style(typeof(ListBoxItem));
+            style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(0)));
+            style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(0)));
+            style.Setters.Add(new Setter(Control.BackgroundProperty, Brushes.Transparent));
+            style.Setters.Add(new Setter(FrameworkElement.MarginProperty, new Thickness(0)));
+            style.Setters.Add(new Setter(Control.HorizontalContentAlignmentProperty, HorizontalAlignment.Center));
+            style.Setters.Add(new Setter(Control.VerticalContentAlignmentProperty, VerticalAlignment.Stretch));
+            style.Setters.Add(new Setter(UIElement.SnapsToDevicePixelsProperty, true));
+            return style;
         }
 
         private DataTemplate BuildRepositoryPackageTemplate()

@@ -23,6 +23,11 @@ namespace PlugHub.Installer
             MaximizeBox = false;
             MinimizeBox = false;
             ClientSize = new Size(620, 240);
+            var executableIcon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+            if (executableIcon != null)
+            {
+                Icon = executableIcon;
+            }
 
             var titleLabel = new Label
             {

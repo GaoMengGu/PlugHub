@@ -119,7 +119,7 @@ namespace PlugHub.Wpf
 
         private static ImageSource CreateIcon(string key, double size, double padding)
         {
-            var rasterIcon = CreateRasterIcon(key, size);
+            var rasterIcon = CreateRasterIcon(key, size, padding);
             if (rasterIcon != null)
             {
                 return rasterIcon;
@@ -147,7 +147,7 @@ namespace PlugHub.Wpf
             return image;
         }
 
-        private static ImageSource? CreateRasterIcon(string key, double size)
+        private static ImageSource? CreateRasterIcon(string key, double size, double padding)
         {
             string? resourcePath = null;
             if (string.Equals(key, SettingsIconKey, StringComparison.OrdinalIgnoreCase))
@@ -178,17 +178,33 @@ namespace PlugHub.Wpf
                     image.BeginInit();
                     image.CacheOption = BitmapCacheOption.OnLoad;
                     image.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
-                    image.DecodePixelWidth = Math.Max(1, (int)Math.Ceiling(size));
+                    image.DecodePixelWidth = Math.Max(1, (int)Math.Ceiling(size - padding * 2));
                     image.StreamSource = stream;
                     image.EndInit();
                     image.Freeze();
-                    return image;
+                    return CreatePaddedRasterIcon(image, size, padding);
                 }
             }
             catch (Exception)
             {
                 return null;
             }
+        }
+
+        private static ImageSource CreatePaddedRasterIcon(ImageSource source, double size, double padding)
+        {
+            var innerSize = Math.Max(1.0, size - padding * 2);
+            var group = new DrawingGroup();
+            using (var context = group.Open())
+            {
+                context.DrawRectangle(Brushes.Transparent, null, new Rect(0, 0, size, size));
+                context.DrawImage(source, new Rect(padding, padding, innerSize, innerSize));
+            }
+
+            group.Freeze();
+            var image = new DrawingImage(group);
+            image.Freeze();
+            return image;
         }
 
         private static void DrawSymbol(DrawingContext context, string key, double size, Brush foreground, Brush accent)
