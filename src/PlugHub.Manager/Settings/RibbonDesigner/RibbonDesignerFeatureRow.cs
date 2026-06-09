@@ -9,6 +9,7 @@ namespace PlugHub.Manager.Settings.RibbonDesigner
         public string DisplayName { get; set; } = string.Empty;
         public string SearchText { get; set; } = string.Empty;
         public string IconPath { get; set; } = string.Empty;
+        public string ModuleBaseDirectory { get; set; } = string.Empty;
         public string ButtonSize { get; set; } = "large";
         public bool IsPlaced { get; set; }
         public string DisplayText { get; set; } = string.Empty;

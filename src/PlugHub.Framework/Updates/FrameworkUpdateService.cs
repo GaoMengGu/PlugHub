@@ -10,6 +10,7 @@ namespace PlugHub.Framework.Updates
     {
         private const string TestUpdateReleaseUriEnvironmentVariable = "PLUGHUB_TEST_UPDATE_RELEASE_URI";
         private const string TestUpdateDownloadTemplateEnvironmentVariable = "PLUGHUB_TEST_UPDATE_DOWNLOAD_TEMPLATE";
+        private static readonly Uri GitHubReleaseListUri = new Uri("https://api.github.com/repos/GaoMengGu/PlugHub/releases");
 
         private static readonly IReadOnlyList<FrameworkUpdateSource> DefaultUpdateSources =
             BuildDefaultUpdateSources();
@@ -62,7 +63,7 @@ namespace PlugHub.Framework.Updates
         {
             var failures = new List<string>();
             FrameworkUpdateCheckResult? noUpdateResult = null;
-            foreach (var source in _updateSources)
+            foreach (var source in BuildCheckSources(currentVersion, _updateSources))
             {
                 try
                 {
@@ -244,6 +245,32 @@ namespace PlugHub.Framework.Updates
                 "GitHub",
                 new Uri("https://api.github.com/repos/GaoMengGu/PlugHub/releases/latest"),
                 "https://github.com/GaoMengGu/PlugHub/releases/download/{tag}/{asset}"));
+            return sources;
+        }
+
+        private static IReadOnlyList<FrameworkUpdateSource> BuildDefaultCheckSources(string currentVersion)
+        {
+            return BuildCheckSources(currentVersion, DefaultUpdateSources);
+        }
+
+        private static IReadOnlyList<FrameworkUpdateSource> BuildCheckSources(string currentVersion, IReadOnlyList<FrameworkUpdateSource> updateSources)
+        {
+            if (!IsTestReleaseTag(NormalizeVersionText(currentVersion))
+                || updateSources.Any(source => source.Kind == FrameworkUpdateSourceKind.GitHubTestPrereleaseList))
+            {
+                return updateSources;
+            }
+
+            var sources = new List<FrameworkUpdateSource>
+            {
+                new FrameworkUpdateSource(
+                    FrameworkUpdateSourceKind.GitHubTestPrereleaseList,
+                    "GitHub Test",
+                    GitHubReleaseListUri,
+                    string.Empty,
+                    true)
+            };
+            sources.AddRange(updateSources);
             return sources;
         }
 

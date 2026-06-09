@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
@@ -28,6 +29,7 @@ namespace PlugHub.Tests
                 new TestCase("package manifest reader discovers nested manifests", PackageManifestReaderDiscoversNestedManifests),
                 new TestCase("module source resolver ignores git manifests", ModuleSourceResolverIgnoresGitManifests),
                 new TestCase("settings configuration store ignores git manifests", SettingsConfigurationStoreIgnoresGitManifests),
+                new TestCase("settings configuration store resolves package manifest base directories", SettingsConfigurationStoreResolvesPackageManifestBaseDirectories),
                 new TestCase("module source resolver rejects manifest path escape", ModuleSourceResolverRejectsManifestPathEscape),
                 new TestCase("settings configuration store rejects manifest path escape", SettingsConfigurationStoreRejectsManifestPathEscape),
                 new TestCase("settings metrics count unique modules features and enabled repositories", SettingsMetricsCountUniqueModulesFeaturesAndEnabledRepositories),
@@ -52,7 +54,9 @@ namespace PlugHub.Tests
                 new TestCase("ribbon layout composer filters invalid container children", RibbonLayoutComposerFiltersInvalidContainerChildren),
                 new TestCase("framework update selects only exact version asset", FrameworkUpdateSelectsOnlyExactVersionAsset),
                 new TestCase("release client selects latest test prerelease", ReleaseClientSelectsLatestTestPrerelease),
+                new TestCase("framework update checks GitHub test prereleases for TV builds", FrameworkUpdateChecksGitHubTestPrereleasesForTvBuilds),
                 new TestCase("framework update treats test channel tags as comparable versions", FrameworkUpdateTreatsTestChannelTagsAsComparableVersions),
+                new TestCase("ribbon designer mapper hydrates configured feature icons", RibbonDesignerMapperHydratesConfiguredFeatureIcons),
                 new TestCase("framework update package accepts single manager maintenance payload", FrameworkUpdatePackageAcceptsSingleManagerMaintenancePayload),
                 new TestCase("framework update package rejects missing manager maintenance payload", FrameworkUpdatePackageRejectsMissingManagerMaintenancePayload),
                 new TestCase("manager updater validates maintenance payload", ManagerUpdaterValidatesMaintenancePayload),
@@ -312,6 +316,31 @@ namespace PlugHub.Tests
                 Require(documentPaths.Count == 1, "settings store must load only non-git module manifests.");
                 Require(!documentPaths.Any(path => path.IndexOf(Path.DirectorySeparatorChar + ".git" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) >= 0), "settings store must ignore manifests inside .git directories.");
                 Require(documents[0].Modules.Modules.Select(module => module.Id).SequenceEqual(new[] { "module.live" }), "settings store must load the live manifest.");
+            }
+        }
+
+        private static void SettingsConfigurationStoreResolvesPackageManifestBaseDirectories()
+        {
+            using (var temp = TempDirectory.Create())
+            {
+                var configDirectory = Path.Combine(temp.Path, "config");
+                var packageDirectory = Path.Combine(temp.Path, "packages", "icon-package");
+                WriteText(Path.Combine(configDirectory, "sources.json"), "{\"schemaVersion\":\"1.0\",\"packageDirectories\":[\"packages\"],\"modules\":[]}");
+                WriteText(
+                    Path.Combine(packageDirectory, "packages.json"),
+                    "{\"schemaVersion\":\"1.1\",\"modules\":[{\"id\":\"icon-package\",\"assembly\":\"IconPackage.dll\",\"features\":[{\"id\":\"icon-package.run\",\"iconPath\":\"icons/package.png\"}]}]}");
+
+                var configuration = new FrameworkConfiguration
+                {
+                    Modules = new ModulesConfiguration
+                    {
+                        PackageDirectories = new List<string> { "packages" }
+                    }
+                };
+
+                var documents = new SettingsConfigurationStore(configDirectory).LoadModuleDocuments(configuration);
+                var module = documents.SelectMany(document => document.Modules.Modules).Single(item => item.Id == "icon-package");
+                Require(SamePath(module.ResolvedBaseDirectory, packageDirectory), "settings package documents must remember their manifest directory for Manager icon resolution.");
             }
         }
 
@@ -1221,6 +1250,26 @@ namespace PlugHub.Tests
                 "test update release list must preserve the selected release asset.");
         }
 
+        private static void FrameworkUpdateChecksGitHubTestPrereleasesForTvBuilds()
+        {
+            var method = typeof(FrameworkUpdateService).GetMethod("BuildDefaultCheckSources", BindingFlags.Static | BindingFlags.NonPublic);
+            Require(method != null, "framework update service must expose default check source ordering for TV build verification.");
+
+            var sources = ((IEnumerable)(method!.Invoke(null, new object[] { "TV1.5.3" }) ?? Array.Empty<object>()))
+                .Cast<object>()
+                .ToList();
+            var firstStableSourceIndex = sources.FindIndex(source => !string.Equals(GetPropertyValue(source, "Kind"), "GitHubTestPrereleaseList", StringComparison.OrdinalIgnoreCase));
+            var firstTestSourceIndex = sources.FindIndex(source => string.Equals(GetPropertyValue(source, "Kind"), "GitHubTestPrereleaseList", StringComparison.OrdinalIgnoreCase));
+
+            Require(firstTestSourceIndex >= 0, "TV builds must query a GitHub test prerelease source.");
+            Require(firstStableSourceIndex < 0 || firstTestSourceIndex < firstStableSourceIndex, "TV builds must query GitHub test prereleases before Gitee or stable GitHub sources.");
+
+            var testSource = sources[firstTestSourceIndex];
+            Require(GetPropertyValue(testSource, "Name") == "GitHub Test", "TV build test source must be named GitHub Test.");
+            Require(GetPropertyValue(testSource, "Uri") == "https://api.github.com/repos/GaoMengGu/PlugHub/releases", "TV build test source must use the GitHub release list API.");
+            Require(GetPropertyValue(testSource, "ContinueWhenNoUpdate") == "True", "TV build test source must continue to stable sources when no newer test release exists.");
+        }
+
         private static void FrameworkUpdateTreatsTestChannelTagsAsComparableVersions()
         {
             var method = typeof(FrameworkUpdateService).GetMethod("IsNewerVersion", BindingFlags.Static | BindingFlags.NonPublic);
@@ -1240,6 +1289,58 @@ namespace PlugHub.Tests
 
             var olderStable = (bool)(method.Invoke(null, new object[] { "V1.5.1", "TV1.5.2" }) ?? true);
             Require(!olderStable, "stable tag V1.5.1 must not compare newer than test tag TV1.5.2.");
+        }
+
+        private static void RibbonDesignerMapperHydratesConfiguredFeatureIcons()
+        {
+            var managerAssembly = Assembly.Load("PlugHub.Manager");
+            var mapperType = managerAssembly.GetType("PlugHub.Manager.Settings.RibbonDesigner.RibbonDesignerMapper", true)!;
+            var featureRowType = managerAssembly.GetType("PlugHub.Manager.Settings.Rows.FeatureRow", true)!;
+
+            var mapper = Activator.CreateInstance(mapperType, true);
+            var featureRows = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(featureRowType))!;
+            var featureRow = Activator.CreateInstance(featureRowType, true)!;
+            SetPropertyValue(featureRow, "FeatureId", "icon-package.run");
+            SetPropertyValue(featureRow, "Name", "Run Icon Package");
+            SetPropertyValue(featureRow, "DisplayName", "Run Icon Package");
+            SetPropertyValue(featureRow, "ModuleName", "Icon Package");
+            SetPropertyValue(featureRow, "Visible", true);
+            SetPropertyValue(featureRow, "ButtonSize", "large");
+            SetPropertyValue(featureRow, "IconPath", "icons/package.png");
+            featureRows.Add(featureRow);
+
+            var ribbon = new RibbonConfiguration
+            {
+                Panels = new List<RibbonPanelLayoutConfiguration>
+                {
+                    new RibbonPanelLayoutConfiguration
+                    {
+                        Id = "tools",
+                        Name = "Tools",
+                        Order = 100,
+                        Items = new List<RibbonItemLayoutConfiguration>
+                        {
+                            new RibbonItemLayoutConfiguration
+                            {
+                                Type = "pushButton",
+                                Id = "icon-package.run",
+                                FeatureId = "icon-package.run",
+                                TextOverride = "Run Icon Package",
+                                Size = "large",
+                                Order = 100
+                            }
+                        }
+                    }
+                }
+            };
+
+            var tabs = ((IEnumerable)mapperType.GetMethod("FromConfiguration")!.Invoke(mapper, new object[] { ribbon, featureRows })!)
+                .Cast<object>()
+                .ToList();
+            var panel = ((IEnumerable)GetPropertyObject(tabs[0], "Children")).Cast<object>().Single();
+            var button = ((IEnumerable)GetPropertyObject(panel, "Children")).Cast<object>().Single();
+
+            Require(GetPropertyValue(button, "IconPath") == "icons/package.png", "configured layout buttons without an explicit icon override must hydrate the current package feature icon.");
         }
 
         private static void ManagerUpdaterRemovesStaleStandaloneMaintenancePdbs()
@@ -1624,6 +1725,39 @@ namespace PlugHub.Tests
             {
                 throw new InvalidOperationException(message);
             }
+        }
+
+        private static void SetPropertyValue(object target, string propertyName, object value)
+        {
+            var property = target.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            if (property == null)
+            {
+                throw new InvalidOperationException("Missing property " + propertyName + " on " + target.GetType().FullName);
+            }
+
+            property.SetValue(target, value);
+        }
+
+        private static string GetPropertyValue(object target, string propertyName)
+        {
+            var value = GetPropertyObject(target, propertyName);
+            if (value is Uri uri)
+            {
+                return uri.AbsoluteUri;
+            }
+
+            return Convert.ToString(value) ?? string.Empty;
+        }
+
+        private static object GetPropertyObject(object target, string propertyName)
+        {
+            var property = target.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            if (property == null)
+            {
+                throw new InvalidOperationException("Missing property " + propertyName + " on " + target.GetType().FullName);
+            }
+
+            return property.GetValue(target) ?? string.Empty;
         }
 
         private static bool SamePath(string left, string right)

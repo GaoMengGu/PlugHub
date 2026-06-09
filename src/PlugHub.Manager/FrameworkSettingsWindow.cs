@@ -1312,6 +1312,7 @@ namespace PlugHub.Manager
                     Tags = new List<string>(feature.Tags ?? new List<string>()),
                     Visible = string.Equals(feature.DefaultState, "Visible", StringComparison.OrdinalIgnoreCase),
                     IconPath = feature.IconPath,
+                    ModuleBaseDirectory = module.ResolvedBaseDirectory,
                     Order = feature.Order,
                     ButtonSize = NormalizeButtonSize(feature.ButtonSize),
                     CommandKey = feature.CommandKey,
@@ -1372,6 +1373,7 @@ namespace PlugHub.Manager
                     DisplayName = displayName,
                     SearchText = (displayName + " " + feature.Name + " " + feature.ModuleName + " " + feature.FeatureId).Trim(),
                     IconPath = feature.IconPath,
+                    ModuleBaseDirectory = feature.ModuleBaseDirectory,
                     ButtonSize = NormalizeButtonSize(feature.ButtonSize),
                     DisplayText = displayName
                 });
@@ -1817,7 +1819,9 @@ namespace PlugHub.Manager
                 .FirstOrDefault(item => string.Equals(item.FeatureId, row.FeatureId, StringComparison.OrdinalIgnoreCase));
             if (feature == null || string.IsNullOrWhiteSpace(feature.ModuleId)) return string.Empty;
 
-            var moduleDirectory = ModuleManifestDirectory(feature.ModuleId);
+            var moduleDirectory = string.IsNullOrWhiteSpace(feature.ModuleBaseDirectory)
+                ? ModuleManifestDirectory(feature.ModuleId)
+                : feature.ModuleBaseDirectory;
             if (string.IsNullOrWhiteSpace(moduleDirectory)) return string.Empty;
 
             var resolvedPath = Path.GetFullPath(Path.Combine(moduleDirectory, iconPath));
@@ -1842,14 +1846,16 @@ namespace PlugHub.Manager
         private ImageSource? LoadDllSiblingRibbonDesignerIcon(RibbonDesignerNodeRow row, bool large)
         {
             if (row == null || string.IsNullOrWhiteSpace(row.FeatureId)) return null;
-            var commandAssembly = _viewModel.Features
-                .FirstOrDefault(feature => string.Equals(feature.FeatureId, row.FeatureId, StringComparison.OrdinalIgnoreCase))
-                ?.CommandAssembly ?? string.Empty;
+            var feature = _viewModel.Features
+                .FirstOrDefault(item => string.Equals(item.FeatureId, row.FeatureId, StringComparison.OrdinalIgnoreCase));
+            var commandAssembly = feature?.CommandAssembly ?? string.Empty;
             if (string.IsNullOrWhiteSpace(commandAssembly)) return null;
 
             var resolvedAssembly = Path.IsPathRooted(commandAssembly)
                 ? commandAssembly
-                : Path.GetFullPath(Path.Combine(BaseDirectory(), commandAssembly));
+                : Path.GetFullPath(Path.Combine(
+                    string.IsNullOrWhiteSpace(feature?.ModuleBaseDirectory) ? BaseDirectory() : feature!.ModuleBaseDirectory,
+                    commandAssembly));
             var directory = Path.GetDirectoryName(resolvedAssembly);
             var stem = Path.GetFileNameWithoutExtension(resolvedAssembly);
             if (string.IsNullOrWhiteSpace(directory) || string.IsNullOrWhiteSpace(stem)) return null;

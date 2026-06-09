@@ -21,6 +21,7 @@ namespace PlugHub.Manager.Settings.Rows
         public List<string> Tags { get; set; } = new List<string>();
         public bool Visible { get; set; }
         public string IconPath { get; set; } = string.Empty;
+        public string ModuleBaseDirectory { get; set; } = string.Empty;
         public int Order { get; set; }
         public string ButtonSize { get; set; } = "large";
         public string ButtonSizeDisplayText { get; set; } = "大";
