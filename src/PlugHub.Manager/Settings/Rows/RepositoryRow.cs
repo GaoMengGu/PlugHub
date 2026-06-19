@@ -6,7 +6,7 @@ namespace PlugHub.Manager.Settings.Rows
     internal sealed class RepositoryRow
     {
         private const string DefaultPackageManifestName = "packages.json";
-        private const string DefaultRepositoryProvider = "gitee";
+        private const string DefaultRepositoryProvider = "github";
 
         public string Id { get; set; } = string.Empty;
         public bool Enabled { get; set; }

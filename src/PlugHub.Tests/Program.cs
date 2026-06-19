@@ -6,10 +6,12 @@ using System.IO.Compression;
 using System.Linq;
 using System.Reflection;
 using PlugHub.Contracts.Features;
+using PlugHub.Contracts.Modules;
 using PlugHub.Framework.Composition;
 using PlugHub.Framework.Configuration;
 using PlugHub.Framework.Diagnostics;
 using PlugHub.Framework.Packages;
+using PlugHub.Framework.Runtime;
 using PlugHub.Framework.Settings;
 using PlugHub.Framework.Sources;
 using PlugHub.Framework.Updates;
@@ -34,6 +36,10 @@ namespace PlugHub.Tests
                 new TestCase("settings configuration store rejects manifest path escape", SettingsConfigurationStoreRejectsManifestPathEscape),
                 new TestCase("settings metrics count unique modules features and enabled repositories", SettingsMetricsCountUniqueModulesFeaturesAndEnabledRepositories),
                 new TestCase("repository display name uses custom name before fallback", RepositoryDisplayNameUsesCustomNameBeforeFallback),
+                new TestCase("repository display name uses owner repository url fallback", RepositoryDisplayNameUsesOwnerRepositoryUrlFallback),
+                new TestCase("plugHub logger keeps only recent three days", PlugHubLoggerKeepsOnlyRecentThreeDays),
+                new TestCase("framework runtime writes session log on load", FrameworkRuntimeWritesSessionLogOnLoad),
+                new TestCase("package repository service browses local folder repositories", PackageRepositoryServiceBrowsesLocalFolderRepositories),
                 new TestCase("package install service copies selected module payload only", PackageInstallServiceCopiesSelectedModulePayloadOnly),
                 new TestCase("package install service rejects rooted payload paths", PackageInstallServiceRejectsRootedPayloadPaths),
                 new TestCase("package repository service maintains install update uninstall state", PackageRepositoryServiceMaintainsInstallUpdateUninstallState),
@@ -460,12 +466,105 @@ namespace PlugHub.Tests
             {
                 Id = "repo-id",
                 Repository = "https://gitee.com/company/packages"
-            }) == "repo-id", "repository id must remain the first fallback display name.");
+            }) == "company/packages", "repository slug must be the first fallback display name.");
 
             Require(SettingsMetrics.RepositoryDisplayName(new PackageRepositoryConfiguration
             {
                 Repository = "https://gitee.com/company/packages"
-            }) == "packages", "repository url tail must remain the fallback when no custom name or id exists.");
+            }) == "company/packages", "repository slug must be used when no custom name or id exists.");
+        }
+
+        private static void RepositoryDisplayNameUsesOwnerRepositoryUrlFallback()
+        {
+            Require(SettingsMetrics.RepositoryDisplayName(new PackageRepositoryConfiguration
+            {
+                Provider = "gitee",
+                Repository = "https://gitee.com/GaoMengGu/PlugHub_Packages.git"
+            }) == "GaoMengGu/PlugHub_Packages", "gitee url fallback must use owner/repository without provider branding.");
+
+            Require(SettingsMetrics.RepositoryDisplayName(new PackageRepositoryConfiguration
+            {
+                Provider = "github",
+                Repository = "https://github.com/GaoMengGu/PlugHub_Packages"
+            }) == "GaoMengGu/PlugHub_Packages", "github url fallback must use owner/repository without provider branding.");
+
+            Require(SettingsMetrics.RepositoryDisplayName(new PackageRepositoryConfiguration
+            {
+                Provider = "local",
+                Repository = "/home/yilan/plughub/local-packages"
+            }) == "local-packages", "local folder fallback must use the folder name, not a path fragment pair.");
+        }
+
+        private static void PackageRepositoryServiceBrowsesLocalFolderRepositories()
+        {
+            using (var temp = TempDirectory.Create())
+            {
+                var baseDirectory = Path.Combine(temp.Path, "install");
+                var repositoryDirectory = Path.Combine(temp.Path, "local-repository");
+                WriteRepositoryPackage(repositoryDirectory, "1.2.3", "local module");
+
+                var packages = new PackageRepositoryService().Browse(
+                    baseDirectory,
+                    new PackageRepositoryConfiguration
+                    {
+                        Id = "local-source",
+                        Enabled = true,
+                        Provider = "local",
+                        Repository = repositoryDirectory,
+                        ManifestPath = "packages.json"
+                    },
+                    out var diagnostics);
+
+                Require(packages.Count == 1, "local folder repository must expose one package.");
+                Require(packages[0].RepositoryId == "local-source", "local package must keep repository id.");
+                Require(packages[0].PackageId == "module.repo", "local package id must be read from packages.json.");
+                Require(diagnostics.Count == 0, "valid local repository must not emit diagnostics.");
+            }
+        }
+
+        private static void PlugHubLoggerKeepsOnlyRecentThreeDays()
+        {
+            using (var temp = TempDirectory.Create())
+            {
+                var logsDirectory = PlugHubLogger.LogsDirectory(temp.Path);
+                Directory.CreateDirectory(logsDirectory);
+                var today = DateTime.UtcNow.Date;
+                var staleLog = Path.Combine(logsDirectory, "plughub-" + today.AddDays(-4).ToString("yyyyMMdd") + ".log");
+                var recentLog = Path.Combine(logsDirectory, "plughub-" + today.AddDays(-2).ToString("yyyyMMdd") + ".log");
+                WriteText(staleLog, "old");
+                WriteText(recentLog, "recent");
+
+                new PlugHubLogger().Write(temp.Path, new PlugHubLogEntry
+                {
+                    Severity = DiagnosticSeverity.Info,
+                    Code = "TEST-LOG",
+                    Operation = "Test",
+                    Message = "write"
+                });
+
+                RequireFileMissing(staleLog);
+                RequireFileExists(recentLog);
+                RequireFileExists(Path.Combine(logsDirectory, "plughub-" + today.ToString("yyyyMMdd") + ".log"));
+            }
+        }
+
+        private static void FrameworkRuntimeWritesSessionLogOnLoad()
+        {
+            using (var temp = TempDirectory.Create())
+            {
+                var configDirectory = Path.Combine(temp.Path, "config");
+                WriteText(Path.Combine(configDirectory, "sources.json"), "{\"schemaVersion\":\"1.0\",\"packageDirectories\":[\"packages\"],\"modules\":[]}");
+                WriteText(Path.Combine(configDirectory, "views.json"), "{\"schemaVersion\":\"1.0\",\"defaultView\":\"workspace\",\"views\":[{\"id\":\"workspace\",\"name\":\"Workspace\"}]}");
+                WriteText(Path.Combine(configDirectory, "feature-combinations.json"), "{\"schemaVersion\":\"1.0\",\"presets\":[]}");
+
+                new FrameworkRuntime().Load(temp.Path, configDirectory, false);
+
+                var logPath = Path.Combine(PlugHubLogger.LogsDirectory(temp.Path), "plughub-" + DateTime.UtcNow.ToString("yyyyMMdd") + ".log");
+                RequireFileExists(logPath);
+                var log = File.ReadAllText(logPath);
+                RequireContains(log, "RT-LOAD");
+                RequireContains(log, "FrameworkRuntime.Load");
+            }
         }
 
         private static void PackageInstallServiceCopiesSelectedModulePayloadOnly()

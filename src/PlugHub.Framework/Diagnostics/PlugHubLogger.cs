@@ -8,6 +8,7 @@ namespace PlugHub.Framework.Diagnostics
     public sealed class PlugHubLogger
     {
         private static readonly object Sync = new object();
+        private const int RetentionDays = 3;
 
         public void Error(
             string baseDirectory,
@@ -47,12 +48,45 @@ namespace PlugHub.Framework.Diagnostics
 
                 lock (Sync)
                 {
+                    DeleteExpiredLogs(logsDirectory, entry.TimestampUtc.Date);
                     File.AppendAllText(logPath, line + Environment.NewLine, Encoding.UTF8);
                 }
             }
             catch
             {
                 // Logging must never block command execution.
+            }
+        }
+
+        private static void DeleteExpiredLogs(string logsDirectory, DateTime utcToday)
+        {
+            var oldestKeptDay = utcToday.AddDays(-(RetentionDays - 1));
+            foreach (var path in Directory.GetFiles(logsDirectory, "plughub-*.log"))
+            {
+                var fileName = Path.GetFileNameWithoutExtension(path);
+                var dateText = fileName.StartsWith("plughub-", StringComparison.OrdinalIgnoreCase)
+                    ? fileName.Substring("plughub-".Length)
+                    : string.Empty;
+                if (!DateTime.TryParseExact(dateText, "yyyyMMdd", null, System.Globalization.DateTimeStyles.AssumeUniversal, out var logDay))
+                {
+                    continue;
+                }
+
+                if (logDay.Date < oldestKeptDay)
+                {
+                    TryDeleteFile(path);
+                }
+            }
+        }
+
+        private static void TryDeleteFile(string path)
+        {
+            try
+            {
+                File.Delete(path);
+            }
+            catch
+            {
             }
         }
 

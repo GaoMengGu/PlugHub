@@ -43,20 +43,84 @@ namespace PlugHub.Framework.Packages
             }
 
             var parentDirectory = Path.GetDirectoryName(fullCacheDirectory) ?? throw new InvalidOperationException("Repository cache directory must have a parent directory.");
-            var stagingDirectory = Path.Combine(parentDirectory, SafePathSegment(repository.Id) + ".download." + Guid.NewGuid().ToString("N"));
-            var archivePath = Path.Combine(parentDirectory, SafePathSegment(repository.Id) + ".archive." + Guid.NewGuid().ToString("N") + ".zip");
+            var stagingDirectory = string.Empty;
 
             try
             {
                 Directory.CreateDirectory(parentDirectory);
-                Directory.CreateDirectory(stagingDirectory);
+                stagingDirectory = SyncFastestCloudRepository(address, repository, parentDirectory);
 
+                ReplaceCacheDirectory(stagingDirectory, fullCacheDirectory);
+                stagingDirectory = string.Empty;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                AddDiagnostic(diagnostics, repository.Id, "PH-REPOSITORY-ARCHIVE", SensitiveTextRedactor.Redact(ex.Message));
+                return false;
+            }
+            finally
+            {
+                DeleteDirectoryQuietly(stagingDirectory);
+            }
+        }
+
+        private string SyncFastestCloudRepository(RepositoryAddress address, PackageRepositoryConfiguration repository, string parentDirectory)
+        {
+            var candidates = CloudSyncCandidates(address, repository).ToList();
+            if (candidates.Count == 1)
+            {
+                return SyncCloudRepositoryCandidate(candidates[0], repository, parentDirectory);
+            }
+
+            var tasks = candidates
+                .Select(candidate => Task.Run(() => SyncCloudRepositoryCandidate(candidate, repository, parentDirectory)))
+                .ToList();
+            var errors = new List<string>();
+            while (tasks.Count > 0)
+            {
+                var finished = Task.WaitAny(tasks.ToArray());
+                var task = tasks[finished];
+                tasks.RemoveAt(finished);
+                if (task.Status == TaskStatus.RanToCompletion && !string.IsNullOrWhiteSpace(task.Result))
+                {
+                    foreach (var remaining in tasks)
+                    {
+                        remaining.ContinueWith(item =>
+                        {
+                            if (item.Status == TaskStatus.RanToCompletion)
+                            {
+                                DeleteDirectoryQuietly(item.Result);
+                            }
+                        });
+                    }
+
+                    return task.Result;
+                }
+
+                if (task.Exception != null)
+                {
+                    errors.Add(SensitiveTextRedactor.Redact(task.Exception.GetBaseException().Message));
+                }
+            }
+
+            throw new InvalidOperationException("Cloud repository sync failed for all mirrors: " + string.Join("；", errors));
+        }
+
+        private string SyncCloudRepositoryCandidate(RepositoryAddress address, PackageRepositoryConfiguration repository, string parentDirectory)
+        {
+            var stagingDirectory = Path.Combine(parentDirectory, SafePathSegment(repository.Id) + "." + address.Provider + ".download." + Guid.NewGuid().ToString("N"));
+            var archivePath = Path.Combine(parentDirectory, SafePathSegment(repository.Id) + "." + address.Provider + ".archive." + Guid.NewGuid().ToString("N") + ".zip");
+            try
+            {
+                Directory.CreateDirectory(stagingDirectory);
                 try
                 {
                     var archiveUrl = ArchiveDownloadUrl(address, repository);
                     DownloadArchive(archiveUrl, address, repository, archivePath);
                     ValidateArchiveFile(archivePath, archiveUrl);
                     ExtractArchive(archivePath, stagingDirectory);
+                    return stagingDirectory;
                 }
                 catch (Exception ex)
                 {
@@ -68,49 +132,39 @@ namespace PlugHub.Framework.Packages
                     DeleteFileQuietly(archivePath);
                     DeleteDirectoryQuietly(stagingDirectory);
                     Directory.CreateDirectory(stagingDirectory);
-                    try
-                    {
-                        SyncGiteeRepositoryViaApi(address, repository, stagingDirectory);
-                    }
-                    catch (Exception apiEx)
-                    {
-                        if (!ShouldUseGitHubMirrorFallback(address, repository, apiEx))
-                        {
-                            throw;
-                        }
-
-                        DeleteFileQuietly(archivePath);
-                        DeleteDirectoryQuietly(stagingDirectory);
-                        Directory.CreateDirectory(stagingDirectory);
-                        try
-                        {
-                            SyncGiteeRepositoryViaGitHubMirror(address, repository, archivePath, stagingDirectory);
-                        }
-                        catch (Exception mirrorEx)
-                        {
-                            throw new InvalidOperationException(
-                                "Gitee API fallback failed and GitHub mirror fallback failed: "
-                                + SensitiveTextRedactor.Redact(apiEx.Message)
-                                + "；"
-                                + SensitiveTextRedactor.Redact(mirrorEx.Message),
-                                mirrorEx);
-                        }
-                    }
+                    SyncGiteeRepositoryViaApi(address, repository, stagingDirectory);
+                    return stagingDirectory;
                 }
-
-                ReplaceCacheDirectory(stagingDirectory, fullCacheDirectory);
-                return true;
             }
-            catch (Exception ex)
+            catch
             {
-                AddDiagnostic(diagnostics, repository.Id, "PH-REPOSITORY-ARCHIVE", SensitiveTextRedactor.Redact(ex.Message));
-                return false;
+                DeleteFileQuietly(archivePath);
+                DeleteDirectoryQuietly(stagingDirectory);
+                throw;
             }
             finally
             {
                 DeleteFileQuietly(archivePath);
-                DeleteDirectoryQuietly(stagingDirectory);
             }
+        }
+
+        private static IEnumerable<RepositoryAddress> CloudSyncCandidates(RepositoryAddress address, PackageRepositoryConfiguration repository)
+        {
+            if (RepositoryRequiresToken(repository))
+            {
+                yield return address;
+                yield break;
+            }
+
+            if (string.Equals(address.Provider, "gitee", StringComparison.OrdinalIgnoreCase))
+            {
+                yield return address;
+                yield return new RepositoryAddress("github", address.Owner, address.Name);
+                yield break;
+            }
+
+            yield return address;
+            yield return new RepositoryAddress("gitee", address.Owner, address.Name);
         }
 
         private bool ShouldUseGiteeApiFallback(RepositoryAddress address, PackageRepositoryConfiguration repository, Exception exception)
@@ -128,33 +182,6 @@ namespace PlugHub.Framework.Packages
                 || response.StatusCode == HttpStatusCode.Unauthorized
                 || response.StatusCode == HttpStatusCode.NotFound
                 || response.StatusCode == HttpStatusCode.MethodNotAllowed;
-        }
-
-        private bool ShouldUseGitHubMirrorFallback(RepositoryAddress address, PackageRepositoryConfiguration repository, Exception exception)
-        {
-            if (!string.Equals(address.Provider, "gitee", StringComparison.OrdinalIgnoreCase)) return false;
-            if (RepositoryRequiresToken(repository)) return false;
-            if (!string.IsNullOrWhiteSpace(_credentialService.ResolveApiKey(repository))) return false;
-
-            var webException = exception as WebException;
-            var response = webException?.Response as HttpWebResponse;
-            if (response == null) return exception is InvalidDataException;
-
-            return response.StatusCode == HttpStatusCode.Forbidden
-                || (int)response.StatusCode == 429;
-        }
-
-        private void SyncGiteeRepositoryViaGitHubMirror(
-            RepositoryAddress address,
-            PackageRepositoryConfiguration repository,
-            string archivePath,
-            string stagingDirectory)
-        {
-            var mirrorAddress = new RepositoryAddress("github", address.Owner, address.Name);
-            var archiveUrl = ArchiveDownloadUrl(mirrorAddress, repository);
-            DownloadArchive(archiveUrl, mirrorAddress, repository, archivePath);
-            ValidateArchiveFile(archivePath, archiveUrl);
-            ExtractArchive(archivePath, stagingDirectory);
         }
 
         private void SyncGiteeRepositoryViaApi(RepositoryAddress address, PackageRepositoryConfiguration repository, string stagingDirectory)
@@ -532,91 +559,5 @@ namespace PlugHub.Framework.Packages
             });
         }
 
-        private sealed class RepositoryAddress
-        {
-            public RepositoryAddress(string provider, string owner, string name)
-            {
-                Provider = provider;
-                Owner = owner;
-                Name = name;
-            }
-
-            public string Provider { get; }
-            public string Owner { get; }
-            public string Name { get; }
-
-            public static RepositoryAddress? From(PackageRepositoryConfiguration repository)
-            {
-                var provider = string.Equals(repository.Provider, "gitee", StringComparison.OrdinalIgnoreCase) ? "gitee" : "github";
-                var value = StripRepositorySuffix(StripUrlUserInfo(repository.Repository ?? string.Empty).Trim().TrimEnd('/'));
-
-                if (value.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-                {
-                    if (!Uri.TryCreate(value, UriKind.Absolute, out var uri))
-                    {
-                        return null;
-                    }
-
-                    var hostProvider = ProviderFromHost(uri.Host);
-                    if (string.IsNullOrWhiteSpace(hostProvider))
-                    {
-                        return null;
-                    }
-
-                    var segments = uri.AbsolutePath
-                        .Trim('/')
-                        .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
-                    return segments.Length >= 2
-                        ? new RepositoryAddress(hostProvider, segments[0], StripRepositorySuffix(segments[1]))
-                        : null;
-                }
-
-                var shorthand = value
-                    .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
-                return shorthand.Length >= 2
-                    ? new RepositoryAddress(provider, shorthand[0], StripRepositorySuffix(shorthand[1]))
-                    : null;
-            }
-
-            private static string StripRepositorySuffix(string value)
-            {
-                return value.EndsWith(".git", StringComparison.OrdinalIgnoreCase)
-                    ? value.Substring(0, value.Length - ".git".Length)
-                    : value;
-            }
-
-            private static string ProviderFromHost(string host)
-            {
-                var normalized = (host ?? string.Empty).Trim().TrimEnd('.');
-                if (string.Equals(normalized, "github.com", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(normalized, "www.github.com", StringComparison.OrdinalIgnoreCase))
-                {
-                    return "github";
-                }
-
-                if (string.Equals(normalized, "gitee.com", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(normalized, "www.gitee.com", StringComparison.OrdinalIgnoreCase))
-                {
-                    return "gitee";
-                }
-
-                return string.Empty;
-            }
-
-            private static string StripUrlUserInfo(string url)
-            {
-                if (string.IsNullOrWhiteSpace(url) || !Uri.TryCreate(url, UriKind.Absolute, out var uri) || string.IsNullOrEmpty(uri.UserInfo))
-                {
-                    return url;
-                }
-
-                var builder = new UriBuilder(uri)
-                {
-                    UserName = string.Empty,
-                    Password = string.Empty
-                };
-                return builder.Uri.AbsoluteUri;
-            }
-        }
     }
 }

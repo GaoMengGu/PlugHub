@@ -10,6 +10,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Data;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -32,8 +33,8 @@ namespace PlugHub.Manager
     public sealed class FrameworkSettingsWindow : Window
     {
         private const string DefaultPackageManifestName = "packages.json";
-        private const string DefaultRepositoryProvider = "gitee";
-        private const string DefaultPublicRepository = "https://gitee.com/GaoMengGu/PlugHub_Packages";
+        private const string DefaultRepositoryProvider = "github";
+        private const string DefaultPublicRepository = "GaoMengGu/PlugHub_Packages";
         private const string DefaultRibbonDesignerPanelId = "default";
         private const string DefaultRibbonDesignerPanelName = "默认";
         private const string RibbonDesignerBrowseIconAction = "__browse_icon__";
@@ -462,59 +463,31 @@ namespace PlugHub.Manager
             var pendingOperationCount = _packageRepositoryService.ListPendingOperations(BaseDirectory())
                 .Count(operation => !string.Equals(operation.Operation, "restart", StringComparison.OrdinalIgnoreCase));
             var root = new Grid { Margin = new Thickness(14) };
-            root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.2, GridUnitType.Star) });
-            root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(4, GridUnitType.Star) });
+            root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(6, GridUnitType.Star) });
 
-            var summary = new StackPanel { Margin = new Thickness(0, 0, 14, 0) };
-            summary.Children.Add(BuildAboutHeader());
-            summary.Children.Add(new TextBlock
-            {
-                Text = "面向 Revit 2020 的模块化插件框架。",
-                Margin = new Thickness(0, 6, 0, 0),
-                Foreground = theme.MutedTextBrush,
-                TextWrapping = TextWrapping.Wrap,
-                LineHeight = 20
-            });
-            summary.Children.Add(new TextBlock
-            {
-                Text = "框架层负责模块契约、发现、启用/禁用、排序组合、诊断和 Revit 2020 入口适配；具体业务命令由外部插件包提供。",
-                Margin = new Thickness(0, 10, 0, 0),
-                Foreground = theme.MutedTextBrush,
-                TextWrapping = TextWrapping.Wrap,
-                LineHeight = 20
-            });
+            var left = BuildAboutSection(
+                BuildAboutLeftPanel(),
+                new Thickness(0, 0, 10, 0),
+                new Thickness(14));
+            Grid.SetColumn(left, 0);
+            root.Children.Add(left);
 
-            var metrics = new UniformGrid
-            {
-                Columns = 2,
-                Margin = new Thickness(0, 18, 0, 0)
-            };
-            metrics.Children.Add(BuildAboutMetric("模块数", ConfiguredModuleCount().ToString(CultureInfo.InvariantCulture)));
-            metrics.Children.Add(BuildAboutMetric("功能数", ConfiguredFeatureCount().ToString(CultureInfo.InvariantCulture)));
-            metrics.Children.Add(BuildAboutMetric("仓库数", ConfiguredRepositoryCount().ToString(CultureInfo.InvariantCulture)));
-            metrics.Children.Add(BuildAboutMetric("目标版本", "Revit 2020"));
-            summary.Children.Add(metrics);
-            Grid.SetColumn(summary, 0);
-            root.Children.Add(summary);
-
-            var details = new StackPanel();
-            details.Children.Add(BuildAboutSection(
-                "运行环境",
-                BuildAboutInfoRow("版本", AssemblyVersionText()),
-                BuildAboutInfoRow("主题", RevitUiTheme.Current.IsDark ? "深色" : "浅色"),
-                BuildAboutInfoRow("适配层", "PlugHub.Revit2020 / .NET Framework 4.8")));
-            details.Children.Add(BuildAboutSection(
-                "路径",
-                BuildAboutInfoRow("根目录", BaseDirectory()),
-                BuildAboutInfoRow("配置", FrameworkRuntimeState.ConfigDirectory ?? string.Empty),
-                BuildAboutInfoRow("日志", PlugHubLogger.LogsDirectory(BaseDirectory()))));
-            details.Children.Add(BuildAboutSection(
-                "诊断",
-                BuildAboutInfoRow("日志消息", (FrameworkRuntimeState.Current?.Diagnostics.Count ?? 0).ToString(CultureInfo.InvariantCulture)),
-                BuildAboutInfoRow("待重启操作", pendingOperationCount.ToString(CultureInfo.InvariantCulture)),
-                BuildAboutInfoRow("静态验证", "dotnet run --project src/PlugHub.StaticValidation/PlugHub.StaticValidation.csproj")));
-            Grid.SetColumn(details, 1);
-            root.Children.Add(details);
+            var right = new StackPanel { Margin = new Thickness(10, 0, 0, 0) };
+            right.Children.Add(BuildAboutSection(
+                BuildAboutAssetPanel(pendingOperationCount),
+                new Thickness(0, 0, 0, 10),
+                new Thickness(12)));
+            right.Children.Add(BuildAboutSection(
+                BuildAboutPathPanel(),
+                new Thickness(0, 0, 0, 10),
+                new Thickness(12)));
+            right.Children.Add(BuildAboutSection(
+                BuildAboutDiagnosticsPanel(pendingOperationCount),
+                new Thickness(0),
+                new Thickness(12)));
+            Grid.SetColumn(right, 1);
+            root.Children.Add(right);
 
             return BuildTab("关于", new ScrollViewer
             {
@@ -525,59 +498,108 @@ namespace PlugHub.Manager
             });
         }
 
-        private static UIElement BuildAboutMetric(string label, string value)
+        private UIElement BuildAboutLeftPanel()
         {
             var theme = RevitUiTheme.Current;
-            var panel = new StackPanel();
-            panel.Children.Add(new TextBlock
-            {
-                Text = value,
-                FontSize = 18,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = theme.TextBrush
-            });
-            panel.Children.Add(new TextBlock
-            {
-                Text = label,
-                Margin = new Thickness(0, 3, 0, 0),
-                Foreground = theme.MutedTextBrush
-            });
+            var root = new Grid();
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
+            var top = new StackPanel();
+            top.Children.Add(BuildAboutHeader());
+            top.Children.Add(new TextBlock
+            {
+                Text = "面向 Revit 2020 的模块化插件框架。",
+                Margin = new Thickness(0, 8, 0, 0),
+                Foreground = theme.MutedTextBrush,
+                TextWrapping = TextWrapping.Wrap,
+                LineHeight = 20
+            });
+            Grid.SetRow(top, 0);
+            root.Children.Add(top);
+
+            var contact = new StackPanel { Margin = new Thickness(0, 16, 0, 0) };
+            contact.Children.Add(BuildAboutContactRow("核心作者", "ArchTech Lab"));
+            contact.Children.Add(BuildAboutContactRow("反馈邮箱", "work@lihao.space"));
+            contact.Children.Add(BuildAboutContactRow("交流群号", "851767374 (PlugHub 交流群)"));
+            contact.Children.Add(BuildAboutContactRow("开源主页", "GaoMengGu/PlugHub"));
+            Grid.SetRow(contact, 1);
+            root.Children.Add(contact);
+
+            var donate = new StackPanel { VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 16, 0, 0) };
+            donate.Children.Add(new TextBlock
+            {
+                Text = "如果 PlugHub 提高了你的工作效率，欢迎支持作者继续维护。",
+                TextAlignment = TextAlignment.Center,
+                Foreground = theme.TextBrush,
+                TextWrapping = TextWrapping.Wrap,
+                FontSize = 11
+            });
+            donate.Children.Add(BuildDonationCodes());
+            Grid.SetRow(donate, 2);
+            root.Children.Add(donate);
+            return root;
+        }
+
+        private UIElement BuildAboutAssetPanel(int pendingOperationCount)
+        {
+            var panel = new StackPanel();
+            panel.Children.Add(AboutSectionTitle("运行资产与系统环境"));
+            var badges = new WrapPanel { Margin = new Thickness(0, 0, 0, 8) };
+            badges.Children.Add(BuildAboutBadge("模块数", ConfiguredModuleCount().ToString(CultureInfo.InvariantCulture)));
+            badges.Children.Add(BuildAboutBadge("功能数", ConfiguredFeatureCount().ToString(CultureInfo.InvariantCulture)));
+            badges.Children.Add(BuildAboutBadge("仓库数", ConfiguredRepositoryCount().ToString(CultureInfo.InvariantCulture)));
+            badges.Children.Add(BuildAboutBadge("待重启", pendingOperationCount.ToString(CultureInfo.InvariantCulture)));
+            panel.Children.Add(badges);
+            panel.Children.Add(BuildAboutInfoRow("目标宿主", "Revit 2020"));
+            panel.Children.Add(BuildAboutInfoRow("底层架构", ".NET Framework 4.8 / PlugHub.Revit2020"));
+            panel.Children.Add(BuildAboutInfoRow("界面主题", RevitUiTheme.Current.IsDark ? "深色" : "浅色"));
+            return panel;
+        }
+
+        private UIElement BuildAboutPathPanel()
+        {
+            var panel = new StackPanel();
+            panel.Children.Add(AboutSectionTitle("核心目录与快速交互"));
+            panel.Children.Add(BuildAboutPathRow("根目录", BaseDirectory()));
+            panel.Children.Add(BuildAboutPathRow("配置", FrameworkRuntimeState.ConfigDirectory ?? string.Empty));
+            panel.Children.Add(BuildAboutPathRow("日志", PlugHubLogger.LogsDirectory(BaseDirectory())));
+            return panel;
+        }
+
+        private UIElement BuildAboutDiagnosticsPanel(int pendingOperationCount)
+        {
+            var panel = new StackPanel();
+            panel.Children.Add(AboutSectionTitle("动作与异常诊断中心"));
+            panel.Children.Add(BuildAboutInfoRow("日志消息", (FrameworkRuntimeState.Current?.Diagnostics.Count ?? 0).ToString(CultureInfo.InvariantCulture)));
+            panel.Children.Add(BuildAboutInfoRow("待重启操作", pendingOperationCount.ToString(CultureInfo.InvariantCulture)));
+            panel.Children.Add(BuildValidationCommandRow());
+            return panel;
+        }
+
+        private static UIElement BuildAboutSection(UIElement child, Thickness margin, Thickness padding)
+        {
+            var theme = RevitUiTheme.Current;
             return new Border
             {
-                Margin = new Thickness(0, 0, 8, 8),
-                Padding = new Thickness(10, 8, 10, 8),
+                Margin = margin,
+                Padding = padding,
                 Background = theme.SurfaceBackground,
                 BorderBrush = theme.BorderBrush,
                 BorderThickness = new Thickness(1),
-                Child = panel
+                Child = child
             };
         }
 
-        private static UIElement BuildAboutSection(string title, params UIElement[] rows)
+        private static TextBlock AboutSectionTitle(string title)
         {
-            var theme = RevitUiTheme.Current;
-            var panel = new StackPanel();
-            panel.Children.Add(new TextBlock
+            return new TextBlock
             {
                 Text = title,
                 FontWeight = FontWeights.SemiBold,
-                Foreground = theme.TextBrush,
+                Foreground = RevitUiTheme.Current.TextBrush,
                 Margin = new Thickness(0, 0, 0, 8)
-            });
-            foreach (var row in rows)
-            {
-                panel.Children.Add(row);
-            }
-
-            return new Border
-            {
-                Margin = new Thickness(0, 0, 0, 10),
-                Padding = new Thickness(10),
-                Background = theme.SurfaceBackground,
-                BorderBrush = theme.BorderBrush,
-                BorderThickness = new Thickness(1),
-                Child = panel
             };
         }
 
@@ -615,6 +637,190 @@ namespace PlugHub.Manager
             panel.Children.Add(_uninstallIconButton);
 
             return panel;
+        }
+
+        private static UIElement BuildAboutBadge(string label, string value)
+        {
+            var theme = RevitUiTheme.Current;
+            return new Border
+            {
+                Margin = new Thickness(0, 0, 6, 6),
+                Padding = new Thickness(8, 3, 8, 3),
+                Background = theme.ChipBackground,
+                BorderBrush = theme.BorderBrush,
+                BorderThickness = new Thickness(1),
+                Child = new TextBlock
+                {
+                    Text = label + ": " + value,
+                    FontSize = 11,
+                    Foreground = theme.TextBrush
+                }
+            };
+        }
+
+        private static UIElement BuildAboutContactRow(string label, string value)
+        {
+            var block = new TextBlock { Margin = new Thickness(0, 0, 0, 7), FontSize = 11 };
+            block.Inlines.Add(new Run(label + ": ") { Foreground = RevitUiTheme.Current.SubtleTextBrush });
+            block.Inlines.Add(new Run(value) { Foreground = RevitUiTheme.Current.TextBrush, FontWeight = FontWeights.SemiBold });
+            return block;
+        }
+
+        private UIElement BuildDonationCodes()
+        {
+            var grid = new UniformGrid { Columns = 2, Margin = new Thickness(0, 9, 0, 0) };
+            grid.Children.Add(BuildDonationCode("微信支付", "PlugHub.Manager.Resources.wechatpay.png"));
+            grid.Children.Add(BuildDonationCode("支付宝", "PlugHub.Manager.Resources.alipay.png"));
+            return grid;
+        }
+
+        private static UIElement BuildDonationCode(string label, string resourceName)
+        {
+            var panel = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
+            panel.Children.Add(new Image
+            {
+                Source = LoadManagerImage(resourceName),
+                Width = 76,
+                Height = 76,
+                Stretch = Stretch.Uniform,
+                SnapsToDevicePixels = true
+            });
+            panel.Children.Add(new TextBlock
+            {
+                Text = label,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 4, 0, 0),
+                FontSize = 10,
+                Foreground = RevitUiTheme.Current.MutedTextBrush
+            });
+            return panel;
+        }
+
+        private static ImageSource? LoadManagerImage(string resourceName)
+        {
+            using (var stream = typeof(FrameworkSettingsWindow).Assembly.GetManifestResourceStream(resourceName))
+            {
+                if (stream == null) return null;
+                var image = new BitmapImage();
+                image.BeginInit();
+                image.CacheOption = BitmapCacheOption.OnLoad;
+                image.StreamSource = stream;
+                image.EndInit();
+                image.Freeze();
+                return image;
+            }
+        }
+
+        private UIElement BuildAboutPathRow(string label, string path)
+        {
+            var theme = RevitUiTheme.Current;
+            var row = new Grid { Margin = new Thickness(0, 0, 0, 7) };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(50) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var labelBlock = new TextBlock { Text = label, Foreground = theme.TextBrush, VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(labelBlock, 0);
+            row.Children.Add(labelBlock);
+
+            var valueBlock = new TextBlock
+            {
+                Text = path ?? string.Empty,
+                Foreground = theme.MutedTextBrush,
+                FontFamily = new FontFamily("Consolas"),
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Grid.SetColumn(valueBlock, 1);
+            row.Children.Add(valueBlock);
+
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal };
+            buttons.Children.Add(CreateIconButton("repository", "打开目录", (sender, args) => OpenAboutPath(path ?? string.Empty)));
+            buttons.Children.Add(CreateIconButton("save", "复制路径", (sender, args) => CopyTextToClipboard(path ?? string.Empty, label + "路径")));
+            Grid.SetColumn(buttons, 2);
+            row.Children.Add(buttons);
+            return row;
+        }
+
+        private UIElement BuildValidationCommandRow()
+        {
+            const string command = "dotnet run --project src/PlugHub.StaticValidation/PlugHub.StaticValidation.csproj";
+            var theme = RevitUiTheme.Current;
+            var box = new Border
+            {
+                Margin = new Thickness(0, 7, 0, 0),
+                Padding = new Thickness(8, 6, 8, 6),
+                Background = theme.ControlBackground,
+                BorderBrush = theme.BorderBrush,
+                BorderThickness = new Thickness(1)
+            };
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.Children.Add(new TextBlock
+            {
+                Text = command,
+                Foreground = theme.TextBrush,
+                FontFamily = new FontFamily("Consolas"),
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 8, 0)
+            });
+            var copy = CreateSmallTextButton("复制指令", "复制静态验证指令", (sender, args) => CopyTextToClipboard(command, "静态验证指令"));
+            Grid.SetColumn(copy, 1);
+            grid.Children.Add(copy);
+            box.Child = grid;
+            return box;
+        }
+
+        private static Button CreateSmallTextButton(string text, string tooltip, RoutedEventHandler handler)
+        {
+            var button = new Button
+            {
+                Content = text,
+                MinWidth = 42,
+                Height = 24,
+                Padding = new Thickness(6, 1, 6, 1),
+                Margin = new Thickness(4, 0, 0, 0),
+                ToolTip = tooltip
+            };
+            button.Click += handler;
+            return button;
+        }
+
+        private void OpenAboutPath(string path)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
+                {
+                    RefreshStatus("目录不存在: " + (path ?? string.Empty));
+                    return;
+                }
+
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = path,
+                    UseShellExecute = true
+                });
+                RefreshStatus("已打开目录: " + path);
+            }
+            catch (Exception ex)
+            {
+                ReportSettingsError("打开目录失败", ex);
+            }
+        }
+
+        private void CopyTextToClipboard(string text, string label)
+        {
+            try
+            {
+                Clipboard.SetText(text ?? string.Empty);
+                RefreshStatus("已复制" + label + "。");
+            }
+            catch (Exception ex)
+            {
+                ReportSettingsError("复制失败", ex);
+            }
         }
 
         private static UIElement BuildAboutInfoRow(string label, string value)
@@ -778,6 +984,7 @@ namespace PlugHub.Manager
             _repositoryPackageStateFilter.Width = 110;
             _repositoryPackageStateFilter.Height = 26;
             _repositoryPackageStateFilter.Margin = new Thickness(8, 0, 0, 0);
+            ApplyThemedComboBox(_repositoryPackageStateFilter);
             _repositoryPackageStateFilter.ItemsSource = new[] { "全部", "未安装", "可更新", "已安装", "待重启" };
             _repositoryPackageStateFilter.SelectedIndex = 0;
             _repositoryPackageStateFilter.SelectionChanged += RepositoryPackageFilterChanged;
@@ -785,6 +992,7 @@ namespace PlugHub.Manager
             _repositoryPackageTagFilter.Width = 140;
             _repositoryPackageTagFilter.Height = 26;
             _repositoryPackageTagFilter.Margin = new Thickness(8, 0, 0, 0);
+            ApplyThemedComboBox(_repositoryPackageTagFilter);
             _repositoryPackageTagFilter.SelectionChanged += RepositoryPackageFilterChanged;
 
             var actions = new StackPanel
@@ -3054,13 +3262,15 @@ namespace PlugHub.Manager
                 var cachedPackages = _packageRepositoryService.BrowseCached(BaseDirectory(), repository.ToConfiguration(), out var diagnostics);
                 packages.AddRange(cachedPackages);
                 messages.AddRange(diagnostics);
-                repository.Status = cachedPackages.Count > 0 ? "已从本地缓存加载 " + cachedPackages.Count + " 个插件" : "本地缓存无插件";
+                repository.Status = IsLocalRepository(repository)
+                    ? (cachedPackages.Count > 0 ? "已读取本地文件夹 " + cachedPackages.Count + " 个插件" : "本地文件夹无插件")
+                    : (cachedPackages.Count > 0 ? "已从本地缓存加载 " + cachedPackages.Count + " 个插件" : "本地缓存无插件");
             }
 
             if (packages.Count > 0)
             {
                 LoadRepositoryPackageRows(packages);
-                RefreshStatus("已从本地仓库缓存加载 " + packages.Count + " 个插件。需要远端状态时请手动一键同步。");
+                RefreshStatus("已加载 " + packages.Count + " 个仓库插件。云端源需要最新状态时请手动一键同步。");
             }
 
             if (messages.Count > 0)
@@ -3080,7 +3290,7 @@ namespace PlugHub.Manager
                 LoadRepositoryPackageRows(new List<RepositoryPackageDescriptor>());
                 row.Status = "停用";
                 RefreshRepositorySourceCards();
-                RefreshStatus(row.DisplayName + " 已停用，未加载本地缓存。");
+                RefreshStatus(row.DisplayName + " 已停用，未加载仓库内容。");
                 return;
             }
 
@@ -3088,9 +3298,11 @@ namespace PlugHub.Manager
             if (!_packageRepositoryService.HasRepositoryCache(BaseDirectory(), repository))
             {
                 LoadRepositoryPackageRows(new List<RepositoryPackageDescriptor>());
-                row.Status = "本地缓存无插件";
+                row.Status = IsLocalRepository(row) ? "本地文件夹无插件" : "本地缓存无插件";
                 RefreshRepositorySourceCards();
-                RefreshStatus(row.DisplayName + " 暂无本地缓存。使用一键同步后可在此浏览。");
+                RefreshStatus(IsLocalRepository(row)
+                    ? row.DisplayName + " 暂未找到本地插件清单。"
+                    : row.DisplayName + " 暂无本地缓存。使用一键同步后可在此浏览。");
                 return;
             }
 
@@ -3101,9 +3313,11 @@ namespace PlugHub.Manager
                 LoadDiagnosticRowsFromMessages(diagnostics);
             }
 
-            row.Status = packages.Count > 0 ? "已从本地缓存加载 " + packages.Count + " 个插件" : "本地缓存无插件";
+            row.Status = IsLocalRepository(row)
+                ? (packages.Count > 0 ? "已读取本地文件夹 " + packages.Count + " 个插件" : "本地文件夹无插件")
+                : (packages.Count > 0 ? "已从本地缓存加载 " + packages.Count + " 个插件" : "本地缓存无插件");
             RefreshRepositorySourceCards();
-            RefreshStatus(row.DisplayName + " 已从本地缓存加载 " + packages.Count + " 个插件。需要远端最新状态时请手动一键同步。");
+            RefreshStatus(row.DisplayName + " 已加载 " + packages.Count + " 个插件。" + (IsLocalRepository(row) ? string.Empty : "需要远端最新状态时请手动一键同步。"));
         }
 
         private void CheckRepositoryUpdates()
@@ -3169,7 +3383,7 @@ namespace PlugHub.Manager
                     }
 
                     RefreshRepositorySourceCards();
-                    RefreshStatus("仓库检查完成，已同步并替换本地缓存，找到 " + packages.Count + " 个插件。");
+                    RefreshStatus("仓库检查完成，云端源已使用较快镜像同步，本地源已直接读取，找到 " + packages.Count + " 个插件。");
                 }));
             });
         }
@@ -4275,18 +4489,20 @@ namespace PlugHub.Manager
 
             var customName = new TextBox { Text = row.CustomName, Height = 26, VerticalContentAlignment = VerticalAlignment.Center };
             var enabled = new CheckBox { IsChecked = row.Enabled, VerticalAlignment = VerticalAlignment.Center };
-            var provider = new ComboBox { ItemsSource = new[] { "gitee", "github" }, SelectedItem = string.IsNullOrWhiteSpace(row.Provider) ? DefaultRepositoryProvider : row.Provider, Height = 26 };
-            var visibility = new ComboBox { ItemsSource = new[] { "public", "private" }, SelectedItem = string.IsNullOrWhiteSpace(row.Visibility) ? "public" : row.Visibility, Height = 26 };
+            var provider = CreateThemedComboBox(new[] { "云端仓库", "本地文件夹" }, IsLocalRepository(row) ? "本地文件夹" : "云端仓库");
+            var visibility = CreateThemedComboBox(new[] { "public", "private" }, string.IsNullOrWhiteSpace(row.Visibility) ? "public" : row.Visibility);
             var repository = new TextBox { Text = row.Repository, Height = 26, VerticalContentAlignment = VerticalAlignment.Center };
             var gitRef = new TextBox { Text = row.Ref, Height = 26, VerticalContentAlignment = VerticalAlignment.Center };
             var manifestPath = new TextBox { Text = row.ManifestPath, Height = 26, VerticalContentAlignment = VerticalAlignment.Center };
             var apiKey = new TextBox { Text = string.Empty, Height = 26, VerticalContentAlignment = VerticalAlignment.Center };
+            provider.SelectionChanged += (sender, args) => ApplyRepositoryEditorMode(provider, visibility, gitRef, apiKey, repository);
+            ApplyRepositoryEditorMode(provider, visibility, gitRef, apiKey, repository);
 
             AddRepositoryEditorRow(form, 0, "名称", customName);
             AddRepositoryEditorRow(form, 1, "启用", enabled);
-            AddRepositoryEditorRow(form, 2, "类型", provider);
+            AddRepositoryEditorRow(form, 2, "来源", provider);
             AddRepositoryEditorRow(form, 3, "可见性", visibility);
-            AddRepositoryEditorRow(form, 4, "仓库", repository);
+            AddRepositoryEditorRow(form, 4, "位置", repository);
             AddRepositoryEditorRow(form, 5, "分支", gitRef);
             AddRepositoryEditorRow(form, 6, "清单", manifestPath);
             AddRepositoryEditorRow(form, 7, "Token", apiKey);
@@ -4304,7 +4520,9 @@ namespace PlugHub.Manager
             {
                 row.CustomName = (customName.Text ?? string.Empty).Trim();
                 row.Enabled = enabled.IsChecked == true;
-                row.Provider = Convert.ToString(provider.SelectedItem) ?? DefaultRepositoryProvider;
+                row.Provider = string.Equals(Convert.ToString(provider.SelectedItem), "本地文件夹", StringComparison.OrdinalIgnoreCase)
+                    ? "local"
+                    : DefaultRepositoryProvider;
                 row.Visibility = Convert.ToString(visibility.SelectedItem) ?? "public";
                 row.Repository = repository.Text ?? string.Empty;
                 row.Ref = string.IsNullOrWhiteSpace(gitRef.Text) ? "main" : gitRef.Text.Trim();
@@ -4350,6 +4568,68 @@ namespace PlugHub.Manager
             form.Children.Add(editor);
         }
 
+        private static ComboBox CreateThemedComboBox(IEnumerable<string> items, string selected)
+        {
+            var theme = RevitUiTheme.Current;
+            var combo = new ComboBox
+            {
+                ItemsSource = items.ToList(),
+                SelectedItem = selected,
+                Height = 26,
+                Background = theme.ControlBackground,
+                Foreground = theme.TextBrush,
+                BorderBrush = theme.BorderBrush,
+                ItemContainerStyle = ThemedComboBoxItemStyle()
+            };
+            return combo;
+        }
+
+        private static void ApplyThemedComboBox(ComboBox combo)
+        {
+            var theme = RevitUiTheme.Current;
+            combo.Background = theme.ControlBackground;
+            combo.Foreground = theme.TextBrush;
+            combo.BorderBrush = theme.BorderBrush;
+            combo.ItemContainerStyle = ThemedComboBoxItemStyle();
+        }
+
+        private static Style ThemedComboBoxItemStyle()
+        {
+            var theme = RevitUiTheme.Current;
+            var style = new Style(typeof(ComboBoxItem));
+            style.Setters.Add(new Setter(Control.BackgroundProperty, theme.ControlBackground));
+            style.Setters.Add(new Setter(Control.ForegroundProperty, theme.TextBrush));
+            style.Setters.Add(new Setter(Control.BorderBrushProperty, theme.BorderBrush));
+            style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(8, 4, 8, 4)));
+
+            var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+            hover.Setters.Add(new Setter(Control.BackgroundProperty, theme.ControlHoverBackground));
+            hover.Setters.Add(new Setter(Control.ForegroundProperty, theme.TextBrush));
+            style.Triggers.Add(hover);
+
+            var selected = new Trigger { Property = ComboBoxItem.IsSelectedProperty, Value = true };
+            selected.Setters.Add(new Setter(Control.BackgroundProperty, theme.ControlPressedBackground));
+            selected.Setters.Add(new Setter(Control.ForegroundProperty, theme.TextBrush));
+            style.Triggers.Add(selected);
+            return style;
+        }
+
+        private static bool IsLocalRepository(RepositoryRow row)
+        {
+            return row != null && string.Equals(row.Provider, "local", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static void ApplyRepositoryEditorMode(ComboBox provider, ComboBox visibility, TextBox gitRef, TextBox apiKey, TextBox repository)
+        {
+            var local = string.Equals(Convert.ToString(provider.SelectedItem), "本地文件夹", StringComparison.OrdinalIgnoreCase);
+            visibility.IsEnabled = !local;
+            gitRef.IsEnabled = !local;
+            apiKey.IsEnabled = !local;
+            repository.ToolTip = local
+                ? "本地插件仓库文件夹，目录内应包含 packages.json 或 *.packages.json。"
+                : "云端仓库使用 owner/repository，例如 GaoMengGu/PlugHub_Packages。同步时会并发尝试可用云端镜像。";
+        }
+
         private void BrowseSelectedRepository()
         {
             try
@@ -4366,15 +4646,18 @@ namespace PlugHub.Manager
                 }
 
                 var repository = row.ToConfiguration();
+                WriteManagerLog(DiagnosticSeverity.Info, "PH-REPOSITORY-BROWSE", "FrameworkSettingsWindow.BrowseSelectedRepository", "Browsing repository: " + row.DisplayName);
                 var packages = _packageRepositoryService.Browse(BaseDirectory(), repository, out var diagnostics);
 
                 row.Status = diagnostics.Any()
                     ? diagnostics.Last().Message
-                    : "已同步并替换本地缓存，" + packages.Count + " 个插件包";
+                    : (IsLocalRepository(row) ? "已读取本地文件夹，" : "已同步最快云端镜像，") + packages.Count + " 个插件包";
                 RefreshRepositorySourceCards();
 
                 LoadRepositoryPackageRows(packages);
                 LoadDiagnosticRowsFromMessages(diagnostics);
+                WriteManagerLog(DiagnosticSeverity.Info, "PH-REPOSITORY-BROWSE", "FrameworkSettingsWindow.BrowseSelectedRepository", row.Status);
+                LogDiagnostics("FrameworkSettingsWindow.BrowseSelectedRepository", diagnostics);
                 RefreshStatus(row.Status);
             }
             catch (Exception ex)
@@ -4411,6 +4694,7 @@ namespace PlugHub.Manager
             {
                 EndGridEdits();
 
+                WriteManagerLog(DiagnosticSeverity.Info, "PH-PACKAGE-OPERATION", "FrameworkSettingsWindow.RunRepositoryPackageOperation", "Starting package operation: " + row.PackageId);
                 var result = operation(row.ToDescriptor());
                 RefreshRepositoryPackageInstallState(row.PackageId, row.InstallDirectory);
                 ApplyRepositoryPackageFilter();
@@ -4421,6 +4705,7 @@ namespace PlugHub.Manager
                 LoadFeatureRows();
                 LoadRibbonLayoutRows();
                 RefreshStatusWithPendingPackageOperations(result.Message);
+                WriteManagerLog(result.Success ? DiagnosticSeverity.Info : DiagnosticSeverity.Warning, "PH-PACKAGE-OPERATION", "FrameworkSettingsWindow.RunRepositoryPackageOperation", result.Message);
             }
             catch (Exception ex)
             {
@@ -5446,6 +5731,7 @@ namespace PlugHub.Manager
         private void ReportSettingsError(string title, Exception ex)
         {
             var message = title + "：" + ex.Message;
+            new PlugHubLogger().Error(BaseDirectory(), "PH-SETTINGS", "settings", string.Empty, "FrameworkSettingsWindow", message, ex);
             LoadDiagnosticRowsFromMessages(new[]
             {
                 new DiagnosticMessage
@@ -5470,6 +5756,7 @@ namespace PlugHub.Manager
                     UseShellExecute = true
                 });
                 RefreshStatus("已打开日志目录: " + logsDirectory);
+                WriteManagerLog(DiagnosticSeverity.Info, "PH-LOGS-OPEN", "FrameworkSettingsWindow.OpenLogsDirectory", "Opened logs directory: " + logsDirectory);
             }
             catch (Exception ex)
             {
@@ -5484,11 +5771,39 @@ namespace PlugHub.Manager
                 var targetPath = Path.Combine(BaseDirectory(), "exports", "plughub-logs.zip");
                 new PlugHubLogExporter().Export(BaseDirectory(), targetPath);
                 RefreshStatus("日志已导出: " + targetPath);
+                WriteManagerLog(DiagnosticSeverity.Info, "PH-LOGS-EXPORT", "FrameworkSettingsWindow.ExportLogs", "Exported logs to: " + targetPath);
             }
             catch (Exception ex)
             {
                 ReportSettingsError("导出日志失败", ex);
             }
+        }
+
+        private void LogDiagnostics(string operation, IEnumerable<DiagnosticMessage> diagnostics)
+        {
+            foreach (var diagnostic in diagnostics ?? Enumerable.Empty<DiagnosticMessage>())
+            {
+                new PlugHubLogger().Write(BaseDirectory(), new PlugHubLogEntry
+                {
+                    Severity = diagnostic.Severity,
+                    Code = diagnostic.Code,
+                    ModuleId = diagnostic.ModuleId,
+                    Operation = operation,
+                    Message = diagnostic.Message
+                });
+            }
+        }
+
+        private void WriteManagerLog(DiagnosticSeverity severity, string code, string operation, string message)
+        {
+            new PlugHubLogger().Write(BaseDirectory(), new PlugHubLogEntry
+            {
+                Severity = severity,
+                Code = code ?? string.Empty,
+                ModuleId = "settings",
+                Operation = operation ?? string.Empty,
+                Message = message ?? string.Empty
+            });
         }
 
         private string ToPluginRelativePath(string path)
@@ -5734,15 +6049,27 @@ namespace PlugHub.Manager
             public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
             {
                 if (!(value is RepositoryRow row)) return string.Empty;
-                var provider = string.IsNullOrWhiteSpace(row.Provider) ? DefaultRepositoryProvider : row.Provider;
+                if (string.Equals(row.Provider, "local", StringComparison.OrdinalIgnoreCase))
+                {
+                    return "本地文件夹 · " + ShortPath(row.Repository);
+                }
+
                 var visibility = string.Equals(row.Visibility, "private", StringComparison.OrdinalIgnoreCase) ? "私有" : "公开";
-                return provider + " · " + visibility;
+                var slug = RepositoryAddress.SlugFromRepository(row.Repository);
+                return "云端仓库 · " + visibility + (string.IsNullOrWhiteSpace(slug) ? string.Empty : " · " + slug);
             }
 
             public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
             {
                 return Binding.DoNothing;
             }
+        }
+
+        private static string ShortPath(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path)) return string.Empty;
+            var normalized = path.Trim().TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar, '/', '\\');
+            return normalized.Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries).LastOrDefault() ?? normalized;
         }
 
         private sealed class RepositoryPackageMetaLabelConverter : IValueConverter
