@@ -166,7 +166,6 @@ namespace PlugHub.Manager
             var theme = RevitUiTheme.Current;
             var header = new Grid { Margin = new Thickness(0, 0, 0, 10) };
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
             var titleArea = new StackPanel
             {
@@ -193,18 +192,6 @@ namespace PlugHub.Manager
             Grid.SetColumn(titleArea, 0);
             header.Children.Add(titleArea);
 
-            var metrics = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                HorizontalAlignment = HorizontalAlignment.Right,
-                VerticalAlignment = VerticalAlignment.Bottom
-            };
-            metrics.Children.Add(BuildHeaderMetric("模块", ConfiguredModuleCount().ToString(CultureInfo.InvariantCulture)));
-            metrics.Children.Add(BuildHeaderMetric("功能", ConfiguredFeatureCount().ToString(CultureInfo.InvariantCulture)));
-            metrics.Children.Add(BuildHeaderMetric("仓库", ConfiguredRepositoryCount().ToString(CultureInfo.InvariantCulture)));
-            Grid.SetColumn(metrics, 1);
-            header.Children.Add(metrics);
-
             return header;
         }
 
@@ -218,27 +205,6 @@ namespace PlugHub.Manager
                 Margin = new Thickness(0, 0, 10, 0),
                 Stretch = Stretch.Uniform,
                 VerticalAlignment = VerticalAlignment.Center
-            };
-        }
-
-        private static UIElement BuildHeaderMetric(string label, string value)
-        {
-            var theme = RevitUiTheme.Current;
-            var text = new TextBlock
-            {
-                Text = label + " " + value,
-                Foreground = theme.MutedTextBrush,
-                FontSize = 11
-            };
-
-            return new Border
-            {
-                Margin = new Thickness(6, 0, 0, 0),
-                Padding = new Thickness(7, 3, 7, 3),
-                Background = theme.SurfaceBackground,
-                BorderBrush = theme.BorderBrush,
-                BorderThickness = new Thickness(1),
-                Child = text
             };
         }
 
@@ -459,43 +425,47 @@ namespace PlugHub.Manager
 
         private TabItem BuildAboutTab()
         {
-            var theme = RevitUiTheme.Current;
             var pendingOperationCount = _packageRepositoryService.ListPendingOperations(BaseDirectory())
                 .Count(operation => !string.Equals(operation.Operation, "restart", StringComparison.OrdinalIgnoreCase));
-            var root = new Grid { Margin = new Thickness(14) };
+            var root = new Grid { Margin = new Thickness(10) };
             root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(4, GridUnitType.Star) });
             root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(6, GridUnitType.Star) });
 
             var left = BuildAboutSection(
                 BuildAboutLeftPanel(),
-                new Thickness(0, 0, 10, 0),
-                new Thickness(14));
+                new Thickness(0, 0, 8, 0),
+                new Thickness(12));
             Grid.SetColumn(left, 0);
             root.Children.Add(left);
 
-            var right = new StackPanel { Margin = new Thickness(10, 0, 0, 0) };
-            right.Children.Add(BuildAboutSection(
+            var right = new Grid { Margin = new Thickness(8, 0, 0, 0) };
+            right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            var asset = BuildAboutSection(
                 BuildAboutAssetPanel(pendingOperationCount),
-                new Thickness(0, 0, 0, 10),
-                new Thickness(12)));
-            right.Children.Add(BuildAboutSection(
+                new Thickness(0, 0, 0, 8),
+                new Thickness(10));
+            Grid.SetRow(asset, 0);
+            right.Children.Add(asset);
+
+            var paths = BuildAboutSection(
                 BuildAboutPathPanel(),
-                new Thickness(0, 0, 0, 10),
-                new Thickness(12)));
-            right.Children.Add(BuildAboutSection(
+                new Thickness(0, 0, 0, 8),
+                new Thickness(10));
+            Grid.SetRow(paths, 1);
+            right.Children.Add(paths);
+
+            var diagnostics = BuildAboutSection(
                 BuildAboutDiagnosticsPanel(pendingOperationCount),
                 new Thickness(0),
-                new Thickness(12)));
+                new Thickness(10));
+            Grid.SetRow(diagnostics, 2);
+            right.Children.Add(diagnostics);
             Grid.SetColumn(right, 1);
             root.Children.Add(right);
 
-            return BuildTab("关于", new ScrollViewer
-            {
-                Content = root,
-                Background = theme.PanelBackground,
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
-            });
+            return BuildTab("关于", root);
         }
 
         private UIElement BuildAboutLeftPanel()
@@ -519,18 +489,18 @@ namespace PlugHub.Manager
             Grid.SetRow(top, 0);
             root.Children.Add(top);
 
-            var contact = new StackPanel { Margin = new Thickness(0, 16, 0, 0) };
-            contact.Children.Add(BuildAboutContactRow("核心作者", "ArchTech Lab"));
+            var contact = new StackPanel { Margin = new Thickness(0, 12, 0, 0) };
+            contact.Children.Add(BuildAboutContactRow("核心作者", "GaoMengGu"));
             contact.Children.Add(BuildAboutContactRow("反馈邮箱", "work@lihao.space"));
-            contact.Children.Add(BuildAboutContactRow("交流群号", "851767374 (PlugHub 交流群)"));
-            contact.Children.Add(BuildAboutContactRow("开源主页", "GaoMengGu/PlugHub"));
+            contact.Children.Add(BuildAboutContactRow("交流群号", "851767374 (PlugHub 交流群)", "https://qm.qq.com/q/NN2psby1cQ"));
+            contact.Children.Add(BuildAboutContactRow("开源主页", "GaoMengGu/PlugHub", "https://github.com/GaoMengGu/PlugHub"));
             Grid.SetRow(contact, 1);
             root.Children.Add(contact);
 
-            var donate = new StackPanel { VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 16, 0, 0) };
+            var donate = new StackPanel { VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 10, 0, 0) };
             donate.Children.Add(new TextBlock
             {
-                Text = "如果 PlugHub 提高了你的工作效率，欢迎支持作者继续维护。",
+                Text = "如果 PlugHub 提高了你的工作效率，欢迎请作者喝一杯咖啡 ☕",
                 TextAlignment = TextAlignment.Center,
                 Foreground = theme.TextBrush,
                 TextWrapping = TextWrapping.Wrap,
@@ -574,7 +544,7 @@ namespace PlugHub.Manager
             panel.Children.Add(AboutSectionTitle("动作与异常诊断中心"));
             panel.Children.Add(BuildAboutInfoRow("日志消息", (FrameworkRuntimeState.Current?.Diagnostics.Count ?? 0).ToString(CultureInfo.InvariantCulture)));
             panel.Children.Add(BuildAboutInfoRow("待重启操作", pendingOperationCount.ToString(CultureInfo.InvariantCulture)));
-            panel.Children.Add(BuildValidationCommandRow());
+            panel.Children.Add(BuildAboutInfoRow("诊断入口", "日志目录和配置目录可在上方直接打开。"));
             return panel;
         }
 
@@ -658,11 +628,24 @@ namespace PlugHub.Manager
             };
         }
 
-        private static UIElement BuildAboutContactRow(string label, string value)
+        private static UIElement BuildAboutContactRow(string label, string value, string url = "")
         {
             var block = new TextBlock { Margin = new Thickness(0, 0, 0, 7), FontSize = 11 };
             block.Inlines.Add(new Run(label + ": ") { Foreground = RevitUiTheme.Current.SubtleTextBrush });
-            block.Inlines.Add(new Run(value) { Foreground = RevitUiTheme.Current.TextBrush, FontWeight = FontWeights.SemiBold });
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                block.Inlines.Add(new Run(value) { Foreground = RevitUiTheme.Current.TextBrush, FontWeight = FontWeights.SemiBold });
+                return block;
+            }
+
+            var link = new Hyperlink(new Run(value))
+            {
+                Foreground = RevitUiTheme.Current.AccentBrush,
+                FontWeight = FontWeights.SemiBold,
+                ToolTip = url
+            };
+            link.Click += (sender, args) => OpenExternalLink(url);
+            block.Inlines.Add(link);
             return block;
         }
 
@@ -680,8 +663,8 @@ namespace PlugHub.Manager
             panel.Children.Add(new Image
             {
                 Source = LoadManagerImage(resourceName),
-                Width = 76,
-                Height = 76,
+                Width = 108,
+                Height = 108,
                 Stretch = Stretch.Uniform,
                 SnapsToDevicePixels = true
             });
@@ -742,49 +725,21 @@ namespace PlugHub.Manager
             return row;
         }
 
-        private UIElement BuildValidationCommandRow()
+        private static void OpenExternalLink(string url)
         {
-            const string command = "dotnet run --project src/PlugHub.StaticValidation/PlugHub.StaticValidation.csproj";
-            var theme = RevitUiTheme.Current;
-            var box = new Border
+            if (string.IsNullOrWhiteSpace(url)) return;
+            try
             {
-                Margin = new Thickness(0, 7, 0, 0),
-                Padding = new Thickness(8, 6, 8, 6),
-                Background = theme.ControlBackground,
-                BorderBrush = theme.BorderBrush,
-                BorderThickness = new Thickness(1)
-            };
-            var grid = new Grid();
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            grid.Children.Add(new TextBlock
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = url,
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception ex)
             {
-                Text = command,
-                Foreground = theme.TextBrush,
-                FontFamily = new FontFamily("Consolas"),
-                TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(0, 0, 8, 0)
-            });
-            var copy = CreateSmallTextButton("复制指令", "复制静态验证指令", (sender, args) => CopyTextToClipboard(command, "静态验证指令"));
-            Grid.SetColumn(copy, 1);
-            grid.Children.Add(copy);
-            box.Child = grid;
-            return box;
-        }
-
-        private static Button CreateSmallTextButton(string text, string tooltip, RoutedEventHandler handler)
-        {
-            var button = new Button
-            {
-                Content = text,
-                MinWidth = 42,
-                Height = 24,
-                Padding = new Thickness(6, 1, 6, 1),
-                Margin = new Thickness(4, 0, 0, 0),
-                ToolTip = tooltip
-            };
-            button.Click += handler;
-            return button;
+                Trace.TraceWarning("PH-ABOUT-LINK-FAILED: " + ex.Message);
+            }
         }
 
         private void OpenAboutPath(string path)
@@ -3645,7 +3600,7 @@ namespace PlugHub.Manager
             var placedFeatureIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var features = _viewModel.Features
                 .Where(feature => feature.Visible && !string.IsNullOrWhiteSpace(feature.FeatureId))
-                .OrderBy(feature => DisplayName(feature.ModuleName, feature.ModuleId, "默认工具"), StringComparer.OrdinalIgnoreCase)
+                .OrderBy(DefaultRibbonPanelName, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(feature => feature.Order)
                 .ThenBy(feature => feature.Name, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(feature => feature.FeatureId, StringComparer.OrdinalIgnoreCase)
@@ -3692,7 +3647,13 @@ namespace PlugHub.Manager
 
         private static string DefaultRibbonPanelName(FeatureRow feature)
         {
-            return DisplayName(feature.ModuleName, feature.ModuleId, "默认工具");
+            return DisplayName(
+                feature == null ? string.Empty : feature.GroupDisplayText,
+                DisplayName(
+                    feature == null ? string.Empty : feature.ModuleName,
+                    feature == null ? string.Empty : feature.ModuleId,
+                    "默认工具"),
+                "默认工具");
         }
 
         private static List<RibbonLayoutNodeRow> MergeRibbonPanelsByDisplayName(IEnumerable<RibbonLayoutNodeRow> panels)

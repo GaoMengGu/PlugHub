@@ -44,6 +44,7 @@ namespace PlugHub.StaticValidation
                 ValidateModulesManifestSchemaAndCompatibility();
                 ValidateRibbonLayoutConfigurationModels();
                 ValidateRibbonLayoutComposerShape();
+                ValidateConfiguredRibbonLayoutAppendsUnplacedFeaturesByGroup();
                 ValidateRibbonLayoutRules();
                 ValidateRibbonLayoutSettingsRows();
                 ValidateRevitRibbonAdapter();
@@ -928,13 +929,56 @@ namespace PlugHub.StaticValidation
             Require(composer.Contains("BuildConfiguredLayout"), "RibbonLayoutComposer must support configured ribbon panels.");
             Require(composer.Contains("MergeConfiguredPanelsByDisplayName"), "RibbonLayoutComposer configured layout must merge same-name panels.");
             Require(composer.Contains("AppendUnplacedFeatures"), "RibbonLayoutComposer must keep visible unplaced features reachable.");
-            Require(composer.Contains("\"默认\"") && composer.Contains("\"default\""), "RibbonLayoutComposer must place runtime unplaced features into the 默认 panel.");
+            Require(composer.Contains("GroupBy(feature => SafeText(feature.GroupName") && composer.Contains("existingPanel.Items.Concat(items)"), "RibbonLayoutComposer must append runtime unplaced features to their resolved group panels instead of one default panel.");
             Require(!composer.Contains("Autodesk.Revit"), "RibbonLayoutComposer must not reference Revit API.");
             Require(viewModel.Contains("public sealed class RibbonLayoutViewModel"), "RibbonLayoutViewModel type must exist.");
             Require(viewModel.Contains("public const string PushButton = \"pushButton\""), "Ribbon layout item type constants must include pushButton.");
             Require(viewModel.Contains("public const string PulldownButton = \"pulldownButton\""), "Ribbon layout item type constants must include pulldownButton.");
             Require(viewModel.Contains("public const string SplitButton = \"splitButton\""), "Ribbon layout item type constants must include splitButton.");
             Require(viewModel.Contains("public const string Stack = \"stack\""), "Ribbon layout item type constants must include stack.");
+        }
+
+        private static void ValidateConfiguredRibbonLayoutAppendsUnplacedFeaturesByGroup()
+        {
+            var ribbon = new PlugHub.Framework.Configuration.RibbonConfiguration
+            {
+                TabName = "PlugHub",
+                FallbackPanelName = "默认",
+                Panels = new List<PlugHub.Framework.Configuration.RibbonPanelLayoutConfiguration>
+                {
+                    new PlugHub.Framework.Configuration.RibbonPanelLayoutConfiguration
+                    {
+                        Id = "view-tools",
+                        Name = "视图工具",
+                        Order = 100,
+                        Items = new List<PlugHub.Framework.Configuration.RibbonItemLayoutConfiguration>
+                        {
+                            new PlugHub.Framework.Configuration.RibbonItemLayoutConfiguration
+                            {
+                                Type = "pushButton",
+                                Id = "grid",
+                                FeatureId = "view.grid",
+                                Order = 100
+                            }
+                        }
+                    }
+                }
+            };
+            var view = new PlugHub.Framework.Configuration.ViewConfiguration { Ribbon = ribbon };
+            var features = new List<PlugHub.Framework.Composition.FeatureViewModel>
+            {
+                new PlugHub.Framework.Composition.FeatureViewModel { FeatureId = "view.grid", DisplayName = "轴网显隐", GroupId = "view", GroupName = "视图工具", GroupOrder = 100, DisplayOrder = 100 },
+                new PlugHub.Framework.Composition.FeatureViewModel { FeatureId = "view.reference-plane", DisplayName = "参照平面显隐", GroupId = "view", GroupName = "视图工具", GroupOrder = 100, DisplayOrder = 200 },
+                new PlugHub.Framework.Composition.FeatureViewModel { FeatureId = "mep.filter", DisplayName = "机电过滤", GroupId = "mep", GroupName = "机电工具", GroupOrder = 200, DisplayOrder = 100 }
+            };
+
+            var layout = new PlugHub.Framework.Composition.RibbonLayoutComposer().Compose(view, features);
+            var viewPanel = layout.Panels.SingleOrDefault(panel => panel.Name == "视图工具");
+            var mepPanel = layout.Panels.SingleOrDefault(panel => panel.Name == "机电工具");
+
+            Require(viewPanel != null && viewPanel.Items.SelectMany(item => item.ClickableFeatures()).Any(feature => feature.FeatureId == "view.reference-plane"), "configured ribbon layout must append new view features to the existing 视图工具 panel.");
+            Require(mepPanel != null && mepPanel.Items.SelectMany(item => item.ClickableFeatures()).Any(feature => feature.FeatureId == "mep.filter"), "configured ribbon layout must create the 机电工具 panel for unplaced MEP features.");
+            Require(!layout.Panels.Any(panel => panel.Name == "默认"), "configured ribbon layout must not collect grouped unplaced package features under 默认.");
         }
 
         private static void ValidateRibbonLayoutRules()
@@ -1739,10 +1783,11 @@ namespace PlugHub.StaticValidation
             }
 
             var aboutTab = MethodBody(settingsWindow, "BuildAboutTab");
-            foreach (var token in new[] { "BuildAboutLeftPanel", "BuildAboutAssetPanel", "BuildAboutPathPanel", "BuildAboutDiagnosticsPanel", "ListPendingOperations", "ScrollViewer" })
+            foreach (var token in new[] { "BuildAboutLeftPanel", "BuildAboutAssetPanel", "BuildAboutPathPanel", "BuildAboutDiagnosticsPanel", "ListPendingOperations", "Grid" })
             {
                 Require(aboutTab.Contains(token), "about tab must keep framework metadata and diagnostics together: " + token);
             }
+            Require(!aboutTab.Contains("ScrollViewer"), "about tab must stay on one page without an overall scrollbar.");
 
             var aboutLeftPanel = MethodBody(settingsWindow, "BuildAboutLeftPanel");
             foreach (var token in new[] { "BuildAboutHeader", "BuildDonationCodes", "反馈邮箱", "交流群号" })
@@ -1925,6 +1970,7 @@ namespace PlugHub.StaticValidation
             Require(theme.Contains("UIThemeManager") && theme.Contains("AppsUseLightTheme"), "Revit WPF UI theme detection must prefer Revit host theme and fall back to Windows app theme.");
             Require(theme.Contains("ButtonStyle") && theme.Contains("TabItem") && theme.Contains("DataGridRow"), "Revit WPF UI theme must provide shared styles for buttons, tabs, and grids.");
             Require(theme.Contains("resources.Add(typeof(ComboBoxItem), ComboBoxItemStyle(palette))") && theme.Contains("ComboBoxItemTemplate"), "Revit WPF UI theme must explicitly style ComboBox dropdown items instead of leaving selected items on system colors.");
+            Require(theme.Contains("ComboBoxTemplate(palette)") && theme.Contains("SelectionBoxItem") && theme.Contains("PART_Popup") && theme.Contains("PART_EditableTextBox") && theme.Contains("ComboBoxToggleTemplate"), "Revit WPF UI theme must explicitly template closed and editable ComboBox states so dark theme selectors cannot remain white.");
             Require(theme.Contains("ComboBoxItem.IsHighlightedProperty") && theme.Contains("Selector.IsSelectedProperty") && theme.Contains("Control.BackgroundProperty, palette.SelectionBrush") && theme.Contains("Control.ForegroundProperty, palette.TextBrush"), "ComboBox dropdown hover and selected states must keep readable themed foreground/background colors.");
             Require(theme.Contains("SystemColors.WindowBrushKey") && theme.Contains("SystemColors.HighlightBrushKey") && theme.Contains("palette.ControlBackground"), "ComboBox dropdown popups must override WPF system window/highlight colors so dark theme menus cannot remain white.");
             Require(theme.Contains("ContentTemplateSelectorProperty") && theme.Contains("ContentPresenter.ContentTemplateSelectorProperty"), "custom ComboBox item templates must preserve DisplayMemberPath through the generated content template selector.");
@@ -1934,6 +1980,11 @@ namespace PlugHub.StaticValidation
             Require(settingsWindow.Contains("public override string ToString()") && settingsWindow.Contains("return DisplayText;"), "layout designer combo option objects must fall back to user-facing labels if WPF ignores DisplayMemberPath.");
             Require(settingsWindow.Contains("BuildAboutTab") && settingsWindow.Contains("tabs.Items.Add(BuildAboutTab())"), "settings window must include an About tab.");
             Require(settingsWindow.Contains("BuildAboutBadge") && settingsWindow.Contains("BuildAboutInfoRow") && settingsWindow.Contains("Revit 2020"), "About tab must show concise project/runtime metadata.");
+            Require(settingsWindow.Contains("核心作者") && settingsWindow.Contains("GaoMengGu") && settingsWindow.Contains("https://qm.qq.com/q/NN2psby1cQ") && settingsWindow.Contains("https://github.com/GaoMengGu/PlugHub"), "About tab must show updated author and clickable community/source links.");
+            Require(settingsWindow.Contains("欢迎请作者喝一杯咖啡") && settingsWindow.Contains("☕") && settingsWindow.Contains("Width = 108") && settingsWindow.Contains("Height = 108"), "About tab must use the updated coffee support copy and larger payment QR codes.");
+            var aboutTab = MethodBody(settingsWindow, "BuildAboutTab");
+            Require(!aboutTab.Contains("ScrollViewer"), "About tab must fit in one page without triggering an overall scrollbar.");
+            Require(!settingsWindow.Contains("BuildValidationCommandRow") && !settingsWindow.Contains("复制指令"), "About diagnostics must not expose developer-only static-validation command copying to normal users.");
             Require(settingsWindow.Contains("BuildButtonContent") && settingsWindow.Contains("IconKeyForButtonText"), "settings window buttons must use consistent vector icon content where appropriate.");
             Require(iconProvider.Contains("\"about\"") && iconProvider.Contains("\"repository\"") && iconProvider.Contains("\"layout\""), "built-in icon suite must include common settings/about/repository/layout icons.");
             Require(!Directory.Exists(FullPath("src/PlugHub.Revit2020/Resources")), "Revit adapter must not keep obsolete file-based icon resources.");

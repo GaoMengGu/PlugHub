@@ -244,26 +244,36 @@ namespace PlugHub.Framework.Composition
                 .ToList();
             if (!unplaced.Any()) return;
 
-            var defaultPanel = panels.FirstOrDefault(panel => string.Equals(panel.Name, "默认", StringComparison.OrdinalIgnoreCase));
-            var defaultItems = unplaced
-                .Select(feature => PushItem(feature, "large", string.Empty, string.Empty))
-                .ToList();
-            if (defaultPanel == null)
+            foreach (var group in unplaced.GroupBy(feature => SafeText(feature.GroupName, ribbon.FallbackPanelName), StringComparer.OrdinalIgnoreCase))
             {
+                var panelName = SafeText(group.Key, ribbon.FallbackPanelName);
+                var items = group
+                    .Select(feature => PushItem(feature, "large", string.Empty, string.Empty))
+                    .ToList();
+                var existingPanel = panels.FirstOrDefault(panel => string.Equals(panel.Name, panelName, StringComparison.OrdinalIgnoreCase));
+                if (existingPanel == null)
+                {
+                    panels.Add(new RibbonPanelViewModel(
+                        SafeId(group.FirstOrDefault()?.GroupId, panelName),
+                        panelName,
+                        group.Min(feature => feature.GroupOrder),
+                        items));
+                    continue;
+                }
+
+                panels.Remove(existingPanel);
                 panels.Add(new RibbonPanelViewModel(
-                    "default",
-                    "默认",
-                    int.MaxValue,
-                    defaultItems));
-                return;
+                    existingPanel.Id,
+                    existingPanel.Name,
+                    existingPanel.Order,
+                    existingPanel.Items.Concat(items).ToList()));
             }
 
-            panels.Remove(defaultPanel);
-            panels.Add(new RibbonPanelViewModel(
-                defaultPanel.Id,
-                defaultPanel.Name,
-                defaultPanel.Order,
-                defaultPanel.Items.Concat(defaultItems).ToList()));
+            panels.Sort((left, right) =>
+            {
+                var order = left.Order.CompareTo(right.Order);
+                return order != 0 ? order : StringComparer.OrdinalIgnoreCase.Compare(left.Name, right.Name);
+            });
         }
 
         private static RibbonItemViewModel PushItem(FeatureViewModel feature, string? size, string? textOverride, string? iconPathOverride)
