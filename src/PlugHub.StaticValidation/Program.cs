@@ -1604,9 +1604,9 @@ namespace PlugHub.StaticValidation
             Require(settingsWindow.Contains("ResolveRibbonDesignerDropPlan"), "visual designer must move existing canvas items directly between containers.");
             Require(settingsWindow.Contains("InsertRibbonDesignerNode"), "visual designer must insert moved or new items at the resolved drop position.");
             Require(!settingsWindow.Contains("RibbonDesignerFeatureListDrop") && !settingsWindow.Contains("RemoveRibbonDesignerFeatureFromCanvas"), "visual designer must not remove functions by dragging them to a separate feature list.");
-            Require(settingsWindow.Contains("BuildRibbonDesignerIconSelector"), "visual designer must use one unified icon selector for custom and built-in icons.");
-            Require(settingsWindow.Contains("IsEditable = true") && settingsWindow.Contains("MaxDropDownHeight"), "unified icon selector must accept custom paths and keep built-in choices bounded.");
-            Require(settingsWindow.Contains("RibbonDesignerIconOptions") && settingsWindow.Contains("RibbonDesignerBrowseIconAction") && settingsWindow.Contains("RibbonDesignerClearIconAction"), "unified icon selector must keep browse and clear actions inside the icon dropdown.");
+            Require(!settingsWindow.Contains("BuildRibbonDesignerIconSelector") && !settingsWindow.Contains("RibbonDesignerIconOptions"), "layout page must not expose custom button icon editing.");
+            Require(!settingsWindow.Contains("RibbonDesignerBrowseIconAction") && !settingsWindow.Contains("RibbonDesignerClearIconAction"), "layout page must not expose browse or clear icon actions.");
+            Require(!settingsWindow.Contains("BuildRibbonDesignerPropertyField(\"图标\""), "layout property panel must not show an icon field.");
             Require(!settingsWindow.Contains("BuildRibbonDesignerIconActions"), "visual designer must not expose separate icon action buttons outside the icon dropdown.");
             Require(settingsWindow.Contains("CombineRibbonDesignerPushButtons"), "visual designer must support direct drag-to-combine for canvas push buttons.");
             Require(settingsWindow.Contains("CreateRibbonDesignerStackFromDrop"), "visual designer must create a stack when a push button is dropped onto another push button.");
@@ -1633,7 +1633,7 @@ namespace PlugHub.StaticValidation
             Require(settingsWindow.Contains("CanEditRibbonDesignerDisplayName") && settingsWindow.Contains("_selectedRibbonDesignerText.IsEnabled = CanEditRibbonDesignerDisplayName"), "visual designer properties must make control display names read-only while keeping feature button names editable.");
             Require(settingsWindow.Contains("SelectedRibbonDesignerTextKeyDown") && settingsWindow.Contains("CommitSelectedRibbonDesignerPropertiesFromEditor()"), "visual designer display-name editor must commit on Enter.");
             Require(settingsWindow.Contains("CommitSelectedRibbonDesignerPropertiesBeforeCanvasInteraction"), "visual designer canvas clicks must commit pending property edits before changing selection.");
-            Require(settingsWindow.Contains("CanEditRibbonDesignerIcon") && settingsWindow.Contains("_selectedRibbonDesignerIcon.IsEnabled = CanEditRibbonDesignerIcon"), "visual designer properties must only allow feature button icons to be edited.");
+            Require(!settingsWindow.Contains("CanEditRibbonDesignerIcon") && !settingsWindow.Contains("_selectedRibbonDesignerIcon"), "visual designer properties must not edit button icons from the layout page.");
             Require(settingsWindow.Contains("NormalizeInvalidRibbonDesignerStacksForSave"), "settings save must remove empty stacks and unwrap single-button stacks before writing Revit layout.");
             Require(settingsWindow.Contains("ValidateNoNestedRibbonDesignerStacks"), "settings save must reject nested stacks.");
             Require(settingsWindow.Contains("CanConvertRibbonDesignerNodeType") && settingsWindow.Contains("不能在堆叠中嵌套堆叠"), "visual designer must block converting stack children into stacks.");
@@ -1777,10 +1777,11 @@ namespace PlugHub.StaticValidation
             }
 
             var designerProperties = MethodBody(settingsWindow, "BuildRibbonDesignerPropertyPanel");
-            foreach (var token in new[] { "_selectedRibbonDesignerText", "_selectedRibbonDesignerType", "BuildRibbonDesignerIconSelector", "_selectedRibbonDesignerDefaultFeature", "SelectedRibbonDesignerPropertySelectionChanged" })
+            foreach (var token in new[] { "_selectedRibbonDesignerText", "_selectedRibbonDesignerType", "_selectedRibbonDesignerDefaultFeature", "SelectedRibbonDesignerPropertySelectionChanged" })
             {
                 Require(designerProperties.Contains(token), "visual ribbon designer property panel must keep selected-node editors together: " + token);
             }
+            Require(!designerProperties.Contains("BuildRibbonDesignerPropertyField(\"图标\""), "visual ribbon designer property panel must not expose layout-level icon editing.");
 
             var aboutTab = MethodBody(settingsWindow, "BuildAboutTab");
             foreach (var token in new[] { "BuildAboutLeftPanel", "BuildAboutAssetPanel", "BuildAboutPathPanel", "BuildAboutDiagnosticsPanel", "ListPendingOperations", "Grid" })
@@ -1974,6 +1975,7 @@ namespace PlugHub.StaticValidation
             Require(theme.Contains("OpenComboBoxDropDown") && theme.Contains("UIElement.PreviewMouseLeftButtonDownEvent"), "ComboBox closed fields must open from the full control surface, not only from the arrow toggle.");
             Require(theme.Contains("ComboBoxItem.IsHighlightedProperty") && theme.Contains("Selector.IsSelectedProperty") && theme.Contains("Control.BackgroundProperty, palette.SelectionBrush") && theme.Contains("Control.ForegroundProperty, palette.TextBrush"), "ComboBox dropdown hover and selected states must keep readable themed foreground/background colors.");
             Require(theme.Contains("SystemColors.WindowBrushKey") && theme.Contains("SystemColors.HighlightBrushKey") && theme.Contains("palette.ControlBackground"), "ComboBox dropdown popups must override WPF system window/highlight colors so dark theme menus cannot remain white.");
+            Require(theme.Contains("ScrollViewer.MaxHeightProperty") && theme.Contains("ComboBox.MaxDropDownHeightProperty"), "ComboBox dropdown templates must honor MaxDropDownHeight so long filter lists scroll instead of growing unbounded.");
             Require(theme.Contains("ContentTemplateSelectorProperty") && theme.Contains("ContentPresenter.ContentTemplateSelectorProperty"), "custom ComboBox item templates must preserve DisplayMemberPath through the generated content template selector.");
             Require(theme.Contains("TabItemTemplate(palette)") && theme.Contains("ControlTemplate(typeof(TabItem))") && theme.Contains("RootBorder") && theme.Contains("Control.BorderBrushProperty, palette.AccentBrush"), "selected settings tabs must use an explicit template so WPF system colors cannot turn the selected tab white.");
             Require(theme.Contains("MenuItemTemplate") && theme.Contains("PART_Popup") && theme.Contains("SubmenuArrow"), "context menus must use a compact MenuItem template without the default icon slot.");
@@ -1985,6 +1987,7 @@ namespace PlugHub.StaticValidation
             Require(settingsWindow.Contains("欢迎请作者喝一杯咖啡") && settingsWindow.Contains("☕") && settingsWindow.Contains("Width = 128") && settingsWindow.Contains("Height = 128"), "About tab must use the updated coffee support copy and 128px payment QR codes.");
             var aboutTab = MethodBody(settingsWindow, "BuildAboutTab");
             Require(!aboutTab.Contains("ScrollViewer"), "About tab must fit in one page without triggering an overall scrollbar.");
+            Require(aboutTab.Contains("right.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) })"), "About diagnostics section must fill the right column remainder so its bottom aligns with the left column.");
             Require(settingsWindow.Contains("BuildCompactAboutSection") && settingsWindow.Contains("BuildAboutSection") && settingsWindow.Contains("MaxHeight = 38"), "About tab must use compact right-side sections so diagnostics are not clipped.");
             Require(!settingsWindow.Contains("BuildValidationCommandRow") && !settingsWindow.Contains("复制指令"), "About diagnostics must not expose developer-only static-validation command copying to normal users.");
             Require(settingsWindow.Contains("BuildButtonContent") && settingsWindow.Contains("IconKeyForButtonText"), "settings window buttons must use consistent vector icon content where appropriate.");
@@ -2108,6 +2111,7 @@ namespace PlugHub.StaticValidation
             Require(settingsWindow.Contains("_warehousePackageList.HorizontalContentAlignment = HorizontalAlignment.Center") && settingsWindow.Contains("FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center"), "repository package card grid must keep three columns centered with equal left/right spacing.");
             Require(settingsWindow.Contains("RepositoryPackageActionWidth = 72.0") && settingsWindow.Contains("RepositoryPackageActionHeight = 26.0"), "repository package card action buttons must stay compact with fixed dimensions.");
             var packageTemplate = MethodBody(settingsWindow, "BuildRepositoryPackageTemplate");
+            Require(settingsWindow.Contains("RepositoryPackageCardHeight") && packageTemplate.Contains("border.SetValue(FrameworkElement.HeightProperty, RepositoryPackageCardHeight)") && packageTemplate.Contains("border.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Top)"), "repository package cards must keep a fixed card height after filtering instead of stretching with the UniformGrid row.");
             Require(packageTemplate.Contains("var border = new FrameworkElementFactory(typeof(Border))") && packageTemplate.Contains("border.SetBinding(Border.WidthProperty, RepositoryPackageCardWidthBinding())") && packageTemplate.Contains("border.SetValue(Border.MarginProperty, new Thickness(RepositoryCardHorizontalMargin, RepositoryPackageCardVerticalMargin, RepositoryCardHorizontalMargin, RepositoryPackageCardVerticalMargin))"), "repository package card width must bind to the live manager package list width while preserving compact card gaps.");
             Require(packageTemplate.Contains("border.SetValue(Border.PaddingProperty, new Thickness(10, 8, 10, 8))") && packageTemplate.Contains("border.SetValue(Border.BorderThicknessProperty, new Thickness(1))"), "repository package cards must draw their own border with the same card padding as repository source cards.");
             Require(!packageTemplate.Contains("var slot = new FrameworkElementFactory(typeof(Border))") && packageTemplate.Contains("return new DataTemplate { VisualTree = border }"), "repository package cards must not wrap the real card in a fixed-width slot.");

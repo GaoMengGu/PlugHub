@@ -37,8 +37,6 @@ namespace PlugHub.Manager
         private const string DefaultPublicRepository = "GaoMengGu/PlugHub_Packages";
         private const string DefaultRibbonDesignerPanelId = "default";
         private const string DefaultRibbonDesignerPanelName = "默认";
-        private const string RibbonDesignerBrowseIconAction = "__browse_icon__";
-        private const string RibbonDesignerClearIconAction = "__clear_icon__";
         private const double RepositorySettingsDefaultWidth = 1140.0;
         private const double RepositorySettingsDefaultHeight = 600.0;
         private const double SettingsWindowOuterMargin = 12.0;
@@ -57,6 +55,7 @@ namespace PlugHub.Manager
         private const double RepositorySourceCardWidth = RepositorySourceCardSlotWidth - RepositoryCardHorizontalMarginWidth;
         private const double RepositoryPackageScrollbarSafetyReserve = 18.0;
         private const double RepositoryPackageCardMinWidth = 260.0;
+        private const double RepositoryPackageCardHeight = 94.0;
         private const double RepositoryPackageDefaultCardWidth = ((RepositoryCardRowWidth - RepositoryPackageScrollbarSafetyReserve) / RepositoryPackageColumns) - RepositoryCardHorizontalMarginWidth;
         private const double RepositoryPackageActionWidth = 72.0;
         private const double RepositoryPackageActionHeight = 26.0;
@@ -96,7 +95,6 @@ namespace PlugHub.Manager
         private readonly TextBlock _selectedRibbonDesignerName = new TextBlock();
         private readonly TextBox _selectedRibbonDesignerText = new TextBox();
         private readonly ComboBox _selectedRibbonDesignerType = new ComboBox();
-        private readonly ComboBox _selectedRibbonDesignerIcon = new ComboBox();
         private readonly ComboBox _selectedRibbonDesignerDefaultFeature = new ComboBox();
         private readonly HashSet<string> _expandedRibbonDesignerNodeIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private Point _ribbonDesignerDragStartPoint;
@@ -357,7 +355,6 @@ namespace PlugHub.Manager
             _selectedRibbonDesignerType.DisplayMemberPath = nameof(RibbonDisplayModeOption.DisplayText);
             _selectedRibbonDesignerType.SelectedValuePath = nameof(RibbonDisplayModeOption.Value);
             _selectedRibbonDesignerType.SelectionChanged += SelectedRibbonDesignerPropertySelectionChanged;
-            var iconSelector = BuildRibbonDesignerIconSelector();
             _selectedRibbonDesignerDefaultFeature.Height = 26;
             _selectedRibbonDesignerDefaultFeature.DisplayMemberPath = nameof(RibbonDesignerFeatureRow.DisplayText);
             _selectedRibbonDesignerDefaultFeature.SelectedValuePath = nameof(RibbonDesignerFeatureRow.FeatureId);
@@ -366,7 +363,6 @@ namespace PlugHub.Manager
             panel.Children.Add(_selectedRibbonDesignerName);
             panel.Children.Add(BuildRibbonDesignerPropertyField("显示名", _selectedRibbonDesignerText, 180));
             panel.Children.Add(BuildRibbonDesignerPropertyField("控件类型", _selectedRibbonDesignerType, 140));
-            panel.Children.Add(BuildRibbonDesignerPropertyField("图标", iconSelector, 200));
             panel.Children.Add(BuildRibbonDesignerPropertyField("默认功能", _selectedRibbonDesignerDefaultFeature, 220));
 
             return BuildRibbonLayoutColumn("属性", panel);
@@ -383,19 +379,6 @@ namespace PlugHub.Manager
             editor.Margin = new Thickness(0, 2, 0, 0);
             panel.Children.Add(editor);
             return panel;
-        }
-
-        private ComboBox BuildRibbonDesignerIconSelector()
-        {
-            _selectedRibbonDesignerIcon.Height = 26;
-            _selectedRibbonDesignerIcon.Margin = new Thickness(0, 2, 0, 8);
-            _selectedRibbonDesignerIcon.IsEditable = true;
-            _selectedRibbonDesignerIcon.MaxDropDownHeight = 220;
-            _selectedRibbonDesignerIcon.ItemsSource = RibbonDesignerIconOptions();
-            _selectedRibbonDesignerIcon.DisplayMemberPath = nameof(IconOption.DisplayText);
-            _selectedRibbonDesignerIcon.SelectedValuePath = nameof(IconOption.Value);
-            _selectedRibbonDesignerIcon.SelectionChanged += RibbonDesignerIconSelectionChanged;
-            return _selectedRibbonDesignerIcon;
         }
 
         private TabItem BuildRepositoriesTab()
@@ -441,7 +424,7 @@ namespace PlugHub.Manager
             var right = new Grid { Margin = new Thickness(8, 0, 0, 0) };
             right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            right.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
             var asset = BuildCompactAboutSection(
                 BuildAboutAssetPanel(pendingOperationCount),
                 new Thickness(0, 0, 0, 6));
@@ -952,6 +935,7 @@ namespace PlugHub.Manager
 
             _repositoryPackageTagFilter.Width = 140;
             _repositoryPackageTagFilter.Height = 26;
+            _repositoryPackageTagFilter.MaxDropDownHeight = 220;
             _repositoryPackageTagFilter.Margin = new Thickness(8, 0, 0, 0);
             ApplyThemedComboBox(_repositoryPackageTagFilter);
             _repositoryPackageTagFilter.SelectionChanged += RepositoryPackageFilterChanged;
@@ -1026,6 +1010,8 @@ namespace PlugHub.Manager
             var border = new FrameworkElementFactory(typeof(Border));
             border.SetBinding(Border.WidthProperty, RepositoryPackageCardWidthBinding());
             border.SetValue(Border.MinWidthProperty, RepositoryPackageCardMinWidth);
+            border.SetValue(FrameworkElement.HeightProperty, RepositoryPackageCardHeight);
+            border.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Top);
             border.SetValue(Border.MarginProperty, new Thickness(RepositoryCardHorizontalMargin, RepositoryPackageCardVerticalMargin, RepositoryCardHorizontalMargin, RepositoryPackageCardVerticalMargin));
             border.SetValue(Border.PaddingProperty, new Thickness(10, 8, 10, 8));
             border.SetValue(Border.BackgroundProperty, theme.PanelBackground);
@@ -1707,7 +1693,7 @@ namespace PlugHub.Manager
             foreach (var child in parent.Children)
             {
                 child.Size = InferredRibbonDesignerButtonSize(parent, child);
-                if (!CanEditRibbonDesignerIcon(child))
+                if (!RibbonDesignerMapper.IsType(child, RibbonDesignerNodeRow.PushButton))
                 {
                     child.IconPath = string.Empty;
                 }
@@ -2651,12 +2637,10 @@ namespace PlugHub.Manager
                 _selectedRibbonDesignerText.IsEnabled = CanEditRibbonDesignerDisplayName(row);
                 _selectedRibbonDesignerType.ItemsSource = typeOptions;
                 _selectedRibbonDesignerType.IsEnabled = canEditItemType && typeOptions.Count > 1;
-                _selectedRibbonDesignerIcon.IsEnabled = CanEditRibbonDesignerIcon(row);
                 _selectedRibbonDesignerDefaultFeature.IsEnabled = hasSelection && RibbonDesignerMapper.IsType(row!, RibbonDesignerNodeRow.SplitButton);
 
                 _selectedRibbonDesignerText.Text = hasSelection ? row!.Text : string.Empty;
                 _selectedRibbonDesignerType.SelectedValue = canEditItemType ? row!.NodeType : null;
-                SetRibbonDesignerIconSelectorText(CanEditRibbonDesignerIcon(row) ? row!.IconPath : string.Empty);
                 var defaultFeatureRows = hasSelection ? RibbonDesignerDefaultFeatureRows(row!).ToList() : new List<RibbonDesignerFeatureRow>();
                 _selectedRibbonDesignerDefaultFeature.ItemsSource = defaultFeatureRows;
                 _selectedRibbonDesignerDefaultFeature.SelectedValue = hasSelection ? row!.DefaultFeatureId : string.Empty;
@@ -2672,11 +2656,6 @@ namespace PlugHub.Manager
             return row != null
                 && (RibbonDesignerMapper.IsType(row, RibbonDesignerNodeRow.Panel)
                     || RibbonDesignerMapper.IsType(row, RibbonDesignerNodeRow.PushButton));
-        }
-
-        private static bool CanEditRibbonDesignerIcon(RibbonDesignerNodeRow? row)
-        {
-            return row != null && RibbonDesignerMapper.IsType(row, RibbonDesignerNodeRow.PushButton);
         }
 
         private IEnumerable<RibbonDesignerFeatureRow> RibbonDesignerDefaultFeatureRows(RibbonDesignerNodeRow row)
@@ -2727,43 +2706,6 @@ namespace PlugHub.Manager
             CommitSelectedRibbonDesignerProperties(false);
         }
 
-        private string SelectedRibbonDesignerIconValue()
-        {
-            var text = (_selectedRibbonDesignerIcon.Text ?? string.Empty).Trim();
-            if (_selectedRibbonDesignerIcon.SelectedItem is IconOption selectedOption)
-            {
-                if (IsRibbonDesignerIconAction(selectedOption.Value)) return string.Empty;
-                return string.Equals(text, selectedOption.DisplayText, StringComparison.OrdinalIgnoreCase)
-                    ? selectedOption.Value
-                    : text;
-            }
-
-            if (!string.IsNullOrWhiteSpace(text))
-            {
-                return text;
-            }
-
-            var selectedValue = Convert.ToString(_selectedRibbonDesignerIcon.SelectedValue);
-            if (!string.IsNullOrWhiteSpace(selectedValue))
-            {
-                return selectedValue;
-            }
-
-            return string.Empty;
-        }
-
-        private void SetRibbonDesignerIconSelectorText(string iconPath)
-        {
-            if (IsBuiltinIconValue(iconPath))
-            {
-                _selectedRibbonDesignerIcon.SelectedValue = iconPath;
-                return;
-            }
-
-            _selectedRibbonDesignerIcon.SelectedIndex = -1;
-            _selectedRibbonDesignerIcon.Text = iconPath ?? string.Empty;
-        }
-
         private void ApplySelectedRibbonDesignerProperties()
         {
             if (!CommitSelectedRibbonDesignerProperties(true))
@@ -2811,7 +2753,11 @@ namespace PlugHub.Manager
             }
 
             row.Size = InferredRibbonDesignerButtonSize(FindRibbonDesignerParent(row) ?? row, row);
-            row.IconPath = CanEditRibbonDesignerIcon(row) ? SelectedRibbonDesignerIconValue() : string.Empty;
+            if (!RibbonDesignerMapper.IsType(row, RibbonDesignerNodeRow.PushButton))
+            {
+                row.IconPath = string.Empty;
+            }
+
             row.DefaultFeatureId = RibbonDesignerMapper.IsType(row, RibbonDesignerNodeRow.SplitButton)
                 ? ValidSplitDefaultFeatureId(row, Convert.ToString(_selectedRibbonDesignerDefaultFeature.SelectedValue) ?? row.DefaultFeatureId)
                 : string.Empty;
@@ -4280,62 +4226,6 @@ namespace PlugHub.Manager
             SetSelectedFeatureIcon(iconPath);
         }
 
-        private void RibbonDesignerIconSelectionChanged(object sender, SelectionChangedEventArgs args)
-        {
-            if (_syncingSelectedRibbonDesignerEditor) return;
-            var iconPath = Convert.ToString(_selectedRibbonDesignerIcon.SelectedValue) ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(iconPath)) return;
-            if (string.Equals(iconPath, RibbonDesignerBrowseIconAction, StringComparison.OrdinalIgnoreCase))
-            {
-                SetSelectedRibbonDesignerIcon();
-                return;
-            }
-
-            if (string.Equals(iconPath, RibbonDesignerClearIconAction, StringComparison.OrdinalIgnoreCase))
-            {
-                SetSelectedRibbonDesignerIcon(string.Empty);
-                return;
-            }
-
-            SetSelectedRibbonDesignerIcon(iconPath);
-        }
-
-        private void SetSelectedRibbonDesignerIcon(string? iconPath = null)
-        {
-            var row = _viewModel.SelectedRibbonDesignerNode;
-            if (row == null)
-            {
-                RefreshStatus("请先选择一个布局项。");
-                return;
-            }
-
-            if (!CanEditRibbonDesignerIcon(row))
-            {
-                RefreshStatus("只有常规按钮需要单独设置图标。");
-                return;
-            }
-
-            if (iconPath == null)
-            {
-                var dialog = new Microsoft.Win32.OpenFileDialog
-                {
-                    Title = "选择功能图标",
-                    Filter = "图标和图片|*.png;*.jpg;*.jpeg;*.ico;*.bmp|所有文件|*.*"
-                };
-                if (dialog.ShowDialog(this) != true)
-                {
-                    SetRibbonDesignerIconSelectorText(row.IconPath);
-                    return;
-                }
-
-                iconPath = ToPluginRelativePath(dialog.FileName);
-            }
-
-            row.IconPath = iconPath;
-            SetRibbonDesignerIconSelectorText(iconPath);
-            RefreshRibbonDesignerAfterLayoutChange("已更新图标，保存并重启 Revit 后生效。");
-        }
-
         private void SetSelectedRepositoryEnabled(bool enabled)
         {
             if (SelectedRepositorySourceRow() is RepositoryRow row)
@@ -4903,28 +4793,6 @@ namespace PlugHub.Manager
                     DisplayText = BuiltinIconDisplayName(key)
                 })
                 .ToList();
-        }
-
-        private static List<IconOption> RibbonDesignerIconOptions()
-        {
-            var options = new List<IconOption>
-            {
-                new IconOption { Value = RibbonDesignerBrowseIconAction, DisplayText = "选择图标..." },
-                new IconOption { Value = RibbonDesignerClearIconAction, DisplayText = "清空图标" }
-            };
-            options.AddRange(BuiltinIconOptions());
-            return options;
-        }
-
-        private static bool IsRibbonDesignerIconAction(string value)
-        {
-            return string.Equals(value, RibbonDesignerBrowseIconAction, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(value, RibbonDesignerClearIconAction, StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static bool IsBuiltinIconValue(string value)
-        {
-            return BuiltinIconOptions().Any(option => string.Equals(option.Value, value, StringComparison.OrdinalIgnoreCase));
         }
 
         private static string BuiltinIconDisplayName(string key)

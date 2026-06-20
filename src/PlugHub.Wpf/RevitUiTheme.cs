@@ -274,6 +274,11 @@ namespace PlugHub.Wpf
 
             var scroll = new FrameworkElementFactory(typeof(ScrollViewer));
             scroll.SetValue(ScrollViewer.CanContentScrollProperty, true);
+            scroll.SetBinding(ScrollViewer.MaxHeightProperty, new Binding
+            {
+                Path = new PropertyPath(ComboBox.MaxDropDownHeightProperty),
+                RelativeSource = RelativeSource.TemplatedParent
+            });
             popupBorder.AppendChild(scroll);
 
             var items = new FrameworkElementFactory(typeof(ItemsPresenter));
