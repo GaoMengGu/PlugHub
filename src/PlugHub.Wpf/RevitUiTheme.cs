@@ -208,6 +208,7 @@ namespace PlugHub.Wpf
             border.SetValue(Border.BorderBrushProperty, new TemplateBindingExtension(Control.BorderBrushProperty));
             border.SetValue(Border.BorderThicknessProperty, new TemplateBindingExtension(Control.BorderThicknessProperty));
             border.SetValue(UIElement.SnapsToDevicePixelsProperty, true);
+            border.AddHandler(UIElement.PreviewMouseLeftButtonDownEvent, new MouseButtonEventHandler(OpenComboBoxDropDown));
             root.AppendChild(border);
 
             var dock = new FrameworkElementFactory(typeof(DockPanel));
@@ -295,6 +296,34 @@ namespace PlugHub.Wpf
             editable.Setters.Add(new Setter(UIElement.VisibilityProperty, Visibility.Visible, "PART_EditableTextBox"));
             template.Triggers.Add(editable);
             return template;
+        }
+
+        private static void OpenComboBoxDropDown(object sender, MouseButtonEventArgs args)
+        {
+            if (args == null || args.Handled) return;
+
+            var comboBox = ComboBoxFromTemplatePart(sender as DependencyObject);
+            if (comboBox == null || !comboBox.IsEnabled || comboBox.IsEditable || comboBox.IsDropDownOpen) return;
+
+            comboBox.Focus();
+            comboBox.IsDropDownOpen = true;
+            args.Handled = true;
+        }
+
+        private static ComboBox? ComboBoxFromTemplatePart(DependencyObject? source)
+        {
+            var element = source as FrameworkElement;
+            var templatedComboBox = element?.TemplatedParent as ComboBox;
+            if (templatedComboBox != null) return templatedComboBox;
+
+            while (source != null)
+            {
+                var comboBox = source as ComboBox;
+                if (comboBox != null) return comboBox;
+                source = VisualTreeHelper.GetParent(source);
+            }
+
+            return null;
         }
 
         private static ControlTemplate ComboBoxToggleTemplate(RevitUiPalette palette)

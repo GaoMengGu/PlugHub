@@ -427,14 +427,14 @@ namespace PlugHub.Manager
         {
             var pendingOperationCount = _packageRepositoryService.ListPendingOperations(BaseDirectory())
                 .Count(operation => !string.Equals(operation.Operation, "restart", StringComparison.OrdinalIgnoreCase));
-            var root = new Grid { Margin = new Thickness(10) };
+            var root = new Grid { Margin = new Thickness(8) };
             root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(4, GridUnitType.Star) });
             root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(6, GridUnitType.Star) });
 
             var left = BuildAboutSection(
                 BuildAboutLeftPanel(),
                 new Thickness(0, 0, 8, 0),
-                new Thickness(12));
+                new Thickness(10));
             Grid.SetColumn(left, 0);
             root.Children.Add(left);
 
@@ -442,24 +442,21 @@ namespace PlugHub.Manager
             right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            var asset = BuildAboutSection(
+            var asset = BuildCompactAboutSection(
                 BuildAboutAssetPanel(pendingOperationCount),
-                new Thickness(0, 0, 0, 8),
-                new Thickness(10));
+                new Thickness(0, 0, 0, 6));
             Grid.SetRow(asset, 0);
             right.Children.Add(asset);
 
-            var paths = BuildAboutSection(
+            var paths = BuildCompactAboutSection(
                 BuildAboutPathPanel(),
-                new Thickness(0, 0, 0, 8),
-                new Thickness(10));
+                new Thickness(0, 0, 0, 6));
             Grid.SetRow(paths, 1);
             right.Children.Add(paths);
 
-            var diagnostics = BuildAboutSection(
+            var diagnostics = BuildCompactAboutSection(
                 BuildAboutDiagnosticsPanel(pendingOperationCount),
-                new Thickness(0),
-                new Thickness(10));
+                new Thickness(0));
             Grid.SetRow(diagnostics, 2);
             right.Children.Add(diagnostics);
             Grid.SetColumn(right, 1);
@@ -481,15 +478,15 @@ namespace PlugHub.Manager
             top.Children.Add(new TextBlock
             {
                 Text = "面向 Revit 2020 的模块化插件框架。",
-                Margin = new Thickness(0, 8, 0, 0),
+                Margin = new Thickness(0, 5, 0, 0),
                 Foreground = theme.MutedTextBrush,
                 TextWrapping = TextWrapping.Wrap,
-                LineHeight = 20
+                LineHeight = 18
             });
             Grid.SetRow(top, 0);
             root.Children.Add(top);
 
-            var contact = new StackPanel { Margin = new Thickness(0, 12, 0, 0) };
+            var contact = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
             contact.Children.Add(BuildAboutContactRow("核心作者", "GaoMengGu"));
             contact.Children.Add(BuildAboutContactRow("反馈邮箱", "work@lihao.space"));
             contact.Children.Add(BuildAboutContactRow("交流群号", "851767374 (PlugHub 交流群)", "https://qm.qq.com/q/NN2psby1cQ"));
@@ -497,14 +494,15 @@ namespace PlugHub.Manager
             Grid.SetRow(contact, 1);
             root.Children.Add(contact);
 
-            var donate = new StackPanel { VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 10, 0, 0) };
+            var donate = new StackPanel { VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 8, 0, 0) };
             donate.Children.Add(new TextBlock
             {
                 Text = "如果 PlugHub 提高了你的工作效率，欢迎请作者喝一杯咖啡 ☕",
                 TextAlignment = TextAlignment.Center,
                 Foreground = theme.TextBrush,
                 TextWrapping = TextWrapping.Wrap,
-                FontSize = 11
+                FontSize = 11,
+                LineHeight = 16
             });
             donate.Children.Add(BuildDonationCodes());
             Grid.SetRow(donate, 2);
@@ -562,6 +560,11 @@ namespace PlugHub.Manager
             };
         }
 
+        private static UIElement BuildCompactAboutSection(UIElement child, Thickness margin)
+        {
+            return BuildAboutSection(child, margin, new Thickness(8));
+        }
+
         private static TextBlock AboutSectionTitle(string title)
         {
             return new TextBlock
@@ -569,7 +572,7 @@ namespace PlugHub.Manager
                 Text = title,
                 FontWeight = FontWeights.SemiBold,
                 Foreground = RevitUiTheme.Current.TextBrush,
-                Margin = new Thickness(0, 0, 0, 8)
+                Margin = new Thickness(0, 0, 0, 5)
             };
         }
 
@@ -651,7 +654,7 @@ namespace PlugHub.Manager
 
         private UIElement BuildDonationCodes()
         {
-            var grid = new UniformGrid { Columns = 2, Margin = new Thickness(0, 9, 0, 0) };
+            var grid = new UniformGrid { Columns = 2, Margin = new Thickness(0, 7, 0, 0) };
             grid.Children.Add(BuildDonationCode("微信支付", "PlugHub.Manager.Resources.wechatpay.png"));
             grid.Children.Add(BuildDonationCode("支付宝", "PlugHub.Manager.Resources.alipay.png"));
             return grid;
@@ -663,8 +666,8 @@ namespace PlugHub.Manager
             panel.Children.Add(new Image
             {
                 Source = LoadManagerImage(resourceName),
-                Width = 108,
-                Height = 108,
+                Width = 128,
+                Height = 128,
                 Stretch = Stretch.Uniform,
                 SnapsToDevicePixels = true
             });
@@ -672,8 +675,10 @@ namespace PlugHub.Manager
             {
                 Text = label,
                 HorizontalAlignment = HorizontalAlignment.Center,
-                Margin = new Thickness(0, 4, 0, 0),
-                FontSize = 10,
+                TextAlignment = TextAlignment.Center,
+                Margin = new Thickness(0, 3, 0, 2),
+                MinHeight = 16,
+                FontSize = 11,
                 Foreground = RevitUiTheme.Current.MutedTextBrush
             });
             return panel;
@@ -697,8 +702,8 @@ namespace PlugHub.Manager
         private UIElement BuildAboutPathRow(string label, string path)
         {
             var theme = RevitUiTheme.Current;
-            var row = new Grid { Margin = new Thickness(0, 0, 0, 7) };
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(50) });
+            var row = new Grid { Margin = new Thickness(0, 0, 0, 4) };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(44) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
@@ -781,7 +786,7 @@ namespace PlugHub.Manager
         private static UIElement BuildAboutInfoRow(string label, string value)
         {
             var theme = RevitUiTheme.Current;
-            var row = new Grid { Margin = new Thickness(0, 0, 0, 6) };
+            var row = new Grid { Margin = new Thickness(0, 0, 0, 4) };
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(78) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
@@ -797,7 +802,8 @@ namespace PlugHub.Manager
             {
                 Text = value ?? string.Empty,
                 Foreground = theme.MutedTextBrush,
-                TextWrapping = TextWrapping.Wrap
+                TextWrapping = TextWrapping.Wrap,
+                MaxHeight = 38
             };
             Grid.SetColumn(valueBlock, 1);
             row.Children.Add(valueBlock);
