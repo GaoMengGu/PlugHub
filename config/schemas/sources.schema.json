@@ -29,7 +29,7 @@
         "properties": {
           "id": {"type": "string"},
           "displayName": {"type": "string"},
-          "provider": {"enum": ["github", "gitee"]},
+          "provider": {"enum": ["github", "gitee", "local"]},
           "visibility": {"enum": ["public", "private"]},
           "repository": {"type": "string"},
           "ref": {"type": "string"},

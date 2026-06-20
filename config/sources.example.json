@@ -8,42 +8,31 @@
     {
       "id": "plughub-public-packages",
       "displayName": "PlugHub 公共插件仓库",
-      "provider": "gitee",
-      "visibility": "public",
-      "repository": "https://gitee.com/GaoMengGu/PlugHub_Packages",
-      "ref": "main",
-      "manifestPath": "packages.json",
-      "apiKey": "",
-      "enabled": true
-    },
-    {
-      "id": "gitee-private-packages",
-      "displayName": "Gitee 私有插件仓库",
-      "provider": "gitee",
-      "visibility": "private",
-      "repository": "https://gitee.com/your-gitee-org/private-plughub-packages",
-      "ref": "master",
-      "manifestPath": "packages.json",
-      "apiKey": "",
-      "enabled": false
-    },
-    {
-      "id": "github-public-packages",
-      "displayName": "GitHub 公共插件仓库",
       "provider": "github",
       "visibility": "public",
       "repository": "GaoMengGu/PlugHub_Packages",
       "ref": "main",
       "manifestPath": "packages.json",
       "apiKey": "",
-      "enabled": false
+      "enabled": true
     },
     {
-      "id": "company-private-packages",
-      "displayName": "公司私有插件仓库",
+      "id": "cloud-private-packages",
+      "displayName": "私有云端插件仓库",
       "provider": "github",
       "visibility": "private",
       "repository": "your-org/private-plughub-packages",
+      "ref": "main",
+      "manifestPath": "packages.json",
+      "apiKey": "",
+      "enabled": false
+    },
+    {
+      "id": "local-folder-packages",
+      "displayName": "本地文件夹插件仓库",
+      "provider": "local",
+      "visibility": "public",
+      "repository": "D:/PlugHub/LocalPackages",
       "ref": "main",
       "manifestPath": "packages.json",
       "apiKey": "",

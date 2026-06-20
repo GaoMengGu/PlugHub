@@ -40,14 +40,7 @@ namespace PlugHub.Manager.Settings
 
         public static string RepositoryDisplayName(string customName, string id, string repository)
         {
-            if (!string.IsNullOrWhiteSpace(customName)) return customName.Trim();
-            if (!string.IsNullOrWhiteSpace(id)) return id.Trim();
-            if (!string.IsNullOrWhiteSpace(repository))
-            {
-                return repository.Trim().TrimEnd('/').Split('/').LastOrDefault() ?? repository.Trim();
-            }
-
-            return "未命名仓库";
+            return PlugHub.Framework.Packages.RepositoryAddress.NormalizeDisplayName(customName, id, repository);
         }
     }
 }

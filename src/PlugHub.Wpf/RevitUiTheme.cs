@@ -190,11 +190,168 @@ namespace PlugHub.Wpf
             style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1)));
             style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(4, 1, 4, 1)));
             style.Setters.Add(new Setter(FrameworkElement.MinHeightProperty, 26.0));
+            style.Setters.Add(new Setter(Control.TemplateProperty, ComboBoxTemplate(palette)));
 
             var focused = new Trigger { Property = UIElement.IsKeyboardFocusWithinProperty, Value = true };
             focused.Setters.Add(new Setter(Control.BorderBrushProperty, palette.AccentBrush));
             style.Triggers.Add(focused);
             return style;
+        }
+
+        private static ControlTemplate ComboBoxTemplate(RevitUiPalette palette)
+        {
+            var root = new FrameworkElementFactory(typeof(Grid));
+
+            var border = new FrameworkElementFactory(typeof(Border));
+            border.Name = "Chrome";
+            border.SetValue(Border.BackgroundProperty, new TemplateBindingExtension(Control.BackgroundProperty));
+            border.SetValue(Border.BorderBrushProperty, new TemplateBindingExtension(Control.BorderBrushProperty));
+            border.SetValue(Border.BorderThicknessProperty, new TemplateBindingExtension(Control.BorderThicknessProperty));
+            border.SetValue(UIElement.SnapsToDevicePixelsProperty, true);
+            border.AddHandler(UIElement.PreviewMouseLeftButtonDownEvent, new MouseButtonEventHandler(OpenComboBoxDropDown));
+            root.AppendChild(border);
+
+            var dock = new FrameworkElementFactory(typeof(DockPanel));
+            dock.SetValue(DockPanel.LastChildFillProperty, true);
+            border.AppendChild(dock);
+
+            var toggle = new FrameworkElementFactory(typeof(ToggleButton));
+            toggle.Name = "DropDownToggle";
+            toggle.SetValue(DockPanel.DockProperty, Dock.Right);
+            toggle.SetValue(Control.BackgroundProperty, Brushes.Transparent);
+            toggle.SetValue(Control.BorderBrushProperty, Brushes.Transparent);
+            toggle.SetValue(Control.BorderThicknessProperty, new Thickness(0));
+            toggle.SetValue(Control.TemplateProperty, ComboBoxToggleTemplate(palette));
+            toggle.SetValue(FrameworkElement.WidthProperty, 22.0);
+            toggle.SetValue(Control.FocusableProperty, false);
+            toggle.SetBinding(ToggleButton.IsCheckedProperty, new Binding("IsDropDownOpen") { RelativeSource = RelativeSource.TemplatedParent, Mode = BindingMode.TwoWay });
+            var arrow = new FrameworkElementFactory(typeof(TextBlock));
+            arrow.SetValue(TextBlock.TextProperty, "v");
+            arrow.SetValue(TextBlock.FontSizeProperty, 10.0);
+            arrow.SetValue(TextBlock.ForegroundProperty, palette.MutedTextBrush);
+            arrow.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+            arrow.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+            toggle.AppendChild(arrow);
+            dock.AppendChild(toggle);
+
+            var editBox = new FrameworkElementFactory(typeof(TextBox));
+            editBox.Name = "PART_EditableTextBox";
+            editBox.SetValue(Control.BackgroundProperty, Brushes.Transparent);
+            editBox.SetValue(Control.ForegroundProperty, palette.TextBrush);
+            editBox.SetValue(Control.BorderBrushProperty, Brushes.Transparent);
+            editBox.SetValue(Control.BorderThicknessProperty, new Thickness(0));
+            editBox.SetValue(Control.PaddingProperty, new Thickness(0));
+            editBox.SetValue(FrameworkElement.MarginProperty, new TemplateBindingExtension(Control.PaddingProperty));
+            editBox.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+            editBox.SetValue(UIElement.VisibilityProperty, Visibility.Collapsed);
+            editBox.SetBinding(TextBox.TextProperty, new Binding("Text") { RelativeSource = RelativeSource.TemplatedParent, Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged });
+            dock.AppendChild(editBox);
+
+            var content = new FrameworkElementFactory(typeof(ContentPresenter));
+            content.Name = "ContentSite";
+            content.SetValue(FrameworkElement.MarginProperty, new TemplateBindingExtension(Control.PaddingProperty));
+            content.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+            content.SetValue(ContentPresenter.RecognizesAccessKeyProperty, true);
+            content.SetBinding(ContentPresenter.ContentProperty, new Binding("SelectionBoxItem") { RelativeSource = RelativeSource.TemplatedParent });
+            content.SetBinding(ContentPresenter.ContentTemplateProperty, new Binding("SelectionBoxItemTemplate") { RelativeSource = RelativeSource.TemplatedParent });
+            content.SetBinding(ContentPresenter.ContentStringFormatProperty, new Binding("SelectionBoxItemStringFormat") { RelativeSource = RelativeSource.TemplatedParent });
+            dock.AppendChild(content);
+
+            var popup = new FrameworkElementFactory(typeof(Popup));
+            popup.Name = "PART_Popup";
+            popup.SetValue(Popup.AllowsTransparencyProperty, true);
+            popup.SetValue(Popup.FocusableProperty, false);
+            popup.SetValue(Popup.PlacementProperty, PlacementMode.Bottom);
+            popup.SetValue(Popup.PopupAnimationProperty, PopupAnimation.Fade);
+            popup.SetBinding(Popup.IsOpenProperty, new Binding("IsDropDownOpen") { RelativeSource = RelativeSource.TemplatedParent });
+
+            var popupBorder = new FrameworkElementFactory(typeof(Border));
+            popupBorder.SetValue(Border.BackgroundProperty, palette.ControlBackground);
+            popupBorder.SetValue(Border.BorderBrushProperty, palette.BorderBrush);
+            popupBorder.SetValue(Border.BorderThicknessProperty, new Thickness(1));
+            popupBorder.SetBinding(FrameworkElement.MinWidthProperty, new Binding("ActualWidth") { RelativeSource = RelativeSource.TemplatedParent });
+            popup.AppendChild(popupBorder);
+
+            var scroll = new FrameworkElementFactory(typeof(ScrollViewer));
+            scroll.SetValue(ScrollViewer.CanContentScrollProperty, true);
+            scroll.SetBinding(ScrollViewer.MaxHeightProperty, new Binding
+            {
+                Path = new PropertyPath(ComboBox.MaxDropDownHeightProperty),
+                RelativeSource = RelativeSource.TemplatedParent
+            });
+            popupBorder.AppendChild(scroll);
+
+            var items = new FrameworkElementFactory(typeof(ItemsPresenter));
+            scroll.AppendChild(items);
+            root.AppendChild(popup);
+
+            var template = new ControlTemplate(typeof(ComboBox)) { VisualTree = root };
+
+            var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+            hover.Setters.Add(new Setter(Border.BackgroundProperty, palette.ControlHoverBackground, "Chrome"));
+            template.Triggers.Add(hover);
+
+            var disabled = new Trigger { Property = UIElement.IsEnabledProperty, Value = false };
+            disabled.Setters.Add(new Setter(UIElement.OpacityProperty, 0.58, "Chrome"));
+            disabled.Setters.Add(new Setter(Control.ForegroundProperty, palette.DisabledTextBrush));
+            template.Triggers.Add(disabled);
+
+            var editable = new Trigger { Property = ComboBox.IsEditableProperty, Value = true };
+            editable.Setters.Add(new Setter(UIElement.VisibilityProperty, Visibility.Collapsed, "ContentSite"));
+            editable.Setters.Add(new Setter(UIElement.VisibilityProperty, Visibility.Visible, "PART_EditableTextBox"));
+            template.Triggers.Add(editable);
+            return template;
+        }
+
+        private static void OpenComboBoxDropDown(object sender, MouseButtonEventArgs args)
+        {
+            if (args == null || args.Handled) return;
+
+            var comboBox = ComboBoxFromTemplatePart(sender as DependencyObject);
+            if (comboBox == null || !comboBox.IsEnabled || comboBox.IsEditable || comboBox.IsDropDownOpen) return;
+
+            comboBox.Focus();
+            comboBox.IsDropDownOpen = true;
+            args.Handled = true;
+        }
+
+        private static ComboBox? ComboBoxFromTemplatePart(DependencyObject? source)
+        {
+            var element = source as FrameworkElement;
+            var templatedComboBox = element?.TemplatedParent as ComboBox;
+            if (templatedComboBox != null) return templatedComboBox;
+
+            while (source != null)
+            {
+                var comboBox = source as ComboBox;
+                if (comboBox != null) return comboBox;
+                source = VisualTreeHelper.GetParent(source);
+            }
+
+            return null;
+        }
+
+        private static ControlTemplate ComboBoxToggleTemplate(RevitUiPalette palette)
+        {
+            var border = new FrameworkElementFactory(typeof(Border));
+            border.Name = "ToggleChrome";
+            border.SetValue(Border.BackgroundProperty, Brushes.Transparent);
+
+            var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
+            presenter.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+            presenter.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+            border.AppendChild(presenter);
+
+            var template = new ControlTemplate(typeof(ToggleButton)) { VisualTree = border };
+
+            var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+            hover.Setters.Add(new Setter(Border.BackgroundProperty, palette.ControlHoverBackground, "ToggleChrome"));
+            template.Triggers.Add(hover);
+
+            var checkedTrigger = new Trigger { Property = ToggleButton.IsCheckedProperty, Value = true };
+            checkedTrigger.Setters.Add(new Setter(Border.BackgroundProperty, palette.ControlPressedBackground, "ToggleChrome"));
+            template.Triggers.Add(checkedTrigger);
+            return template;
         }
 
         private static Style ComboBoxItemStyle(RevitUiPalette palette)

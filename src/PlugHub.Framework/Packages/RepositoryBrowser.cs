@@ -53,6 +53,18 @@ namespace PlugHub.Framework.Packages
                 return new List<RepositoryPackageDescriptor>();
             }
 
+            if (RepositoryAddress.IsLocal(repository))
+            {
+                var localDirectory = LocalRepositoryDirectory(repository);
+                if (string.IsNullOrWhiteSpace(localDirectory) || !Directory.Exists(localDirectory))
+                {
+                    AddDiagnostic(messages, repository.Id, "PH-REPOSITORY-LOCAL", "Local repository folder was not found: " + repository.Repository);
+                    return new List<RepositoryPackageDescriptor>();
+                }
+
+                return BrowseRepositoryDirectory(baseDirectory, repository.Id, localDirectory, repository.ManifestPath, out diagnostics);
+            }
+
             var cacheDirectory = RepositoryCacheDirectory(baseDirectory, repository);
             if (!SyncRepositoryCache(repository, cacheDirectory, messages))
             {
@@ -95,6 +107,11 @@ namespace PlugHub.Framework.Packages
         {
             if (repository == null) throw new ArgumentNullException(nameof(repository));
             diagnostics = new List<DiagnosticMessage>();
+            if (RepositoryAddress.IsLocal(repository))
+            {
+                return BrowseRepositoryDirectory(baseDirectory, repository.Id, LocalRepositoryDirectory(repository), repository.ManifestPath, out diagnostics);
+            }
+
             var cacheDirectory = RepositoryCacheDirectory(baseDirectory, repository);
             return Directory.Exists(cacheDirectory)
                 ? BrowseCached(baseDirectory, repository.Id, cacheDirectory, out diagnostics)
@@ -104,13 +121,15 @@ namespace PlugHub.Framework.Packages
         public bool HasRepositoryCache(string baseDirectory, PackageRepositoryConfiguration repository)
         {
             if (repository == null) return false;
+            if (RepositoryAddress.IsLocal(repository)) return Directory.Exists(LocalRepositoryDirectory(repository));
             return Directory.Exists(RepositoryCacheDirectory(baseDirectory, repository));
         }
 
         public string RepositoryUrl(PackageRepositoryConfiguration repository, bool includeCredential)
         {
-            var provider = string.Equals(repository.Provider, "gitee", StringComparison.OrdinalIgnoreCase) ? "gitee" : "github";
-            return StripRepositorySuffix(StripUrlUserInfo(repository.Repository.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            if (RepositoryAddress.IsLocal(repository)) return LocalRepositoryDirectory(repository);
+            var provider = RepositoryAddress.NormalizeCloudProvider(repository.Provider);
+            return RepositoryAddress.StripRepositorySuffix(RepositoryAddress.StripUrlUserInfo(repository.Repository.StartsWith("http", StringComparison.OrdinalIgnoreCase)
                 ? repository.Repository.Trim()
                 : RepositoryHost(provider) + repository.Repository.Trim().TrimEnd('/')));
         }
@@ -133,38 +152,73 @@ namespace PlugHub.Framework.Packages
             return _archiveSynchronizer.Sync(repository, cacheDirectory, diagnostics);
         }
 
+        private IReadOnlyList<RepositoryPackageDescriptor> BrowseRepositoryDirectory(string baseDirectory, string repositoryId, string repositoryDirectory, string manifestPath, out IReadOnlyList<DiagnosticMessage> diagnostics)
+        {
+            var messages = new List<DiagnosticMessage>();
+            diagnostics = messages;
+            var fullRepositoryDirectory = Path.GetFullPath(repositoryDirectory);
+            var packages = new List<RepositoryPackageDescriptor>();
+
+            if (!string.IsNullOrWhiteSpace(manifestPath))
+            {
+                var fullManifestPath = Path.GetFullPath(Path.Combine(fullRepositoryDirectory, manifestPath));
+                if (!IsUnderDirectory(fullRepositoryDirectory, fullManifestPath))
+                {
+                    AddDiagnostic(messages, repositoryId, "PH-REPOSITORY-MANIFEST", "Repository manifest path is outside the local repository folder: " + manifestPath);
+                    return packages;
+                }
+
+                if (File.Exists(fullManifestPath))
+                {
+                    packages.AddRange(_manifestReader.ReadPackagesFromManifest(fullManifestPath, repositoryId, baseDirectory, _installedPackageVersion, _isModuleInstalled, _pendingOperationFor));
+                }
+            }
+
+            if (packages.Count == 0)
+            {
+                foreach (var foundManifestPath in _manifestReader.FindPackageManifests(fullRepositoryDirectory))
+                {
+                    packages.AddRange(_manifestReader.ReadPackagesFromManifest(foundManifestPath, repositoryId, baseDirectory, _installedPackageVersion, _isModuleInstalled, _pendingOperationFor));
+                }
+            }
+
+            if (packages.Count == 0)
+            {
+                AddDiagnostic(messages, repositoryId, "PH-REPOSITORY-MANIFEST", "No PlugHub packages.json manifests were found in repository.");
+            }
+
+            return packages
+                .GroupBy(package => package.PackageId + "\n" + package.ModuleId, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
+                .OrderBy(package => package.DisplayName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(package => package.PackageId, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
         private static string RepositoryCacheDirectory(string baseDirectory, PackageRepositoryConfiguration repository)
         {
             return Path.Combine(baseDirectory, "repository-cache", SafePathSegment(repository.Id));
         }
 
-        private static string StripUrlUserInfo(string url)
-        {
-            if (string.IsNullOrWhiteSpace(url) || !Uri.TryCreate(url, UriKind.Absolute, out var uri) || string.IsNullOrEmpty(uri.UserInfo))
-            {
-                return url;
-            }
-
-            var builder = new UriBuilder(uri)
-            {
-                UserName = string.Empty,
-                Password = string.Empty
-            };
-            return builder.Uri.AbsoluteUri;
-        }
-
-        private static string StripRepositorySuffix(string value)
-        {
-            var suffix = "." + "git";
-            return value.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)
-                ? value.Substring(0, value.Length - suffix.Length)
-                : value;
-        }
-
         private static bool IsSupportedRepositoryProvider(string provider)
         {
             return string.Equals(provider, "github", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(provider, "gitee", StringComparison.OrdinalIgnoreCase);
+                || string.Equals(provider, "gitee", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(provider, "local", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string LocalRepositoryDirectory(PackageRepositoryConfiguration repository)
+        {
+            return string.IsNullOrWhiteSpace(repository.Repository)
+                ? string.Empty
+                : Path.GetFullPath(repository.Repository.Trim());
+        }
+
+        private static bool IsUnderDirectory(string parentDirectory, string childPath)
+        {
+            var parent = Path.GetFullPath(parentDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            var child = Path.GetFullPath(childPath);
+            return child.StartsWith(parent, StringComparison.OrdinalIgnoreCase);
         }
 
         private static string RepositoryHost(string provider)

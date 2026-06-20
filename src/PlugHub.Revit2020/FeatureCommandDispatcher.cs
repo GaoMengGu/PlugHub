@@ -19,6 +19,7 @@ namespace PlugHub.Revit2020
             if (!FeatureSlotRegistry.TryGetFeatureId(slotId, out var featureId))
             {
                 message = "PlugHub feature slot is not assigned: " + slotId;
+                LogCommand(DiagnosticSeverity.Error, "PH-FEATURE-SLOT", string.Empty, string.Empty, "FeatureCommandDispatcher.ExecuteSlot", message);
                 ShowFailure("PlugHub 功能执行失败", message, "PH-FEATURE-SLOT", string.Empty, DiagnosticSeverity.Error);
                 return Result.Cancelled;
             }
@@ -38,6 +39,7 @@ namespace PlugHub.Revit2020
             if (!decision.Allowed)
             {
                 message = decision.Message;
+                LogCommand(DiagnosticSeverity.Warning, "PH-FEATURE-GATE", string.Empty, decision.FeatureId, "FeatureCommandDispatcher.Execute", decision.Message);
                 ShowFailure("PlugHub 功能已禁用", decision.Message, "PH-FEATURE-GATE", decision.FeatureId, DiagnosticSeverity.Warning);
                 return Result.Cancelled;
             }
@@ -47,6 +49,7 @@ namespace PlugHub.Revit2020
                 string.Equals(item.Id, decision.FeatureId, StringComparison.OrdinalIgnoreCase));
             if (feature == null || string.IsNullOrWhiteSpace(feature.CommandType))
             {
+                LogCommand(DiagnosticSeverity.Info, "PH-COMMAND-NOOP", string.Empty, decision.FeatureId, "FeatureCommandDispatcher.Execute", "Feature has no command type. Showing runtime status.");
                 FrameworkStatusWindow.ShowRuntimeStatus(snapshot);
                 return Result.Succeeded;
             }
@@ -55,6 +58,7 @@ namespace PlugHub.Revit2020
             if (!File.Exists(assemblyPath))
             {
                 message = "Command assembly was not found: " + assemblyPath;
+                LogCommand(DiagnosticSeverity.Error, "PH-COMMAND-ASSEMBLY", feature.ModuleId, feature.Id, "FeatureCommandDispatcher.ResolveAssembly", message);
                 ShowFailure("PlugHub 功能执行失败", message, "PH-COMMAND-ASSEMBLY", feature.ModuleId, DiagnosticSeverity.Error);
                 return Result.Failed;
             }
@@ -67,18 +71,28 @@ namespace PlugHub.Revit2020
             catch (Exception ex)
             {
                 message = ex.Message;
+                new PlugHubLogger().Error(FrameworkRuntimeState.BaseDirectory, "PH-COMMAND-TYPE", feature.ModuleId, feature.Id, "FeatureCommandDispatcher.CreateCommand", message, ex);
                 ShowFailure("PlugHub 功能执行失败", message, "PH-COMMAND-TYPE", feature.ModuleId, DiagnosticSeverity.Error);
                 return Result.Failed;
             }
 
             try
             {
-                return command.Execute(commandData, ref message, elements);
+                LogCommand(DiagnosticSeverity.Info, "PH-COMMAND-START", feature.ModuleId, feature.Id, "FeatureCommandDispatcher.Execute", "Starting feature command: " + feature.CommandType);
+                var result = command.Execute(commandData, ref message, elements);
+                LogCommand(
+                    result == Result.Succeeded ? DiagnosticSeverity.Info : DiagnosticSeverity.Warning,
+                    "PH-COMMAND-RESULT",
+                    feature.ModuleId,
+                    feature.Id,
+                    "FeatureCommandDispatcher.Execute",
+                    "Feature command completed with result: " + result + ". " + (message ?? string.Empty));
+                return result;
             }
             catch (Exception ex)
             {
                 message = "插件功能执行时发生异常，已记录到 PlugHub 日志。";
-                new PlugHubLogger().Error(FrameworkRuntimeState.BaseDirectory, "PH-COMMAND-EXECUTE", feature.ModuleId, feature.Id, "Execute", message, ex);
+                new PlugHubLogger().Error(FrameworkRuntimeState.BaseDirectory, "PH-COMMAND-EXECUTE", feature.ModuleId, feature.Id, "FeatureCommandDispatcher.Execute", message, ex);
                 try
                 {
                     ShowFailure("PlugHub 功能执行失败", message, "PH-COMMAND-EXECUTE", feature.ModuleId, DiagnosticSeverity.Error);
@@ -114,6 +128,19 @@ namespace PlugHub.Revit2020
                         Message = failureMessage ?? string.Empty
                     }
                 });
+        }
+
+        private static void LogCommand(DiagnosticSeverity severity, string code, string moduleId, string featureId, string operation, string commandMessage)
+        {
+            new PlugHubLogger().Write(FrameworkRuntimeState.BaseDirectory, new PlugHubLogEntry
+            {
+                Severity = severity,
+                Code = code ?? string.Empty,
+                ModuleId = moduleId ?? string.Empty,
+                FeatureId = featureId ?? string.Empty,
+                Operation = operation ?? string.Empty,
+                Message = commandMessage ?? string.Empty
+            });
         }
     }
 }

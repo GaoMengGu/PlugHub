@@ -22,4 +22,8 @@
     <ProjectReference Include="..\PlugHub.Framework\PlugHub.Framework.csproj" />
     <ProjectReference Include="..\PlugHub.Wpf\PlugHub.Wpf.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\alipay.png" LogicalName="PlugHub.Manager.Resources.alipay.png" />
+    <EmbeddedResource Include="Resources\wechatpay.png" LogicalName="PlugHub.Manager.Resources.wechatpay.png" />
+  </ItemGroup>
 </Project>

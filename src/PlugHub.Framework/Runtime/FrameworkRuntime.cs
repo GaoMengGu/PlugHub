@@ -42,6 +42,15 @@ namespace PlugHub.Framework.Runtime
         {
             var diagnostics = new DiagnosticsSink();
             var featureRegistry = new FeatureRegistry();
+            var logger = new PlugHubLogger();
+
+            logger.Write(baseDirectory, new PlugHubLogEntry
+            {
+                Severity = DiagnosticSeverity.Info,
+                Code = "RT-LOAD",
+                Operation = "FrameworkRuntime.Load",
+                Message = "PlugHub runtime load started. Config: " + (configDirectory ?? string.Empty)
+            });
 
             if (applyPendingPackageOperations)
             {
@@ -78,7 +87,36 @@ namespace PlugHub.Framework.Runtime
                 diagnostics.Messages);
 
             FrameworkRuntimeState.SetCurrent(baseDirectory, configDirectory, snapshot);
+            LogRuntimeSnapshot(baseDirectory, logger, snapshot);
             return snapshot;
+        }
+
+        private static void LogRuntimeSnapshot(string baseDirectory, PlugHubLogger logger, FrameworkRuntimeSnapshot snapshot)
+        {
+            logger.Write(baseDirectory, new PlugHubLogEntry
+            {
+                Severity = DiagnosticSeverity.Info,
+                Code = "RT-LOAD",
+                Operation = "FrameworkRuntime.Load",
+                Message = "PlugHub runtime load completed. Modules: "
+                    + snapshot.Configuration.EffectiveModules.Modules.Count
+                    + "; features: "
+                    + snapshot.Features.Count
+                    + "; diagnostics: "
+                    + snapshot.Diagnostics.Count
+            });
+
+            foreach (var diagnostic in snapshot.Diagnostics)
+            {
+                logger.Write(baseDirectory, new PlugHubLogEntry
+                {
+                    Severity = diagnostic.Severity,
+                    Code = diagnostic.Code,
+                    ModuleId = diagnostic.ModuleId,
+                    Operation = "FrameworkRuntime.Diagnostic",
+                    Message = diagnostic.Message
+                });
+            }
         }
 
         private void RegisterModules(
