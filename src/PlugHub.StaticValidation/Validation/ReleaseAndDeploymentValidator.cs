@@ -168,6 +168,7 @@ namespace PlugHub.StaticValidation.Validation
             var maintenanceLauncher = ReadText("src/PlugHub.Manager/Maintenance/ManagerMaintenanceLauncher.cs");
             var maintenanceRunner = ReadText("src/PlugHub.Manager/Maintenance/ManagerMaintenanceRunner.cs");
             var managerUninstaller = ReadText("src/PlugHub.Manager/Maintenance/ManagerUninstaller.cs");
+            var installRootPolicy = ReadText("src/PlugHub.Manager/Maintenance/PlugHubInstallRootPolicy.cs");
             var installerProject = ReadText("src/PlugHub.Installer/PlugHub.Installer.csproj");
             var installerPayload = ReadText("src/PlugHub.Installer/InstallerPayload.cs");
             var installerForm = ReadText("src/PlugHub.Installer/InstallerForm.cs");
@@ -183,7 +184,9 @@ namespace PlugHub.StaticValidation.Validation
             Require(maintenanceLauncher.Contains("StartUninstall") && maintenanceLauncher.Contains("CreateTemporaryManagerCopy") && maintenanceLauncher.Contains("Path.GetTempPath()") && maintenanceLauncher.Contains("PlugHub.Manager.exe") && maintenanceLauncher.Contains("UseShellExecute = true") && maintenanceLauncher.Contains("Verb = \"runas\""), "Manager update and uninstall must run from a temporary elevated PlugHub.Manager.exe copy so protected install directories remain maintainable.");
             Require(maintenanceRunner.Contains("PlugHub Manager - Uninstall") && maintenanceRunner.Contains("MessageBoxButton.YesNo") && maintenanceRunner.Contains("WaitForProcesses"), "Manager uninstall maintenance mode must confirm and wait for locking processes.");
             Require(managerUninstaller.Contains("PlugHub.addin") && managerUninstaller.Contains("SpecialFolder.CommonApplicationData"), "Manager uninstaller must remove the machine-wide ProgramData addin manifest.");
-            Require(managerUninstaller.Contains("Directory.Delete") && managerUninstaller.Contains("Refusing to delete a drive root") && managerUninstaller.Contains("RequiredInstallMarkers") && managerUninstaller.Contains("ContainsPlugHubInstallMarkers") && managerUninstaller.Contains("IsAllowedInstallRootName") && managerUninstaller.Contains("Revit2020"), "Manager uninstaller must delete only a marker-validated PlugHub install directory or the local dist/Revit2020 test output.");
+            Require(managerUninstaller.Contains("Directory.Delete") && managerUninstaller.Contains("PlugHubInstallRootPolicy.Validate") && managerUninstaller.Contains("PlugHubInstallRootOperation.Uninstall"), "Manager uninstaller must delegate install-root validation to the shared safety policy before deleting.");
+            Require(installRootPolicy.Contains("Refusing to delete a drive root") && installRootPolicy.Contains("RequiredInstallMarkers") && installRootPolicy.Contains("IsAllowedInstallRootName") && installRootPolicy.Contains("Revit2020"), "shared install-root policy must allow only marker-validated PlugHub installs or local dist/Revit2020 output.");
+            Require(!managerUninstaller.Contains("RequiredInstallMarkers") && !managerUninstaller.Contains("IsAllowedInstallRootName"), "Manager uninstaller must not duplicate shared install-root rules.");
             Require(!installerProject.Contains("InstallerUninstallerExe") && !installerProject.Contains("PlugHubUninstaller.exe"), "installer project must not embed a standalone uninstaller.");
             Require(!installerPayload.Contains("PlugHub-Uninstall.exe") && !installerPayload.Contains("WriteUninstaller"), "installer payload must not write a standalone uninstaller.");
             Require(!installerForm.Contains("PlugHub-Uninstall.exe"), "installer UI must not report a standalone uninstaller.");
@@ -203,9 +206,11 @@ namespace PlugHub.StaticValidation.Validation
             var maintenanceLauncher = ReadText("src/PlugHub.Manager/Maintenance/ManagerMaintenanceLauncher.cs");
             var maintenanceRunner = ReadText("src/PlugHub.Manager/Maintenance/ManagerMaintenanceRunner.cs");
             var managerUpdater = ReadText("src/PlugHub.Manager/Maintenance/ManagerFrameworkUpdater.cs");
+            var installRootPolicy = ReadText("src/PlugHub.Manager/Maintenance/PlugHubInstallRootPolicy.cs");
             var maintenanceLogger = ReadText("src/PlugHub.Manager/Maintenance/ManagerMaintenanceLogger.cs");
             var frameworkProject = ReadText("src/PlugHub.Framework/PlugHub.Framework.csproj");
             var service = ReadText("src/PlugHub.Framework/Updates/FrameworkUpdateService.cs");
+            var updatePolicy = ReadText("src/PlugHub.Framework/Updates/FrameworkUpdatePolicy.cs");
             var releaseClient = ReadText("src/PlugHub.Framework/Updates/ReleaseClient.cs");
             var releaseAssetDownloader = ReadText("src/PlugHub.Framework/Updates/ReleaseAssetDownloader.cs");
             var validator = ReadText("src/PlugHub.Framework/Updates/FrameworkUpdatePackageValidator.cs");
@@ -234,11 +239,11 @@ namespace PlugHub.StaticValidation.Validation
             Require(maintenanceLauncher.Contains("StartUpdate") && maintenanceLauncher.Contains("CreateTemporaryManagerCopy") && maintenanceLauncher.Contains("Path.GetTempPath()") && maintenanceLauncher.Contains("Directory.GetFiles(sourceDirectory, \"PlugHub.*.dll\")"), "Manager maintenance launcher must run a temporary manager copy with required framework DLLs.");
             Require(maintenanceLogger.Contains("CandidateLogsDirectories") && maintenanceLogger.Contains("Environment.SpecialFolder.LocalApplicationData") && maintenanceLogger.Contains("Path.GetTempPath()"), "Manager maintenance logging must fall back from the install directory to user and temporary log directories.");
             Require(maintenanceLogger.Contains("Logging must not interrupt update or uninstall maintenance") && maintenanceLogger.Contains("catch"), "Manager maintenance logging failures must not interrupt update or uninstall.");
-            Require(service.Contains("https://gitee.com/api/v5/repos/GaoMengGu/PlugHub/tags") && service.Contains("https://api.github.com/repos/GaoMengGu/PlugHub/releases/latest") && service.Contains("PlugHub-Revit2020-"), "framework update service must use Gitee first and GitHub as fallback for latest release assets.");
+            Require(service.Contains("https://gitee.com/api/v5/repos/GaoMengGu/PlugHub/tags") && service.Contains("https://api.github.com/repos/GaoMengGu/PlugHub/releases/latest") && updatePolicy.Contains("PlugHub-Revit2020-"), "framework update coordination must use Gitee first and GitHub as fallback while policy owns the exact release asset name.");
             Require(service.Contains("DefaultUpdateSources") && service.Contains("GiteeTagList") && service.Contains("GitHubLatestRelease"), "framework update service must name update source types explicitly.");
-            Require(service.Contains("BuildDefaultCheckSources") && service.Contains("BuildCheckSources(currentVersion, _updateSources)") && service.Contains("GitHubReleaseListUri"), "TV builds must query GitHub test prereleases before stable Gitee/GitHub release sources.");
+            Require(service.Contains("FrameworkUpdatePolicy.BuildCheckSources(currentVersion, _updateSources)") && updatePolicy.Contains("GitHubReleaseListUri"), "TV builds must delegate prerelease source ordering to FrameworkUpdatePolicy.");
             Require(service.Contains("AssetDownloadUrls") && service.Contains("DownloadFallbackUrls"), "framework update service must preserve fallback asset URLs for blocked or failed hosts.");
-            Require(service.Contains("SelectUpdateAsset") && service.Contains("ReleaseNotes = release.Body"), "framework update service must select the update zip and preserve release notes.");
+            Require(service.Contains("FrameworkUpdatePolicy.SelectUpdateAsset") && service.Contains("ReleaseNotes = release.Body"), "framework update service must delegate exact asset selection and preserve release notes.");
             Require(!service.Contains("升级图标"), "framework update check message must not reference the removed upgrade icon.");
             Require(releaseClient.Contains("Body = StringValue(root, \"body\")") && releaseClient.Contains("AssetObjects("), "release client must parse release body and release assets from GitHub/Gitee JSON.");
             Require(releaseClient.Contains("ParseLatestTestPrereleaseJson") && releaseClient.Contains("prerelease") && releaseClient.Contains("draft") && releaseClient.Contains("IsTestReleaseTag"), "release client must parse the newest non-draft TV prerelease from GitHub release lists.");
@@ -255,7 +260,9 @@ namespace PlugHub.StaticValidation.Validation
             Require(maintenanceRunner.Contains("ShowThemedUpdateCompletedDialog") && maintenanceRunner.Contains("RevitUiTheme.Apply(dialog)") && !maintenanceRunner.Contains("MessageBox.Show(\"PlugHub was updated successfully."), "Manager update completion must use a themed WPF dialog instead of the native MessageBox.");
             Require(managerUpdater.Contains("WaitForExit") && managerUpdater.Contains("CopyFrameworkFiles") && managerUpdater.Contains("ShouldCopyUpdateEntry"), "Manager update maintenance must wait for locking processes before copying framework files.");
             Require(managerUpdater.Contains("FrameworkUpdatePackageValidator") && managerUpdater.IndexOf("new FrameworkUpdatePackageValidator().Validate(args.PayloadZip)", StringComparison.Ordinal) < managerUpdater.IndexOf("CopyFrameworkFiles(args.PayloadZip", StringComparison.Ordinal), "Manager update maintenance must validate payload zip before copying framework files.");
-            Require(managerUpdater.Contains("RequiredInstallMarkers") && managerUpdater.Contains("ContainsPlugHubInstallMarkers") && managerUpdater.Contains("IsAllowedInstallRootName") && managerUpdater.Contains("Revit2020"), "Manager update maintenance must refuse marker-validated parent directories that are not PlugHub install roots.");
+            Require(managerUpdater.Contains("PlugHubInstallRootPolicy.Validate") && managerUpdater.Contains("PlugHubInstallRootOperation.Update"), "Manager update maintenance must delegate install-root validation to the shared safety policy.");
+            Require(installRootPolicy.Contains("Refusing to update an unsafe install directory") && installRootPolicy.Contains("RequiredInstallMarkers") && installRootPolicy.Contains("IsAllowedInstallRootName") && installRootPolicy.Contains("Revit2020"), "shared install-root policy must preserve updater safety diagnostics and accepted install shapes.");
+            Require(!managerUpdater.Contains("RequiredInstallMarkers") && !managerUpdater.Contains("IsAllowedInstallRootName"), "Manager updater must not duplicate shared install-root rules.");
             Require(managerUpdater.Contains("PlugHub.Manager.exe") && managerUpdater.Contains("StaleMaintenanceArtifacts") && managerUpdater.Contains("PlugHub.Updater.exe") && managerUpdater.Contains("PlugHub.Updater.pdb") && managerUpdater.Contains("PlugHub.Uninstaller.pdb") && managerUpdater.Contains("PlugHub-Uninstall.exe"), "Manager update maintenance must replace Manager and clean stale standalone maintenance artifacts.");
             Require(managerUpdater.Contains("MaxBackupDirectoriesToKeep = 3") && managerUpdater.Contains("PruneOldBackups") && managerUpdater.Contains("GetCreationTimeUtc"), "Manager update maintenance must keep only the latest three update backup directories.");
             Require(!managerUpdater.Contains("PlugHub.addin") && !managerUpdater.Contains("Directory.Delete(installDirectory"), "Manager update maintenance must avoid addin/config/packages replacement and install directory deletion.");
@@ -294,14 +301,6 @@ namespace PlugHub.StaticValidation.Validation
 
         private static void ValidateFrameworkUpdateSelectsExactReleaseAsset()
         {
-            var method = typeof(PlugHub.Framework.Updates.FrameworkUpdateService).GetMethod(
-                "SelectUpdateAsset",
-                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
-            if (method == null)
-            {
-                throw new InvalidOperationException("framework update asset selector must remain verifiable.");
-            }
-
             var release = new PlugHub.Framework.Updates.ReleaseInfo
             {
                 TagName = "V2.0.0",
@@ -320,7 +319,7 @@ namespace PlugHub.StaticValidation.Validation
                 }
             };
 
-            var selected = method.Invoke(null, new object[] { release, "V2.0.0" });
+            var selected = PlugHub.Framework.Updates.FrameworkUpdatePolicy.SelectUpdateAsset(release, "V2.0.0");
             Require(selected == null, "framework update check must not accept a mismatched Revit2020 zip when the exact target release asset is missing.");
 
             release.Assets.Add(new PlugHub.Framework.Updates.ReleaseAssetInfo
@@ -329,8 +328,8 @@ namespace PlugHub.StaticValidation.Validation
                 DownloadUrl = "https://example.com/PlugHub-Revit2020-V2.0.0.zip"
             });
 
-            selected = method.Invoke(null, new object[] { release, "V2.0.0" });
-            Require(selected is PlugHub.Framework.Updates.ReleaseAssetInfo asset && asset.Name == "PlugHub-Revit2020-V2.0.0.zip", "framework update check must select the exact target release zip.");
+            selected = PlugHub.Framework.Updates.FrameworkUpdatePolicy.SelectUpdateAsset(release, "V2.0.0");
+            Require(selected != null && selected.Name == "PlugHub-Revit2020-V2.0.0.zip", "framework update check must select the exact target release zip.");
         }
 
         private static void ValidateFrameworkUpdatePackageRejectsUnsafeZip()

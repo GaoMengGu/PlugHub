@@ -17,6 +17,7 @@ using PlugHub.Framework.Settings;
 using PlugHub.Framework.Sources;
 using PlugHub.Framework.Updates;
 using PlugHub.Manager.Settings;
+using PlugHub.Manager.Maintenance;
 
 namespace PlugHub.Tests
 {
@@ -35,12 +36,18 @@ namespace PlugHub.Tests
                 new TestCase("settings configuration store resolves package manifest base directories", SettingsConfigurationStoreResolvesPackageManifestBaseDirectories),
                 new TestCase("module source resolver rejects manifest path escape", ModuleSourceResolverRejectsManifestPathEscape),
                 new TestCase("settings configuration store rejects manifest path escape", SettingsConfigurationStoreRejectsManifestPathEscape),
+                new TestCase("settings configuration store rejects unowned save paths", SettingsConfigurationStoreRejectsUnownedSavePaths),
+                new TestCase("settings configuration store creates its missing sources manifest", SettingsConfigurationStoreCreatesItsMissingSourcesManifest),
                 new TestCase("settings metrics count unique modules features and enabled repositories", SettingsMetricsCountUniqueModulesFeaturesAndEnabledRepositories),
                 new TestCase("repository display name uses custom name before fallback", RepositoryDisplayNameUsesCustomNameBeforeFallback),
                 new TestCase("repository display name uses owner repository url fallback", RepositoryDisplayNameUsesOwnerRepositoryUrlFallback),
                 new TestCase("plugHub logger keeps only recent three days", PlugHubLoggerKeepsOnlyRecentThreeDays),
                 new TestCase("framework runtime writes session log on load", FrameworkRuntimeWritesSessionLogOnLoad),
                 new TestCase("package repository service browses local folder repositories", PackageRepositoryServiceBrowsesLocalFolderRepositories),
+                new TestCase("repository archive sync flattens provider wrapper for deep paths", RepositoryArchiveSyncFlattensProviderWrapperForDeepPaths),
+                new TestCase("repository archive sync falls back and preserves old cache on total failure", RepositoryArchiveSyncFallsBackAndPreservesOldCacheOnTotalFailure),
+                new TestCase("repository archive sync redacts private tokens from diagnostics", RepositoryArchiveSyncRedactsPrivateTokensFromDiagnostics),
+                new TestCase("repository archive sync rejects unsafe entries and preserves cache", RepositoryArchiveSyncRejectsUnsafeEntriesAndPreservesCache),
                 new TestCase("package install service copies selected module payload only", PackageInstallServiceCopiesSelectedModulePayloadOnly),
                 new TestCase("package install service rejects rooted payload paths", PackageInstallServiceRejectsRootedPayloadPaths),
                 new TestCase("package repository service maintains install update uninstall state", PackageRepositoryServiceMaintainsInstallUpdateUninstallState),
@@ -57,6 +64,7 @@ namespace PlugHub.Tests
                 new TestCase("package repository service rejects dot segment cache ids", PackageRepositoryServiceRejectsDotSegmentCacheIds),
                 new TestCase("package repository service rejects dot segment package ids", PackageRepositoryServiceRejectsDotSegmentPackageIds),
                 new TestCase("repository package row treats absent Revit host as settled state", RepositoryPackageRowTreatsAbsentRevitHostAsSettledState),
+                new TestCase("feature slot allocator assigns stable bounded bidirectional mappings", FeatureSlotAllocatorAssignsStableBoundedBidirectionalMappings),
                 new TestCase("ribbon layout composer builds configured layout and default fallback", RibbonLayoutComposerBuildsConfiguredLayoutAndDefaultFallback),
                 new TestCase("ribbon layout composer filters invalid container children", RibbonLayoutComposerFiltersInvalidContainerChildren),
                 new TestCase("framework update selects only exact version asset", FrameworkUpdateSelectsOnlyExactVersionAsset),
@@ -70,6 +78,7 @@ namespace PlugHub.Tests
                 new TestCase("framework update package accepts single manager maintenance payload", FrameworkUpdatePackageAcceptsSingleManagerMaintenancePayload),
                 new TestCase("framework update package rejects missing manager maintenance payload", FrameworkUpdatePackageRejectsMissingManagerMaintenancePayload),
                 new TestCase("manager updater validates maintenance payload", ManagerUpdaterValidatesMaintenancePayload),
+                new TestCase("manager maintenance shares install root safety policy", ManagerMaintenanceSharesInstallRootSafetyPolicy),
                 new TestCase("manager updater removes stale standalone maintenance pdbs", ManagerUpdaterRemovesStaleStandaloneMaintenancePdbs),
                 new TestCase("manager updater rejects non PlugHub directory", ManagerUpdaterRejectsNonPlugHubDirectory),
                 new TestCase("manager updater rejects marker validated parent directory", ManagerUpdaterRejectsMarkerValidatedParentDirectory),
@@ -335,9 +344,10 @@ namespace PlugHub.Tests
                 });
 
                 var documentPaths = documents.Select(document => document.Path).ToList();
-                Require(documentPaths.Count == 1, "settings store must load only non-git module manifests.");
+                Require(documentPaths.Count == 2, "settings store must own canonical sources.json and load only non-git package manifests.");
+                Require(documentPaths.Any(path => SamePath(path, Path.Combine(configDirectory, "sources.json"))), "settings store must retain ownership of canonical sources.json.");
                 Require(!documentPaths.Any(path => path.IndexOf(Path.DirectorySeparatorChar + ".git" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) >= 0), "settings store must ignore manifests inside .git directories.");
-                Require(documents[0].Modules.Modules.Select(module => module.Id).SequenceEqual(new[] { "module.live" }), "settings store must load the live manifest.");
+                Require(documents.SelectMany(document => document.Modules.Modules).Select(module => module.Id).SequenceEqual(new[] { "module.live" }), "settings store must load the live manifest.");
             }
         }
 
@@ -1091,6 +1101,183 @@ namespace PlugHub.Tests
                 "running Revit host must still show pending restart when an installed package is not loaded yet.");
         }
 
+        private static void SettingsConfigurationStoreRejectsUnownedSavePaths()
+        {
+            using (var temp = TempDirectory.Create())
+            {
+                var configDirectory = Path.Combine(temp.Path, "config");
+                var outsideManifest = Path.Combine(temp.Path, "outside.packages.json");
+                WriteText(outsideManifest, "original");
+                var store = new SettingsConfigurationStore(configDirectory);
+                var forgedDocument = new SettingsConfigurationStore.ModuleManifestDocument(
+                    outsideManifest,
+                    new ModulesConfiguration { SchemaVersion = "1.1" });
+                var rejected = false;
+
+                try
+                {
+                    store.Save(new FrameworkConfiguration(), new[] { forgedDocument });
+                }
+                catch (InvalidOperationException ex)
+                {
+                    rejected = ex.Message.IndexOf("not loaded", StringComparison.OrdinalIgnoreCase) >= 0;
+                }
+
+                Require(rejected, "settings store must reject manifest documents that were not loaded by the same store instance.");
+                Require(File.ReadAllText(outsideManifest) == "original", "rejected save paths must not overwrite external files.");
+            }
+        }
+
+        private static void SettingsConfigurationStoreCreatesItsMissingSourcesManifest()
+        {
+            using (var temp = TempDirectory.Create())
+            {
+                var configDirectory = Path.Combine(temp.Path, "config");
+                var configuration = new FrameworkConfiguration();
+                var store = new SettingsConfigurationStore(configDirectory);
+
+                var documents = store.LoadModuleDocuments(configuration);
+                store.Save(configuration, documents);
+
+                Require(documents.Any(document => SamePath(document.Path, Path.Combine(configDirectory, "sources.json"))),
+                    "the store must own its canonical sources.json document even before the file exists.");
+                RequireFileExists(Path.Combine(configDirectory, "sources.json"));
+            }
+        }
+
+        private static void RepositoryArchiveSyncFlattensProviderWrapperForDeepPaths()
+        {
+            using (var temp = TempDirectory.Create())
+            {
+                var cacheDirectory = Path.Combine(temp.Path, "repository-cache", "plughub-public-packages");
+                var deepRelativePath = Path.Combine(
+                    "tests",
+                    "PlugHub.HubeiReportParameters.SchedulePlanningValidation",
+                    "PlugHub.HubeiReportParameters.SchedulePlanningValidation.csproj");
+                var transport = new ArchiveFixtureTransport(
+                    "GaoMengGu-PlugHub_Packages-419ec18",
+                    deepRelativePath);
+                var synchronizer = new RepositoryArchiveSynchronizer(new RepositoryCredentialService(), transport);
+                var diagnostics = new List<DiagnosticMessage>();
+
+                var synced = synchronizer.Sync(
+                    new PackageRepositoryConfiguration
+                    {
+                        Id = "plughub-public-packages",
+                        Provider = "github",
+                        Visibility = "public",
+                        Repository = "GaoMengGu/PlugHub_Packages",
+                        Ref = "main",
+                        Enabled = true
+                    },
+                    cacheDirectory,
+                    diagnostics);
+
+                Require(synced, "GitHub archive fixture must synchronize successfully: " + string.Join("; ", diagnostics.Select(item => item.Message)));
+                RequireFileExists(Path.Combine(cacheDirectory, "packages.json"));
+                RequireFileExists(Path.Combine(cacheDirectory, deepRelativePath));
+                Require(!Directory.Exists(Path.Combine(cacheDirectory, transport.WrapperDirectory)), "provider archive wrapper must not remain in the repository cache.");
+                Require(transport.DownloadedUris.Count == 1 && transport.DownloadedUris[0].Host == "api.github.com", "successful GitHub archive sync must not fall back to Gitee.");
+            }
+        }
+
+        private static void RepositoryArchiveSyncFallsBackAndPreservesOldCacheOnTotalFailure()
+        {
+            using (var temp = TempDirectory.Create())
+            {
+                var repository = new PackageRepositoryConfiguration
+                {
+                    Id = "plughub-public-packages",
+                    Provider = "github",
+                    Visibility = "public",
+                    Repository = "GaoMengGu/PlugHub_Packages",
+                    Ref = "main",
+                    Enabled = true
+                };
+                var cacheDirectory = Path.Combine(temp.Path, "repository-cache", repository.Id);
+                var fallbackTransport = new ArchiveFixtureTransport("GaoMengGu-PlugHub_Packages-main", "packages.json");
+                fallbackTransport.FailHosts.Add("api.github.com");
+                var diagnostics = new List<DiagnosticMessage>();
+
+                var synced = new RepositoryArchiveSynchronizer(new RepositoryCredentialService(), fallbackTransport)
+                    .Sync(repository, cacheDirectory, diagnostics);
+
+                Require(synced, "Gitee mirror must be used when GitHub archive download fails.");
+                Require(fallbackTransport.DownloadedUris.Select(uri => uri.Host).SequenceEqual(new[] { "api.github.com", "gitee.com" }),
+                    "public repository sync must try configured GitHub first and then the Gitee mirror.");
+                RequireFileExists(Path.Combine(cacheDirectory, "packages.json"));
+
+                WriteText(Path.Combine(cacheDirectory, "old-cache.marker"), "keep");
+                var failingTransport = new ArchiveFixtureTransport("unused", "packages.json") { FailAllDownloads = true };
+                diagnostics.Clear();
+
+                synced = new RepositoryArchiveSynchronizer(new RepositoryCredentialService(), failingTransport)
+                    .Sync(repository, cacheDirectory, diagnostics);
+
+                Require(!synced, "repository sync must fail when configured source and mirror both fail.");
+                RequireFileExists(Path.Combine(cacheDirectory, "old-cache.marker"));
+                Require(diagnostics.Any(item => item.Code == "PH-REPOSITORY-ARCHIVE"), "total remote failure must emit PH-REPOSITORY-ARCHIVE.");
+            }
+        }
+
+        private static void RepositoryArchiveSyncRedactsPrivateTokensFromDiagnostics()
+        {
+            using (var temp = TempDirectory.Create())
+            {
+                const string token = "private-secret-token";
+                var repository = new PackageRepositoryConfiguration
+                {
+                    Id = "private-packages",
+                    Provider = "gitee",
+                    Visibility = "private",
+                    Repository = "GaoMengGu/PlugHub_Packages",
+                    Ref = "main",
+                    ApiKey = token,
+                    Enabled = true
+                };
+                var cacheDirectory = Path.Combine(temp.Path, "repository-cache", repository.Id);
+                var transport = new ArchiveFixtureTransport("unused", "packages.json") { FailAllDownloads = true };
+                var diagnostics = new List<DiagnosticMessage>();
+
+                var synced = new RepositoryArchiveSynchronizer(new RepositoryCredentialService(), transport)
+                    .Sync(repository, cacheDirectory, diagnostics);
+
+                Require(!synced, "private repository fixture must fail so diagnostic redaction can be observed.");
+                var diagnosticText = string.Join("; ", diagnostics.Select(item => item.Message));
+                Require(!diagnosticText.Contains(token), "repository diagnostics must not expose private access tokens.");
+                Require(diagnosticText.Contains("access_token=***"), "repository diagnostics must preserve a redacted access_token marker.");
+            }
+        }
+
+        private static void RepositoryArchiveSyncRejectsUnsafeEntriesAndPreservesCache()
+        {
+            using (var temp = TempDirectory.Create())
+            {
+                var repository = new PackageRepositoryConfiguration
+                {
+                    Id = "plughub-public-packages",
+                    Provider = "github",
+                    Visibility = "public",
+                    Repository = "GaoMengGu/PlugHub_Packages",
+                    Ref = "main",
+                    Enabled = true
+                };
+                var cacheDirectory = Path.Combine(temp.Path, "repository-cache", repository.Id);
+                WriteText(Path.Combine(cacheDirectory, "old-cache.marker"), "keep");
+                var transport = new ArchiveFixtureTransport("GaoMengGu-PlugHub_Packages-main", "../escaped.txt");
+                var diagnostics = new List<DiagnosticMessage>();
+
+                var synced = new RepositoryArchiveSynchronizer(new RepositoryCredentialService(), transport)
+                    .Sync(repository, cacheDirectory, diagnostics);
+
+                Require(!synced, "repository sync must reject archive entries containing parent-directory segments.");
+                RequireFileExists(Path.Combine(cacheDirectory, "old-cache.marker"));
+                Require(!File.Exists(Path.Combine(temp.Path, "escaped.txt")), "unsafe archive entries must not escape the repository cache.");
+                Require(diagnostics.Any(item => item.Code == "PH-REPOSITORY-ARCHIVE" && item.Message.Contains("unsafe path")),
+                    "unsafe archive entries must produce an actionable repository diagnostic.");
+            }
+        }
+
         private static void RibbonLayoutComposerBuildsConfiguredLayoutAndDefaultFallback()
         {
             var view = new ViewConfiguration
@@ -1269,12 +1456,6 @@ namespace PlugHub.Tests
 
         private static void FrameworkUpdateSelectsOnlyExactVersionAsset()
         {
-            var method = typeof(FrameworkUpdateService).GetMethod("SelectUpdateAsset", BindingFlags.Static | BindingFlags.NonPublic);
-            if (method == null)
-            {
-                throw new InvalidOperationException("framework update asset selector must remain verifiable.");
-            }
-
             var release = new ReleaseInfo
             {
                 TagName = "V2.0.0",
@@ -1293,7 +1474,7 @@ namespace PlugHub.Tests
                 }
             };
 
-            var selected = method.Invoke(null, new object[] { release, "V2.0.0" });
+            var selected = FrameworkUpdatePolicy.SelectUpdateAsset(release, "V2.0.0");
             Require(selected == null, "framework update must not select a mismatched Revit2020 zip for the target release version.");
 
             release.Assets.Add(new ReleaseAssetInfo
@@ -1302,8 +1483,8 @@ namespace PlugHub.Tests
                 DownloadUrl = "https://example.com/PlugHub-Revit2020-V2.0.0.zip"
             });
 
-            selected = method.Invoke(null, new object[] { release, "V2.0.0" });
-            Require(selected is ReleaseAssetInfo asset && asset.Name == "PlugHub-Revit2020-V2.0.0.zip", "framework update must select the exact Revit2020 zip for the target release version.");
+            selected = FrameworkUpdatePolicy.SelectUpdateAsset(release, "V2.0.0");
+            Require(selected != null && selected.Name == "PlugHub-Revit2020-V2.0.0.zip", "framework update must select the exact Revit2020 zip for the target release version.");
         }
 
         private static void ReleaseClientSelectsLatestTestPrerelease()
@@ -1327,42 +1508,45 @@ namespace PlugHub.Tests
 
         private static void FrameworkUpdateChecksGitHubTestPrereleasesForTvBuilds()
         {
-            var method = typeof(FrameworkUpdateService).GetMethod("BuildDefaultCheckSources", BindingFlags.Static | BindingFlags.NonPublic);
-            Require(method != null, "framework update service must expose default check source ordering for TV build verification.");
-
-            var sources = ((IEnumerable)(method!.Invoke(null, new object[] { "TV1.5.3" }) ?? Array.Empty<object>()))
-                .Cast<object>()
+            var stableSources = new[]
+            {
+                new FrameworkUpdateSource(
+                    FrameworkUpdateSourceKind.GiteeTagList,
+                    "Gitee",
+                    new Uri("https://gitee.com/api/v5/repos/GaoMengGu/PlugHub/tags"),
+                    "https://gitee.com/GaoMengGu/PlugHub/releases/download/{tag}/{asset}"),
+                new FrameworkUpdateSource(
+                    FrameworkUpdateSourceKind.GitHubLatestRelease,
+                    "GitHub",
+                    new Uri("https://api.github.com/repos/GaoMengGu/PlugHub/releases/latest"),
+                    "https://github.com/GaoMengGu/PlugHub/releases/download/{tag}/{asset}")
+            };
+            var sources = FrameworkUpdatePolicy.BuildCheckSources("TV1.5.3", stableSources)
                 .ToList();
-            var firstStableSourceIndex = sources.FindIndex(source => !string.Equals(GetPropertyValue(source, "Kind"), "GitHubTestPrereleaseList", StringComparison.OrdinalIgnoreCase));
-            var firstTestSourceIndex = sources.FindIndex(source => string.Equals(GetPropertyValue(source, "Kind"), "GitHubTestPrereleaseList", StringComparison.OrdinalIgnoreCase));
+            var firstStableSourceIndex = sources.FindIndex(source => source.Kind != FrameworkUpdateSourceKind.GitHubTestPrereleaseList);
+            var firstTestSourceIndex = sources.FindIndex(source => source.Kind == FrameworkUpdateSourceKind.GitHubTestPrereleaseList);
 
             Require(firstTestSourceIndex >= 0, "TV builds must query a GitHub test prerelease source.");
             Require(firstStableSourceIndex < 0 || firstTestSourceIndex < firstStableSourceIndex, "TV builds must query GitHub test prereleases before Gitee or stable GitHub sources.");
 
             var testSource = sources[firstTestSourceIndex];
-            Require(GetPropertyValue(testSource, "Name") == "GitHub Test", "TV build test source must be named GitHub Test.");
-            Require(GetPropertyValue(testSource, "Uri") == "https://api.github.com/repos/GaoMengGu/PlugHub/releases", "TV build test source must use the GitHub release list API.");
-            Require(GetPropertyValue(testSource, "ContinueWhenNoUpdate") == "True", "TV build test source must continue to stable sources when no newer test release exists.");
+            Require(testSource.Name == "GitHub Test", "TV build test source must be named GitHub Test.");
+            Require(testSource.Uri.AbsoluteUri == "https://api.github.com/repos/GaoMengGu/PlugHub/releases", "TV build test source must use the GitHub release list API.");
+            Require(testSource.ContinueWhenNoUpdate, "TV build test source must continue to stable sources when no newer test release exists.");
         }
 
         private static void FrameworkUpdateTreatsTestChannelTagsAsComparableVersions()
         {
-            var method = typeof(FrameworkUpdateService).GetMethod("IsNewerVersion", BindingFlags.Static | BindingFlags.NonPublic);
-            if (method == null)
-            {
-                throw new InvalidOperationException("framework update version comparator must remain verifiable.");
-            }
-
-            var isNewer = (bool)(method.Invoke(null, new object[] { "TV1.5.2", "V1.5.1" }) ?? false);
+            var isNewer = FrameworkUpdatePolicy.IsNewerVersion("TV1.5.2", "V1.5.1");
             Require(isNewer, "test update tag TV1.5.2 must compare newer than stable tag V1.5.1.");
 
-            var sameVersion = (bool)(method.Invoke(null, new object[] { "TV1.5.2", "V1.5.2" }) ?? true);
+            var sameVersion = FrameworkUpdatePolicy.IsNewerVersion("TV1.5.2", "V1.5.2");
             Require(!sameVersion, "test update tag TV1.5.2 must not compare newer than stable tag V1.5.2.");
 
-            var stableSameVersion = (bool)(method.Invoke(null, new object[] { "V1.5.2", "TV1.5.2" }) ?? false);
+            var stableSameVersion = FrameworkUpdatePolicy.IsNewerVersion("V1.5.2", "TV1.5.2");
             Require(stableSameVersion, "stable tag V1.5.2 must compare newer than test tag TV1.5.2 so testers can return to the official channel.");
 
-            var olderStable = (bool)(method.Invoke(null, new object[] { "V1.5.1", "TV1.5.2" }) ?? true);
+            var olderStable = FrameworkUpdatePolicy.IsNewerVersion("V1.5.1", "TV1.5.2");
             Require(!olderStable, "stable tag V1.5.1 must not compare newer than test tag TV1.5.2.");
         }
 
@@ -1399,6 +1583,29 @@ namespace PlugHub.Tests
             var tabs = new RibbonLayoutEditor().Load(ribbon, new[] { feature });
             var button = tabs.Single().Children.Single().Children.Single();
             Require(button.IconPath == "icons/package.png", "configured layout buttons without an explicit icon override must hydrate the current package feature icon.");
+        }
+
+        private static void FeatureSlotAllocatorAssignsStableBoundedBidirectionalMappings()
+        {
+            var features = new List<FeatureViewModel>
+            {
+                Feature(string.Empty, "blank", 0),
+                Feature("feature-001", "first", 1),
+                Feature("FEATURE-001", "duplicate", 2)
+            };
+            features.AddRange(Enumerable.Range(2, 128)
+                .Select(index => Feature("feature-" + index.ToString("000"), "feature " + index, index)));
+            features.Add(Feature("FEATURE-129", "skipped duplicate", 130));
+
+            var result = new FeatureSlotAllocator().Allocate(features, 128);
+
+            Require(result.SlotToFeatureId.Count == 128, "only the first 128 unique non-empty feature IDs may consume Revit command slots.");
+            Require(result.FeatureIdToSlot.Count == 128, "forward and reverse feature slot mappings must have the same cardinality.");
+            Require(result.SlotToFeatureId[1] == "feature-001", "slot allocation must preserve the input order.");
+            Require(result.FeatureIdToSlot["FEATURE-001"] == 1, "feature ID lookup must be case-insensitive and duplicates must reuse the first assignment.");
+            Require(result.SlotToFeatureId[128] == "feature-128", "the 128th unique feature must receive the final available slot.");
+            Require(result.SkippedFeatureIds.SequenceEqual(new[] { "feature-129" }), "the 129th unique feature must be reported as skipped.");
+            Require(result.SlotToFeatureId.All(pair => result.FeatureIdToSlot[pair.Value] == pair.Key), "slot mappings must remain bidirectionally consistent.");
         }
 
         private static void RibbonLayoutEditorMergesPanelsAndRestoresVisibleFeatures()
@@ -1778,6 +1985,21 @@ namespace PlugHub.Tests
             };
         }
 
+        private static void ManagerMaintenanceSharesInstallRootSafetyPolicy()
+        {
+            using (var temp = TempDirectory.Create())
+            {
+                var installDirectory = Path.Combine(temp.Path, "PlugHub");
+                WritePlugHubInstallMarkers(installDirectory);
+
+                var updatePath = PlugHubInstallRootPolicy.Validate(installDirectory, PlugHubInstallRootOperation.Update);
+                var uninstallPath = PlugHubInstallRootPolicy.Validate(installDirectory, PlugHubInstallRootOperation.Uninstall);
+
+                Require(SamePath(updatePath, installDirectory) && SamePath(uninstallPath, installDirectory),
+                    "updater and uninstaller must share one accepted PlugHub install root policy.");
+            }
+        }
+
         private static RibbonDesignerFeatureRow DesignerFeature(string id, string name, string groupName, int order)
         {
             return new RibbonDesignerFeatureRow
@@ -1948,17 +2170,7 @@ namespace PlugHub.Tests
 
         private static string ValidateManagerUninstallDirectory(string installDirectory)
         {
-            var managerAssembly = Assembly.Load("PlugHub.Manager");
-            var uninstallerType = managerAssembly.GetType("PlugHub.Manager.Maintenance.ManagerUninstaller", true)!;
-            var validate = uninstallerType.GetMethod("ValidateInstallDirectory", BindingFlags.Static | BindingFlags.NonPublic)!;
-            try
-            {
-                return (string)validate.Invoke(null, new object[] { installDirectory })!;
-            }
-            catch (TargetInvocationException ex) when (ex.InnerException != null)
-            {
-                throw new InvalidOperationException(ex.InnerException.Message, ex.InnerException);
-            }
+            return PlugHubInstallRootPolicy.Validate(installDirectory, PlugHubInstallRootOperation.Uninstall);
         }
 
         private static void RunManagerFrameworkUpdate(string payloadZip, string installDirectory)
@@ -2005,6 +2217,51 @@ namespace PlugHub.Tests
 
             public string Name { get; }
             public Action Body { get; }
+        }
+
+        private sealed class ArchiveFixtureTransport : IRepositoryRemoteTransport
+        {
+            private readonly string _relativePath;
+
+            public ArchiveFixtureTransport(string wrapperDirectory, string relativePath)
+            {
+                WrapperDirectory = wrapperDirectory;
+                _relativePath = relativePath;
+            }
+
+            public string WrapperDirectory { get; }
+            public List<Uri> DownloadedUris { get; } = new List<Uri>();
+            public HashSet<string> FailHosts { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            public bool FailAllDownloads { get; set; }
+
+            public void Download(Uri uri, string targetPath, string authorizationHeader)
+            {
+                DownloadedUris.Add(uri);
+                if (FailAllDownloads || FailHosts.Contains(uri.Host))
+                {
+                    throw new InvalidOperationException("fixture download failed: " + uri);
+                }
+
+                using (var archive = ZipFile.Open(targetPath, ZipArchiveMode.Create))
+                {
+                    var manifest = archive.CreateEntry(WrapperDirectory + "/packages.json");
+                    using (var writer = new StreamWriter(manifest.Open()))
+                    {
+                        writer.Write("{\"schemaVersion\":\"1.1\",\"modules\":[]}");
+                    }
+
+                    var project = archive.CreateEntry(WrapperDirectory + "/" + _relativePath.Replace('\\', '/'));
+                    using (var writer = new StreamWriter(project.Open()))
+                    {
+                        writer.Write("<Project />");
+                    }
+                }
+            }
+
+            public string ReadText(Uri uri, string accept)
+            {
+                throw new InvalidOperationException("fixture transport does not provide Gitee API responses: " + uri);
+            }
         }
 
         private sealed class TempDirectory : IDisposable

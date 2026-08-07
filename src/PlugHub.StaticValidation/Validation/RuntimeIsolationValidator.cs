@@ -59,6 +59,7 @@ namespace PlugHub.StaticValidation.Validation
             var featureCommand = _source.ReadText("src/PlugHub.Revit2020/FrameworkFeatureCommand.cs");
             var featureDispatcher = _source.ReadText("src/PlugHub.Revit2020/FeatureCommandDispatcher.cs");
             var featureSlotRegistry = _source.ReadText("src/PlugHub.Revit2020/FeatureSlotRegistry.cs");
+            var featureSlotAllocator = _source.ReadText("src/PlugHub.Framework/Composition/FeatureSlotAllocator.cs");
             var featureExecutionGate = _source.ReadText("src/PlugHub.Framework/Runtime/FeatureExecutionGate.cs");
             var slotCommandText = _source.ReadText("src/PlugHub.Revit2020/FrameworkFeatureCommandSlots.cs");
             var normalizedSlotCommandText = slotCommandText.Replace("\r\n", "\n").Replace("\r", "\n");
@@ -82,6 +83,8 @@ namespace PlugHub.StaticValidation.Validation
 
             Require(!ribbonBuilder.Contains("new CommandTarget(assemblyPath, feature.CommandType)"), "Revit feature buttons must use framework slots instead of external command assemblies.");
             Require(ribbonBuilder.Contains("FeatureSlotRegistry.Replace"), "Ribbon build must atomically replace feature slot mappings.");
+            Require(ribbonBuilder.Contains("new FeatureSlotAllocator().Allocate") && !ribbonBuilder.Contains("BuildSlotAssignments") && !ribbonBuilder.Contains("SlotAssignmentResult"), "Revit Ribbon adapter must delegate slot allocation to the Framework module without retaining the old private allocator.");
+            Require(featureSlotAllocator.Contains("StringComparer.OrdinalIgnoreCase") && featureSlotAllocator.Contains("maxSlots") && featureSlotAllocator.Contains("SkippedFeatureIds"), "FeatureSlotAllocator must own case-insensitive deduplication, bounded assignment, and skipped feature reporting.");
             Require(ribbonBuilder.Contains("new RibbonLayoutComposer().Compose"), "Ribbon builder must consume RibbonLayoutComposer.");
             Require(ribbonBuilder.Contains("AddPulldownButton"), "Ribbon builder must render pulldown buttons.");
             Require(ribbonBuilder.Contains("AddSplitButton"), "Ribbon builder must render split buttons.");

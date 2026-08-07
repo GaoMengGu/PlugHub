@@ -5,7 +5,6 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Net;
-using System.Net.Cache;
 using System.Text;
 using System.Threading;
 using System.Web.Script.Serialization;
@@ -17,15 +16,21 @@ namespace PlugHub.Framework.Packages
 {
     public sealed class RepositoryArchiveSynchronizer
     {
-        private const string ArchiveDownloadUserAgent = "curl/8.0.1";
         private const string RepositoryCacheRootName = "repository-cache";
         private const int GiteeApiRetryCount = 2;
 
         private readonly RepositoryCredentialService _credentialService;
+        private readonly IRepositoryRemoteTransport _transport;
 
         public RepositoryArchiveSynchronizer(RepositoryCredentialService credentialService)
+            : this(credentialService, new HttpRepositoryRemoteTransport())
+        {
+        }
+
+        internal RepositoryArchiveSynchronizer(RepositoryCredentialService credentialService, IRepositoryRemoteTransport transport)
         {
             _credentialService = credentialService ?? throw new ArgumentNullException(nameof(credentialService));
+            _transport = transport ?? throw new ArgumentNullException(nameof(transport));
         }
 
         public bool Sync(PackageRepositoryConfiguration repository, string cacheDirectory, ICollection<DiagnosticMessage> diagnostics)
@@ -86,8 +91,10 @@ namespace PlugHub.Framework.Packages
 
         private string SyncCloudRepositoryCandidate(RepositoryAddress address, PackageRepositoryConfiguration repository, string parentDirectory)
         {
-            var stagingDirectory = Path.Combine(parentDirectory, SafePathSegment(repository.Id) + "." + address.Provider + ".download." + Guid.NewGuid().ToString("N"));
-            var archivePath = Path.Combine(parentDirectory, SafePathSegment(repository.Id) + "." + address.Provider + ".archive." + Guid.NewGuid().ToString("N") + ".zip");
+            var operationId = Guid.NewGuid().ToString("N").Substring(0, 12);
+            var providerKey = string.IsNullOrWhiteSpace(address.Provider) ? "cloud" : SafePathSegment(address.Provider);
+            var stagingDirectory = Path.Combine(parentDirectory, ".sync-" + providerKey + "-" + operationId);
+            var archivePath = Path.Combine(parentDirectory, ".archive-" + providerKey + "-" + operationId + ".zip");
             try
             {
                 Directory.CreateDirectory(stagingDirectory);
@@ -229,28 +236,8 @@ namespace PlugHub.Framework.Packages
             {
                 try
                 {
-                    var request = (HttpWebRequest)WebRequest.Create(uri);
-                    request.Method = "GET";
-                    request.Timeout = 30000;
-                    request.ReadWriteTimeout = 30000;
-                    request.UserAgent = ArchiveDownloadUserAgent;
-                    request.Accept = "application/json";
-
-                    using (var response = (HttpWebResponse)request.GetResponse())
-                    using (var source = response.GetResponseStream())
-                    {
-                        EnsureHttpsResponse(response.ResponseUri);
-                        if (source == null)
-                        {
-                            throw new InvalidOperationException("Gitee API response did not contain a body.");
-                        }
-
-                        using (var reader = new StreamReader(source, Encoding.UTF8))
-                        {
-                            var serializer = new JavaScriptSerializer { MaxJsonLength = int.MaxValue, RecursionLimit = 128 };
-                            return serializer.Deserialize<Dictionary<string, object>>(reader.ReadToEnd()) ?? new Dictionary<string, object>();
-                        }
-                    }
+                    var serializer = new JavaScriptSerializer { MaxJsonLength = int.MaxValue, RecursionLimit = 128 };
+                    return serializer.Deserialize<Dictionary<string, object>>(_transport.ReadText(uri, "application/json")) ?? new Dictionary<string, object>();
                 }
                 catch (WebException ex)
                 {
@@ -353,36 +340,16 @@ namespace PlugHub.Framework.Packages
 
         private void DownloadArchive(Uri archiveUrl, RepositoryAddress address, PackageRepositoryConfiguration repository, string archivePath)
         {
-            var request = (HttpWebRequest)WebRequest.Create(archiveUrl);
-            request.Method = "GET";
-            request.AllowAutoRedirect = true;
-            request.Timeout = 30000;
-            request.ReadWriteTimeout = 30000;
-            request.CachePolicy = new RequestCachePolicy(RequestCacheLevel.Reload);
-            request.UserAgent = ArchiveDownloadUserAgent;
-
             var apiKey = _credentialService.ResolveApiKey(repository);
+            var authorizationHeader = string.Empty;
             if (string.Equals(address.Provider, "github", StringComparison.OrdinalIgnoreCase)
                 && RepositoryRequiresToken(repository)
                 && !string.IsNullOrWhiteSpace(apiKey))
             {
-                request.Headers["Authorization"] = "Bearer " + apiKey.Trim();
+                authorizationHeader = "Bearer " + apiKey.Trim();
             }
 
-            using (var response = (HttpWebResponse)request.GetResponse())
-            {
-                EnsureHttpsResponse(response.ResponseUri);
-                using (var source = response.GetResponseStream())
-                using (var target = File.Create(archivePath))
-                {
-                    if (source == null)
-                    {
-                        throw new InvalidOperationException("Repository archive response did not contain a body.");
-                    }
-
-                    source.CopyTo(target);
-                }
-            }
+            _transport.Download(archiveUrl, archivePath, authorizationHeader);
         }
 
         private static Uri WithCacheBust(Uri uri)
@@ -400,24 +367,83 @@ namespace PlugHub.Framework.Packages
         {
             using (var archive = ZipFile.OpenRead(archivePath))
             {
+                var wrapperDirectory = ArchiveWrapperDirectory(archive);
                 foreach (var entry in archive.Entries)
                 {
-                    var destinationPath = Path.GetFullPath(Path.Combine(targetDirectory, entry.FullName.Replace('/', Path.DirectorySeparatorChar)));
-                    if (!IsUnderDirectory(targetDirectory, destinationPath))
-                    {
-                        throw new InvalidOperationException("Repository archive contains an unsafe path: " + entry.FullName);
-                    }
+                    var relativePath = ArchiveEntryRelativePath(entry.FullName, wrapperDirectory);
+                    if (string.IsNullOrWhiteSpace(relativePath)) continue;
+
+                    var destinationPath = Path.Combine(targetDirectory, relativePath.Replace('/', Path.DirectorySeparatorChar));
 
                     if (string.IsNullOrWhiteSpace(entry.Name))
                     {
-                        Directory.CreateDirectory(destinationPath);
+                        Directory.CreateDirectory(ExtendedPath(destinationPath));
                         continue;
                     }
 
-                    Directory.CreateDirectory(Path.GetDirectoryName(destinationPath) ?? targetDirectory);
-                    entry.ExtractToFile(destinationPath, true);
+                    Directory.CreateDirectory(ExtendedPath(Path.GetDirectoryName(destinationPath) ?? targetDirectory));
+                    using (var source = entry.Open())
+                    using (var target = File.Create(ExtendedPath(destinationPath)))
+                    {
+                        source.CopyTo(target);
+                    }
                 }
             }
+        }
+
+        private static string ArchiveWrapperDirectory(ZipArchive archive)
+        {
+            var filePaths = archive.Entries
+                .Where(entry => !string.IsNullOrWhiteSpace(entry.Name))
+                .Select(entry => SafeArchiveSegments(entry.FullName))
+                .ToList();
+            if (filePaths.Count == 0 || filePaths.Any(segments => segments.Length < 2)) return string.Empty;
+
+            var wrapper = filePaths[0][0];
+            return filePaths.All(segments => string.Equals(segments[0], wrapper, StringComparison.OrdinalIgnoreCase))
+                ? wrapper
+                : string.Empty;
+        }
+
+        private static string ArchiveEntryRelativePath(string entryName, string wrapperDirectory)
+        {
+            var segments = SafeArchiveSegments(entryName);
+            var start = !string.IsNullOrWhiteSpace(wrapperDirectory)
+                && segments.Length > 0
+                && string.Equals(segments[0], wrapperDirectory, StringComparison.OrdinalIgnoreCase)
+                    ? 1
+                    : 0;
+            return string.Join("/", segments.Skip(start));
+        }
+
+        private static string[] SafeArchiveSegments(string entryName)
+        {
+            var normalized = (entryName ?? string.Empty).Replace('\\', '/');
+            if (normalized.StartsWith("/", StringComparison.Ordinal) || normalized.Contains(":"))
+            {
+                throw new InvalidOperationException("Repository archive contains an unsafe path: " + entryName);
+            }
+
+            var segments = normalized.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Any(segment => segment == ".." || segment == "."))
+            {
+                throw new InvalidOperationException("Repository archive contains an unsafe path: " + entryName);
+            }
+
+            return segments;
+        }
+
+        private static string ExtendedPath(string path)
+        {
+            var fullPath = Path.IsPathRooted(path) ? path : Path.GetFullPath(path);
+            if (Path.DirectorySeparatorChar != '\\' || fullPath.StartsWith(@"\\?\", StringComparison.Ordinal))
+            {
+                return fullPath;
+            }
+
+            return fullPath.StartsWith(@"\\", StringComparison.Ordinal)
+                ? @"\\?\UNC\" + fullPath.Substring(2)
+                : @"\\?\" + fullPath;
         }
 
         private static void ValidateArchiveFile(string archivePath, Uri archiveUrl)
@@ -498,14 +524,6 @@ namespace PlugHub.Framework.Packages
             return fullCacheDirectory;
         }
 
-        private static void EnsureHttpsResponse(Uri responseUri)
-        {
-            if (responseUri == null || !string.Equals(responseUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidOperationException("Repository archive download redirected to a non-HTTPS URL.");
-            }
-        }
-
         private static bool IsUnderDirectory(string parentDirectory, string childPath)
         {
             var parent = Path.GetFullPath(parentDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
@@ -535,7 +553,7 @@ namespace PlugHub.Framework.Packages
 
             try
             {
-                Directory.Delete(directory, true);
+                Directory.Delete(ExtendedPath(directory), true);
             }
             catch (IOException)
             {

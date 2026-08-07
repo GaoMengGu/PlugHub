@@ -43,7 +43,7 @@ namespace PlugHub.Revit2020
             }
 
             var layout = new RibbonLayoutComposer().Compose(view, composition.Features);
-            var slotAssignments = BuildSlotAssignments(layout.ClickableFeatures);
+            var slotAssignments = new FeatureSlotAllocator().Allocate(layout.ClickableFeatures, FeatureSlotRegistry.MaxSlots);
             FeatureSlotRegistry.Replace(slotAssignments.SlotToFeatureId, slotAssignments.SkippedFeatureIds);
 
             foreach (var skippedFeatureId in slotAssignments.SkippedFeatureIds)
@@ -419,39 +419,6 @@ namespace PlugHub.Revit2020
             return string.Equals(value, "small", StringComparison.OrdinalIgnoreCase);
         }
 
-        private static SlotAssignmentResult BuildSlotAssignments(IReadOnlyList<FeatureViewModel> orderedFeatures)
-        {
-            var slotToFeatureId = new Dictionary<int, string>();
-            var featureIdToSlot = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            var skippedFeatureIds = new List<string>();
-
-            var slotId = 1;
-            foreach (var feature in orderedFeatures ?? new List<FeatureViewModel>())
-            {
-                if (string.IsNullOrWhiteSpace(feature.FeatureId))
-                {
-                    continue;
-                }
-
-                if (featureIdToSlot.ContainsKey(feature.FeatureId))
-                {
-                    continue;
-                }
-
-                if (slotId > FeatureSlotRegistry.MaxSlots)
-                {
-                    skippedFeatureIds.Add(feature.FeatureId);
-                    continue;
-                }
-
-                slotToFeatureId[slotId] = feature.FeatureId;
-                featureIdToSlot[feature.FeatureId] = slotId;
-                slotId++;
-            }
-
-            return new SlotAssignmentResult(slotToFeatureId, featureIdToSlot, skippedFeatureIds);
-        }
-
         private ImageSource? LoadFeatureIcon(string iconPath, string commandAssembly, bool large)
         {
             return LoadConfiguredIcon(iconPath, large) ?? LoadDllSiblingIcon(commandAssembly, large);
@@ -523,21 +490,5 @@ namespace PlugHub.Revit2020
             return image;
         }
 
-        private sealed class SlotAssignmentResult
-        {
-            public SlotAssignmentResult(
-                IReadOnlyDictionary<int, string> slotToFeatureId,
-                IReadOnlyDictionary<string, int> featureIdToSlot,
-                IReadOnlyList<string> skippedFeatureIds)
-            {
-                SlotToFeatureId = slotToFeatureId ?? throw new ArgumentNullException(nameof(slotToFeatureId));
-                FeatureIdToSlot = featureIdToSlot ?? throw new ArgumentNullException(nameof(featureIdToSlot));
-                SkippedFeatureIds = skippedFeatureIds ?? throw new ArgumentNullException(nameof(skippedFeatureIds));
-            }
-
-            public IReadOnlyDictionary<int, string> SlotToFeatureId { get; }
-            public IReadOnlyDictionary<string, int> FeatureIdToSlot { get; }
-            public IReadOnlyList<string> SkippedFeatureIds { get; }
-        }
     }
 }

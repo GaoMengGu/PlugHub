@@ -13,15 +13,6 @@ namespace PlugHub.Manager.Maintenance
         private const int MaxBackupDirectoriesToKeep = 3;
         private const string InstalledManagerName = "PlugHub.Manager.exe";
 
-        private static readonly string[] RequiredInstallMarkers =
-        {
-            "PlugHub.Revit2020.dll",
-            "PlugHub.Framework.dll",
-            "PlugHub.Contracts.dll",
-            "PlugHub.Wpf.dll",
-            InstalledManagerName
-        };
-
         private static readonly string[] StaleMaintenanceArtifacts =
         {
             "PlugHub.Updater.exe",
@@ -42,7 +33,7 @@ namespace PlugHub.Manager.Maintenance
 
         public void Run(ManagerMaintenanceArguments args)
         {
-            var installDirectory = SafeInstallDirectory(args.InstallDirectory);
+            var installDirectory = PlugHubInstallRootPolicy.Validate(args.InstallDirectory, PlugHubInstallRootOperation.Update);
             if (!File.Exists(args.PayloadZip))
             {
                 throw new FileNotFoundException("Payload zip was not found.", args.PayloadZip);
@@ -173,48 +164,6 @@ namespace PlugHub.Manager.Maintenance
             {
                 File.Copy(file, Path.Combine(installDirectory, Path.GetFileName(file)), true);
             }
-        }
-
-        private static string SafeInstallDirectory(string installDirectory)
-        {
-            if (string.IsNullOrWhiteSpace(installDirectory))
-            {
-                throw new InvalidOperationException("Install directory is required.");
-            }
-
-            var full = Path.GetFullPath(installDirectory ?? string.Empty).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            var root = Path.GetPathRoot(full)?.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            if (string.Equals(full, root, StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidOperationException("Refusing to update an unsafe install directory: " + installDirectory);
-            }
-
-            if (!ContainsPlugHubInstallMarkers(full) || !IsAllowedInstallRootName(full))
-            {
-                throw new InvalidOperationException("Refusing to update a directory that is not a PlugHub install root: " + full);
-            }
-
-            return full;
-        }
-
-        private static bool ContainsPlugHubInstallMarkers(string directory)
-        {
-            return Directory.Exists(directory)
-                && Array.TrueForAll(RequiredInstallMarkers, marker => File.Exists(Path.Combine(directory, marker)));
-        }
-
-        private static bool IsAllowedInstallRootName(string directory)
-        {
-            var fullPath = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            if (string.Equals(Path.GetFileName(fullPath), "PlugHub", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-
-            var parent = Path.GetDirectoryName(fullPath);
-            return string.Equals(Path.GetFileName(fullPath), "Revit2020", StringComparison.OrdinalIgnoreCase)
-                && !string.IsNullOrWhiteSpace(parent)
-                && string.Equals(Path.GetFileName(parent), "dist", StringComparison.OrdinalIgnoreCase);
         }
 
         private static string SafeSegment(string value)
