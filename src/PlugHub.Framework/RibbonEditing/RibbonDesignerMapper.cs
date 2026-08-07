@@ -2,16 +2,15 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using PlugHub.Framework.Configuration;
-using PlugHub.Manager.Settings.Rows;
 
-namespace PlugHub.Manager.Settings.RibbonDesigner
+namespace PlugHub.Framework.RibbonEditing
 {
-    internal sealed class RibbonDesignerMapper
+    public sealed class RibbonDesignerMapper
     {
-        public List<RibbonDesignerNodeRow> FromConfiguration(RibbonConfiguration ribbon, IEnumerable<FeatureRow> features)
+        public List<RibbonDesignerNodeRow> FromConfiguration(RibbonConfiguration ribbon, IEnumerable<RibbonDesignerFeatureRow> features)
         {
             ribbon = ribbon ?? new RibbonConfiguration();
-            var featureRows = (features ?? new List<FeatureRow>()).ToList();
+            var featureRows = (features ?? new List<RibbonDesignerFeatureRow>()).ToList();
             var featuresById = featureRows
                 .Where(feature => !string.IsNullOrWhiteSpace(feature.FeatureId))
                 .GroupBy(feature => feature.FeatureId, StringComparer.OrdinalIgnoreCase)
@@ -43,13 +42,13 @@ namespace PlugHub.Manager.Settings.RibbonDesigner
 
         public List<RibbonPanelLayoutConfiguration> ToPanels(IEnumerable<RibbonDesignerNodeRow> tabs)
         {
-            return ToPanels(tabs, new List<FeatureRow>());
+            return ToPanels(tabs, new List<RibbonDesignerFeatureRow>());
         }
 
-        public List<RibbonPanelLayoutConfiguration> ToPanels(IEnumerable<RibbonDesignerNodeRow> tabs, IEnumerable<FeatureRow> features)
+        public List<RibbonPanelLayoutConfiguration> ToPanels(IEnumerable<RibbonDesignerNodeRow> tabs, IEnumerable<RibbonDesignerFeatureRow> features)
         {
             var index = 0;
-            var featuresById = (features ?? new List<FeatureRow>())
+            var featuresById = (features ?? new List<RibbonDesignerFeatureRow>())
                 .Where(feature => !string.IsNullOrWhiteSpace(feature.FeatureId))
                 .GroupBy(feature => feature.FeatureId, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
@@ -110,10 +109,10 @@ namespace PlugHub.Manager.Settings.RibbonDesigner
             return node != null && string.Equals(node.NodeType, nodeType, StringComparison.OrdinalIgnoreCase);
         }
 
-        private static List<RibbonDesignerNodeRow> CreateDefaultPanels(IEnumerable<FeatureRow> features)
+        private static List<RibbonDesignerNodeRow> CreateDefaultPanels(IEnumerable<RibbonDesignerFeatureRow> features)
         {
             var panels = new List<RibbonDesignerNodeRow>();
-            foreach (var featureGroup in (features ?? new List<FeatureRow>())
+            foreach (var featureGroup in (features ?? new List<RibbonDesignerFeatureRow>())
                 .Where(feature => feature.Visible && !string.IsNullOrWhiteSpace(feature.FeatureId))
                 .OrderBy(feature => DefaultPanelName(feature), StringComparer.OrdinalIgnoreCase)
                 .ThenBy(feature => feature.Order)
@@ -162,12 +161,12 @@ namespace PlugHub.Manager.Settings.RibbonDesigner
             return panels;
         }
 
-        private static string DefaultPanelKey(FeatureRow feature)
+        private static string DefaultPanelKey(RibbonDesignerFeatureRow feature)
         {
             return DefaultPanelName(feature).Trim();
         }
 
-        private static string DefaultPanelName(FeatureRow feature)
+        private static string DefaultPanelName(RibbonDesignerFeatureRow feature)
         {
             return SafeText(
                 feature == null ? string.Empty : feature.GroupDisplayText,
@@ -178,7 +177,7 @@ namespace PlugHub.Manager.Settings.RibbonDesigner
                         SafeText(feature == null ? string.Empty : feature.ModuleId, "默认工具"))));
         }
 
-        private static RibbonDesignerNodeRow FromPanel(RibbonPanelLayoutConfiguration panel, IReadOnlyDictionary<string, FeatureRow> featuresById)
+        private static RibbonDesignerNodeRow FromPanel(RibbonPanelLayoutConfiguration panel, IReadOnlyDictionary<string, RibbonDesignerFeatureRow> featuresById)
         {
             var row = new RibbonDesignerNodeRow
             {
@@ -201,7 +200,7 @@ namespace PlugHub.Manager.Settings.RibbonDesigner
             return row;
         }
 
-        private static RibbonDesignerNodeRow FromItem(RibbonItemLayoutConfiguration item, IReadOnlyDictionary<string, FeatureRow> featuresById)
+        private static RibbonDesignerNodeRow FromItem(RibbonItemLayoutConfiguration item, IReadOnlyDictionary<string, RibbonDesignerFeatureRow> featuresById)
         {
             featuresById.TryGetValue(item.FeatureId ?? string.Empty, out var feature);
             var row = new RibbonDesignerNodeRow
@@ -229,7 +228,7 @@ namespace PlugHub.Manager.Settings.RibbonDesigner
             return row;
         }
 
-        private static string IconPathForDisplay(RibbonItemLayoutConfiguration item, FeatureRow? feature)
+        private static string IconPathForDisplay(RibbonItemLayoutConfiguration item, RibbonDesignerFeatureRow? feature)
         {
             return SafeText(
                 item == null ? string.Empty : item.IconPathOverride,
@@ -238,7 +237,7 @@ namespace PlugHub.Manager.Settings.RibbonDesigner
                     feature == null ? string.Empty : feature.IconPath));
         }
 
-        private static RibbonPanelLayoutConfiguration ToPanel(RibbonDesignerNodeRow panel, IReadOnlyDictionary<string, FeatureRow> featuresById)
+        private static RibbonPanelLayoutConfiguration ToPanel(RibbonDesignerNodeRow panel, IReadOnlyDictionary<string, RibbonDesignerFeatureRow> featuresById)
         {
             return new RibbonPanelLayoutConfiguration
             {
@@ -249,7 +248,7 @@ namespace PlugHub.Manager.Settings.RibbonDesigner
             };
         }
 
-        private static RibbonItemLayoutConfiguration ToItem(RibbonDesignerNodeRow item, IReadOnlyDictionary<string, FeatureRow> featuresById)
+        private static RibbonItemLayoutConfiguration ToItem(RibbonDesignerNodeRow item, IReadOnlyDictionary<string, RibbonDesignerFeatureRow> featuresById)
         {
             var iconPath = IconPathForSave(item, featuresById);
             return new RibbonItemLayoutConfiguration
@@ -268,7 +267,7 @@ namespace PlugHub.Manager.Settings.RibbonDesigner
             };
         }
 
-        private static string IconPathForSave(RibbonDesignerNodeRow item, IReadOnlyDictionary<string, FeatureRow> featuresById)
+        private static string IconPathForSave(RibbonDesignerNodeRow item, IReadOnlyDictionary<string, RibbonDesignerFeatureRow> featuresById)
         {
             var iconPath = item.IconPath ?? string.Empty;
             if (!IsType(item, RibbonDesignerNodeRow.PushButton) || string.IsNullOrWhiteSpace(item.FeatureId))

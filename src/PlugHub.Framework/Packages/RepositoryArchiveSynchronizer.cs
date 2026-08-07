@@ -270,7 +270,7 @@ namespace PlugHub.Framework.Packages
             }
         }
 
-        private static bool IsTransientGiteeRateLimit(HttpWebResponse response, bool retryForbidden)
+        private static bool IsTransientGiteeRateLimit(HttpWebResponse? response, bool retryForbidden)
         {
             return response != null
                 && ((retryForbidden && response.StatusCode == HttpStatusCode.Forbidden) || (int)response.StatusCode == 429);

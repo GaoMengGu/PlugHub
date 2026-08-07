@@ -11,6 +11,7 @@ using PlugHub.Framework.Composition;
 using PlugHub.Framework.Configuration;
 using PlugHub.Framework.Diagnostics;
 using PlugHub.Framework.Packages;
+using PlugHub.Framework.RibbonEditing;
 using PlugHub.Framework.Runtime;
 using PlugHub.Framework.Settings;
 using PlugHub.Framework.Sources;
@@ -63,6 +64,9 @@ namespace PlugHub.Tests
                 new TestCase("framework update checks GitHub test prereleases for TV builds", FrameworkUpdateChecksGitHubTestPrereleasesForTvBuilds),
                 new TestCase("framework update treats test channel tags as comparable versions", FrameworkUpdateTreatsTestChannelTagsAsComparableVersions),
                 new TestCase("ribbon designer mapper hydrates configured feature icons", RibbonDesignerMapperHydratesConfiguredFeatureIcons),
+                new TestCase("ribbon layout editor merges panels and restores visible features", RibbonLayoutEditorMergesPanelsAndRestoresVisibleFeatures),
+                new TestCase("ribbon layout editor normalizes stacks before save", RibbonLayoutEditorNormalizesStacksBeforeSave),
+                new TestCase("ribbon layout editor rejects invalid layouts", RibbonLayoutEditorRejectsInvalidLayouts),
                 new TestCase("framework update package accepts single manager maintenance payload", FrameworkUpdatePackageAcceptsSingleManagerMaintenancePayload),
                 new TestCase("framework update package rejects missing manager maintenance payload", FrameworkUpdatePackageRejectsMissingManagerMaintenancePayload),
                 new TestCase("manager updater validates maintenance payload", ManagerUpdaterValidatesMaintenancePayload),
@@ -87,8 +91,9 @@ namespace PlugHub.Tests
                 }
                 catch (Exception ex)
                 {
-                    failures.Add(test.Name + ": " + ex.Message);
-                    Console.Error.WriteLine("FAIL " + test.Name + ": " + ex.Message);
+                    var failure = TestFailureMessage(ex);
+                    failures.Add(test.Name + ": " + failure);
+                    Console.Error.WriteLine("FAIL " + test.Name + ": " + failure);
                 }
             }
 
@@ -100,6 +105,17 @@ namespace PlugHub.Tests
 
             Console.Error.WriteLine("failed: " + failures.Count);
             return 1;
+        }
+
+        private static string TestFailureMessage(Exception exception)
+        {
+            var current = exception;
+            while (current is TargetInvocationException && current.InnerException != null)
+            {
+                current = current.InnerException;
+            }
+
+            return current.Message;
         }
 
         private static void PackageManifestWriterOmitsRuntimeAndLayoutFields()
@@ -1065,54 +1081,14 @@ namespace PlugHub.Tests
 
         private static void RepositoryPackageRowTreatsAbsentRevitHostAsSettledState()
         {
-            Require(RepositoryPackageInstallState(false, string.Empty, string.Empty, false, true) == "未安装",
+            Require(RepositoryPackageInstallState.Resolve(false, string.Empty, string.Empty, string.Empty, false, true) == "未安装",
                 "absent Revit host must not turn a missing package into pending restart.");
-            Require(RepositoryPackageInstallState(true, "1.0.0", "1.0.0", false, false) == "已安装",
+            Require(RepositoryPackageInstallState.Resolve(true, "1.0.0", "1.0.0", string.Empty, false, false) == "已安装",
                 "absent Revit host must not mark an installed package as pending restart.");
-            Require(RepositoryPackageInstallState(false, string.Empty, string.Empty, true, true) == "待重启卸载",
+            Require(RepositoryPackageInstallState.Resolve(false, string.Empty, string.Empty, string.Empty, true, true) == "待重启卸载",
                 "running Revit host must still show pending uninstall when the module remains loaded.");
-            Require(RepositoryPackageInstallState(true, "1.0.0", "1.0.0", true, false) == "已安装待重启",
+            Require(RepositoryPackageInstallState.Resolve(true, "1.0.0", "1.0.0", string.Empty, true, false) == "已安装待重启",
                 "running Revit host must still show pending restart when an installed package is not loaded yet.");
-        }
-
-        private static string RepositoryPackageInstallState(
-            bool isInstalled,
-            string version,
-            string installedVersion,
-            bool isRevitHostRunning,
-            bool isLoadedInCurrentRuntime)
-        {
-            var rowType = typeof(PlugHub.Manager.FrameworkSettingsWindow).Assembly.GetType(
-                "PlugHub.Manager.Settings.Rows.RepositoryPackageRow",
-                throwOnError: true)!;
-            var method = rowType.GetMethod(
-                "InstallStateFor",
-                BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic,
-                binder: null,
-                types: new[]
-                {
-                    typeof(bool),
-                    typeof(string),
-                    typeof(string),
-                    typeof(string),
-                    typeof(bool),
-                    typeof(bool)
-                },
-                modifiers: null);
-            if (method == null)
-            {
-                throw new InvalidOperationException("repository package install-state function must expose host-running and runtime-loaded inputs.");
-            }
-
-            return (string)(method.Invoke(null, new object[]
-            {
-                isInstalled,
-                version,
-                installedVersion,
-                string.Empty,
-                isRevitHostRunning,
-                isLoadedInCurrentRuntime
-            }) ?? string.Empty);
         }
 
         private static void RibbonLayoutComposerBuildsConfiguredLayoutAndDefaultFallback()
@@ -1161,9 +1137,9 @@ namespace PlugHub.Tests
             var split = tools.Items.First(item => item.Type == RibbonItemViewModel.SplitButton);
             Require(split.Items[0].FeatureId == "feature.b", "split default feature must be ordered first.");
             Require(split.Items.Select(item => item.FeatureId).SequenceEqual(new[] { "feature.b", "feature.a" }), "split children must include each configured feature once.");
-            var fallbackPanel = layout.Panels.First(panel => panel.Id == "default");
-            Require(fallbackPanel.Items.Count == 1 && fallbackPanel.Items[0].FeatureId == "feature.c", "unplaced features must fall back to the default panel.");
-            Require(layout.ClickableFeatures.Select(feature => feature.FeatureId).SequenceEqual(new[] { "feature.b", "feature.a", "feature.c" }), "clickable features must match the composed layout order.");
+            var fallbackPanel = layout.Panels.First(panel => panel.Name == "Group");
+            Require(fallbackPanel.Items.Count == 1 && fallbackPanel.Items[0].FeatureId == "feature.c", "unplaced features must fall back to their feature group panel.");
+            Require(layout.ClickableFeatures.Select(feature => feature.FeatureId).SequenceEqual(new[] { "feature.c", "feature.b", "feature.a" }), "clickable features must follow composed panel order.");
         }
 
         private static void RibbonLayoutComposerFiltersInvalidContainerChildren()
@@ -1223,8 +1199,8 @@ namespace PlugHub.Tests
             Require(pulldown.Items.Count == 1 && pulldown.Items[0].FeatureId == "feature.valid", "pulldown and split containers must only contain push buttons.");
             var stack = layout.Panels.First(panel => panel.Name == "Invalid").Items.First(item => item.Id == "stack");
             Require(stack.Items.Select(item => item.FeatureId).SequenceEqual(new[] { "feature.stack.1", "feature.stack.2", "feature.stack.3" }), "stack must keep at most three legal child items.");
-            var fallback = layout.Panels.First(panel => panel.Id == "default");
-            Require(fallback.Items.Select(item => item.FeatureId).SequenceEqual(new[] { "feature.invalid", "feature.stack.4" }), "features from invalid container positions must be returned to the default panel.");
+            var fallback = layout.Panels.First(panel => panel.Name == "Group");
+            Require(fallback.Items.Select(item => item.FeatureId).SequenceEqual(new[] { "feature.invalid", "feature.stack.4" }), "features from invalid container positions must be returned to their feature group panel.");
         }
 
         private static void SensitiveTextRedactorMasksRepositoryTokens()
@@ -1392,21 +1368,8 @@ namespace PlugHub.Tests
 
         private static void RibbonDesignerMapperHydratesConfiguredFeatureIcons()
         {
-            var managerAssembly = Assembly.Load("PlugHub.Manager");
-            var mapperType = managerAssembly.GetType("PlugHub.Manager.Settings.RibbonDesigner.RibbonDesignerMapper", true)!;
-            var featureRowType = managerAssembly.GetType("PlugHub.Manager.Settings.Rows.FeatureRow", true)!;
-
-            var mapper = Activator.CreateInstance(mapperType, true);
-            var featureRows = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(featureRowType))!;
-            var featureRow = Activator.CreateInstance(featureRowType, true)!;
-            SetPropertyValue(featureRow, "FeatureId", "icon-package.run");
-            SetPropertyValue(featureRow, "Name", "Run Icon Package");
-            SetPropertyValue(featureRow, "DisplayName", "Run Icon Package");
-            SetPropertyValue(featureRow, "ModuleName", "Icon Package");
-            SetPropertyValue(featureRow, "Visible", true);
-            SetPropertyValue(featureRow, "ButtonSize", "large");
-            SetPropertyValue(featureRow, "IconPath", "icons/package.png");
-            featureRows.Add(featureRow);
+            var feature = DesignerFeature("icon-package.run", "Run Icon Package", "Tools", 100);
+            feature.IconPath = "icons/package.png";
 
             var ribbon = new RibbonConfiguration
             {
@@ -1433,13 +1396,67 @@ namespace PlugHub.Tests
                 }
             };
 
-            var tabs = ((IEnumerable)mapperType.GetMethod("FromConfiguration")!.Invoke(mapper, new object[] { ribbon, featureRows })!)
-                .Cast<object>()
-                .ToList();
-            var panel = ((IEnumerable)GetPropertyObject(tabs[0], "Children")).Cast<object>().Single();
-            var button = ((IEnumerable)GetPropertyObject(panel, "Children")).Cast<object>().Single();
+            var tabs = new RibbonLayoutEditor().Load(ribbon, new[] { feature });
+            var button = tabs.Single().Children.Single().Children.Single();
+            Require(button.IconPath == "icons/package.png", "configured layout buttons without an explicit icon override must hydrate the current package feature icon.");
+        }
 
-            Require(GetPropertyValue(button, "IconPath") == "icons/package.png", "configured layout buttons without an explicit icon override must hydrate the current package feature icon.");
+        private static void RibbonLayoutEditorMergesPanelsAndRestoresVisibleFeatures()
+        {
+            var ribbon = new RibbonConfiguration
+            {
+                Panels = new List<RibbonPanelLayoutConfiguration>
+                {
+                    DesignerPanel("tools-a", "Tools", "feature.a"),
+                    DesignerPanel("tools-b", "tools", "feature.a")
+                }
+            };
+            var features = new[]
+            {
+                DesignerFeature("feature.a", "Feature A", "Tools", 10),
+                DesignerFeature("feature.b", "Feature B", "Other", 20)
+            };
+
+            var tabs = new RibbonLayoutEditor().Load(ribbon, features);
+            var panels = tabs.Single().Children;
+            Require(panels.Count == 2, "same-name panels must merge and missing visible features must be restored in the default panel.");
+            Require(panels.Single(panel => panel.Text == "Tools").Children.Count == 1, "same-name panel merge must remove duplicate feature placement.");
+            Require(panels.Single(panel => panel.Id == "default").Children.Single().FeatureId == "feature.b", "missing visible feature must be restored to the default panel.");
+
+            var tools = panels.Single(panel => panel.Text == "Tools");
+            Require(new RibbonLayoutEditor().RemoveContainer(tabs, tools), "editing seam must remove a selected layout container.");
+            Require(tabs.Single().Children.Single(panel => panel.Id == "default").Children.Select(child => child.FeatureId).OrderBy(id => id).SequenceEqual(new[] { "feature.a", "feature.b" }), "removing a container must return its features to the default panel atomically.");
+        }
+
+        private static void RibbonLayoutEditorNormalizesStacksBeforeSave()
+        {
+            var editor = new RibbonLayoutEditor();
+            var tab = DesignerNode(RibbonDesignerNodeRow.Tab, "tab");
+            var panel = DesignerNode(RibbonDesignerNodeRow.Panel, "panel");
+            var emptyStack = DesignerNode(RibbonDesignerNodeRow.Stack, "empty");
+            var singleStack = DesignerNode(RibbonDesignerNodeRow.Stack, "single");
+            singleStack.Children.Add(DesignerFeatureNode("feature.a"));
+            panel.Children.Add(emptyStack);
+            panel.Children.Add(singleStack);
+            tab.Children.Add(panel);
+            var tabs = new List<RibbonDesignerNodeRow> { tab };
+
+            var panels = editor.PrepareForSave(tabs, new[] { DesignerFeature("feature.a", "Feature A", "Tools", 10) });
+            Require(panels.Single().Items.Count == 1, "empty stack must be removed and a single-child stack must unwrap before save.");
+            Require(panels.Single().Items.Single().Type == RibbonDesignerNodeRow.PushButton, "single-child stack must save as its only button.");
+        }
+
+        private static void RibbonLayoutEditorRejectsInvalidLayouts()
+        {
+            var editor = new RibbonLayoutEditor();
+            var outer = DesignerNode(RibbonDesignerNodeRow.Stack, "outer");
+            outer.Children.Add(DesignerNode(RibbonDesignerNodeRow.Stack, "inner"));
+            RequireInvalidLayout(() => editor.Validate(new[] { outer }), "堆叠控件不能嵌套堆叠");
+
+            var duplicatePanel = DesignerNode(RibbonDesignerNodeRow.Panel, "duplicates");
+            duplicatePanel.Children.Add(DesignerFeatureNode("feature.a"));
+            duplicatePanel.Children.Add(DesignerFeatureNode("feature.a"));
+            RequireInvalidLayout(() => editor.Validate(new[] { duplicatePanel }), "布局中存在重复功能");
         }
 
         private static void ManagerUpdaterRemovesStaleStandaloneMaintenancePdbs()
@@ -1759,6 +1776,71 @@ namespace PlugHub.Tests
                 ButtonSize = "large",
                 IconPath = "icons/" + id + ".png"
             };
+        }
+
+        private static RibbonDesignerFeatureRow DesignerFeature(string id, string name, string groupName, int order)
+        {
+            return new RibbonDesignerFeatureRow
+            {
+                FeatureId = id,
+                Name = name,
+                FeatureName = name,
+                DisplayName = name,
+                DisplayText = name,
+                ModuleId = "module." + id,
+                ModuleName = "Module",
+                Group = groupName,
+                GroupDisplayText = groupName,
+                ButtonSize = "large",
+                Order = order,
+                Visible = true
+            };
+        }
+
+        private static RibbonPanelLayoutConfiguration DesignerPanel(string id, string name, string featureId)
+        {
+            return new RibbonPanelLayoutConfiguration
+            {
+                Id = id,
+                Name = name,
+                Order = 100,
+                Items = new List<RibbonItemLayoutConfiguration>
+                {
+                    new RibbonItemLayoutConfiguration
+                    {
+                        Type = RibbonDesignerNodeRow.PushButton,
+                        Id = featureId,
+                        FeatureId = featureId,
+                        Order = 100
+                    }
+                }
+            };
+        }
+
+        private static RibbonDesignerNodeRow DesignerNode(string type, string id)
+        {
+            return new RibbonDesignerNodeRow { NodeType = type, Id = id, Text = id, Order = 100 };
+        }
+
+        private static RibbonDesignerNodeRow DesignerFeatureNode(string featureId)
+        {
+            var row = DesignerNode(RibbonDesignerNodeRow.PushButton, featureId);
+            row.FeatureId = featureId;
+            return row;
+        }
+
+        private static void RequireInvalidLayout(Action action, string expectedMessage)
+        {
+            try
+            {
+                action();
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains(expectedMessage))
+            {
+                return;
+            }
+
+            throw new InvalidOperationException("expected invalid Ribbon layout: " + expectedMessage);
         }
 
         private static void WriteText(string path, string text)

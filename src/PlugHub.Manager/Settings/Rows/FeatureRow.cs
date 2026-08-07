@@ -9,7 +9,6 @@ namespace PlugHub.Manager.Settings.Rows
         public string ModuleId { get; set; } = string.Empty;
         public string OriginalModuleId { get; set; } = string.Empty;
         public string FeatureId { get; set; } = string.Empty;
-        public string PositionText { get; set; } = string.Empty;
         public string ModuleName { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
         public string ConfigName { get; set; } = string.Empty;
@@ -24,7 +23,6 @@ namespace PlugHub.Manager.Settings.Rows
         public string ModuleBaseDirectory { get; set; } = string.Empty;
         public int Order { get; set; }
         public string ButtonSize { get; set; } = "large";
-        public string ButtonSizeDisplayText { get; set; } = "大";
         public string CommandKey { get; set; } = string.Empty;
         public string CommandAssembly { get; set; } = string.Empty;
         public string CommandType { get; set; } = string.Empty;

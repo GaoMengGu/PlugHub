@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -14,17 +13,16 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using System.Windows.Threading;
 using PlugHub.Contracts.Modules;
 using PlugHub.Framework.Configuration;
 using PlugHub.Framework.Diagnostics;
 using PlugHub.Framework.Packages;
+using PlugHub.Framework.RibbonEditing;
 using PlugHub.Framework.Runtime;
 using PlugHub.Framework.Settings;
 using PlugHub.Framework.Updates;
 using PlugHub.Manager.Maintenance;
 using PlugHub.Manager.Settings;
-using PlugHub.Manager.Settings.RibbonDesigner;
 using PlugHub.Manager.Settings.Rows;
 using PlugHub.Wpf;
 
@@ -69,13 +67,9 @@ namespace PlugHub.Manager
         private readonly FrameworkUpdateService _frameworkUpdateService = new FrameworkUpdateService();
         private readonly int _hostProcessId;
         private readonly RepositorySettingsController _repositorySettingsController = new RepositorySettingsController();
-        private readonly RibbonDesignerMapper _ribbonDesignerMapper = new RibbonDesignerMapper();
+        private readonly RibbonLayoutEditor _ribbonLayoutEditor = new RibbonLayoutEditor();
         private readonly RibbonDesignerDropService _ribbonDesignerDropService = new RibbonDesignerDropService();
         private readonly RibbonLayoutDiffService _ribbonLayoutDiffService = new RibbonLayoutDiffService();
-        private readonly DataGrid _pluginPackagesGrid = CreateGrid();
-        private readonly DataGrid _featuresGrid = CreateGrid();
-        private readonly DataGrid _groupsGrid = CreateGrid();
-        private readonly DataGrid _diagnosticsGrid = CreateGrid();
         private readonly ListBox _repositorySourcesList = new ListBox();
         private readonly ListBox _warehousePackageList = new ListBox();
         private readonly TextBox _repositoryPackageSearchText = new TextBox();
@@ -86,11 +80,6 @@ namespace PlugHub.Manager
         private List<SettingsConfigurationStore.ModuleManifestDocument> _moduleDocuments = new List<SettingsConfigurationStore.ModuleManifestDocument>();
         private readonly List<RepositoryPackageRow> _repositoryPackageRows = new List<RepositoryPackageRow>();
         private List<RibbonDesignerNodeRow> _originalRibbonDesignerTabs = new List<RibbonDesignerNodeRow>();
-        private readonly ObservableCollection<GroupOption> _groupOptions = new ObservableCollection<GroupOption>();
-        private readonly IReadOnlyList<string> _buttonSizeOptions = new[] { "large", "small" };
-        private readonly TextBlock _selectedFeatureName = new TextBlock();
-        private readonly ComboBox _selectedFeatureGroupCombo = new ComboBox();
-        private readonly ComboBox _selectedFeatureButtonSizeCombo = new ComboBox();
         private readonly StackPanel _ribbonDesignerCanvas = new StackPanel { Orientation = Orientation.Vertical };
         private readonly TextBlock _selectedRibbonDesignerName = new TextBlock();
         private readonly TextBox _selectedRibbonDesignerText = new TextBox();
@@ -98,9 +87,6 @@ namespace PlugHub.Manager
         private readonly ComboBox _selectedRibbonDesignerDefaultFeature = new ComboBox();
         private readonly HashSet<string> _expandedRibbonDesignerNodeIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private Point _ribbonDesignerDragStartPoint;
-        private int _dragSourceRowIndex = -1;
-        private DataGrid? _dragSourceGrid;
-        private bool _syncingSelectedFeatureEditor;
         private bool _syncingSelectedRibbonDesignerEditor;
         private Button? _checkFrameworkIconButton;
         private Button? _uninstallIconButton;
@@ -1345,27 +1331,6 @@ namespace PlugHub.Manager
             };
         }
 
-        private static DataGrid CreateGrid()
-        {
-            var theme = RevitUiTheme.Current;
-            return new DataGrid
-            {
-                AutoGenerateColumns = false,
-                CanUserAddRows = false,
-                CanUserDeleteRows = false,
-                HeadersVisibility = DataGridHeadersVisibility.Column,
-                GridLinesVisibility = DataGridGridLinesVisibility.Horizontal,
-                SelectionMode = DataGridSelectionMode.Single,
-                SelectionUnit = DataGridSelectionUnit.FullRow,
-                Background = theme.PanelBackground,
-                Foreground = theme.TextBrush,
-                BorderBrush = theme.BorderBrush,
-                BorderThickness = new Thickness(0),
-                RowHeight = 30,
-                AlternatingRowBackground = theme.AlternatingRowBrush
-            };
-        }
-
         private void LoadRows()
         {
             LoadGroupRows();
@@ -1373,49 +1338,11 @@ namespace PlugHub.Manager
             LoadRibbonLayoutRows();
             LoadRepositoryRows();
             LoadRepositoryPackageRows(new List<RepositoryPackageDescriptor>());
-            LoadDiagnosticRows(FrameworkRuntimeState.Current);
             RefreshStatusWithPendingPackageOperations("已加载配置。请选择启用的仓库源并手动一键同步。布局和图标需重启 Revit 重绘。");
-        }
-
-        private void LoadPluginPackageRows()
-        {
-            _pluginPackagesGrid.Columns.Clear();
-            _pluginPackagesGrid.Columns.Add(TextColumn(nameof(ModuleRow.PositionText), "位置", true, 0.7));
-            _pluginPackagesGrid.Columns.Add(TextColumn(nameof(ModuleRow.Name), "插件包", true, 2.1));
-            _pluginPackagesGrid.Columns.Add(TextColumn(nameof(ModuleRow.DisplayName), "显示名", false, 2.2));
-            _pluginPackagesGrid.Columns.Add(CheckColumn(nameof(ModuleRow.Enabled), "启用"));
-            _pluginPackagesGrid.Columns.Add(CheckColumn(nameof(ModuleRow.Visible), "显示"));
-            _pluginPackagesGrid.Columns.Add(TextColumn(nameof(ModuleRow.SourceId), "来源", false, 1.2));
-
-            _viewModel.Modules.Clear();
-            foreach (var row in EditableModules()
-                .OrderBy(module => module.Order)
-                .ThenBy(module => DisplayName(module.DisplayName, module.Name, module.Id), StringComparer.OrdinalIgnoreCase)
-                .Select(module => new ModuleRow
-                {
-                    Id = module.Id,
-                    Name = DisplayName(module.DisplayName, module.Name, module.Id),
-                    DisplayName = module.DisplayName,
-                    Enabled = module.Enabled,
-                    Visible = module.Visible,
-                    SourceId = string.IsNullOrWhiteSpace(module.SourceId) ? "custom" : module.SourceId,
-                    Order = module.Order
-                }))
-            {
-                _viewModel.Modules.Add(row);
-            }
-            RefreshPluginPackagePositions();
-            _pluginPackagesGrid.ItemsSource = _viewModel.Modules;
         }
 
         private void LoadGroupRows()
         {
-            _groupsGrid.Columns.Clear();
-            _groupsGrid.Columns.Add(TextColumn(nameof(GroupRow.PositionText), "位置", true, 0.7));
-            _groupsGrid.Columns.Add(TextColumn(nameof(GroupRow.Id), "分组 ID", true, 1.8));
-            _groupsGrid.Columns.Add(TextColumn(nameof(GroupRow.Name), "显示名", false, 2.2));
-            _groupsGrid.Columns.Add(TextColumn(nameof(GroupRow.FeatureCountText), "功能数", true, 0.8));
-
             var viewGroups = WorkspaceView().Groups ?? new List<ViewGroupConfiguration>();
             var viewGroupsById = viewGroups
                 .Where(group => !string.IsNullOrWhiteSpace(group.Id))
@@ -1463,22 +1390,10 @@ namespace PlugHub.Manager
                 _viewModel.Groups.Add(row);
             }
             RefreshGroupPositions();
-            RefreshFeatureGroupOptions();
-            _groupsGrid.ItemsSource = _viewModel.Groups;
         }
 
         private void LoadFeatureRows()
         {
-            _featuresGrid.Columns.Clear();
-            _featuresGrid.Columns.Add(TextColumn(nameof(FeatureRow.PositionText), "位置", true, 0.7));
-            _featuresGrid.Columns.Add(TextColumn(nameof(FeatureRow.Name), "功能", true, 2.0));
-            _featuresGrid.Columns.Add(TextColumn(nameof(FeatureRow.DisplayName), "显示名", false, 1.8));
-            _featuresGrid.Columns.Add(CheckColumn(nameof(FeatureRow.Visible), "显示"));
-            _featuresGrid.Columns.Add(TextColumn(nameof(FeatureRow.ModuleName), "插件包", true, 1.5));
-            _featuresGrid.Columns.Add(TextColumn(nameof(FeatureRow.GroupDisplayText), "所属分组", true, 1.6));
-            _featuresGrid.Columns.Add(TextColumn(nameof(FeatureRow.ButtonSizeDisplayText), "图标大小", true, 0.8));
-            _featuresGrid.Columns.Add(TextColumn(nameof(FeatureRow.IconPath), "图标", false, 1.5));
-
             _viewModel.Features.Clear();
             foreach (var row in EditableModules()
                 .SelectMany(module => (module.Features ?? new List<FeatureConfiguration>()).Select(feature => new FeatureRow
@@ -1511,35 +1426,14 @@ namespace PlugHub.Manager
             }
             SortFeatureRowsForRuntimeOrder();
             RefreshFeaturePositionsByGroup();
-            _featuresGrid.ItemsSource = _viewModel.Features;
-            if (_viewModel.Features.Count > 0)
-            {
-                _featuresGrid.SelectedIndex = 0;
-            }
-
-            SyncSelectedFeatureEditor();
         }
 
         private void LoadRibbonLayoutRows()
         {
-            _viewModel.RibbonLayoutNodes.Clear();
-            _viewModel.RibbonFeaturePool.Clear();
             _viewModel.RibbonDesignerFeatures.Clear();
             _viewModel.RibbonDesignerTabs.Clear();
 
             var ribbon = WorkspaceView().Ribbon ?? new RibbonConfiguration();
-            var panels = ribbon.Panels ?? new List<RibbonPanelLayoutConfiguration>();
-            if (panels.Count > 0)
-            {
-                var merged = MergeRibbonPanelsByDisplayName(panels.Select(RibbonLayoutNodeRow.FromPanel).ToList());
-                ribbon.Panels = merged.Select(row => row.ToPanelConfiguration()).ToList();
-            }
-
-            foreach (var tab in _ribbonDesignerMapper.FromConfiguration(ribbon, _viewModel.Features))
-            {
-                _viewModel.RibbonDesignerTabs.Add(tab);
-            }
-
             foreach (var feature in _viewModel.Features
                 .Where(row => row.Visible)
                 .OrderBy(row => row.ModuleName, StringComparer.OrdinalIgnoreCase)
@@ -1553,14 +1447,24 @@ namespace PlugHub.Manager
                     ModuleId = feature.ModuleId,
                     ModuleName = feature.ModuleName,
                     FeatureId = feature.FeatureId,
+                    Name = feature.Name,
                     FeatureName = feature.Name,
                     DisplayName = displayName,
+                    Group = feature.Group,
+                    GroupDisplayText = feature.GroupDisplayText,
                     SearchText = (displayName + " " + feature.Name + " " + feature.ModuleName + " " + feature.FeatureId).Trim(),
                     IconPath = feature.IconPath,
                     ModuleBaseDirectory = feature.ModuleBaseDirectory,
                     ButtonSize = NormalizeButtonSize(feature.ButtonSize),
+                    Order = feature.Order,
+                    Visible = feature.Visible,
                     DisplayText = displayName
                 });
+            }
+
+            foreach (var tab in _ribbonLayoutEditor.Load(ribbon, _viewModel.RibbonDesignerFeatures))
+            {
+                _viewModel.RibbonDesignerTabs.Add(tab);
             }
 
             RefreshRibbonDesignerLayoutState();
@@ -1573,144 +1477,7 @@ namespace PlugHub.Manager
 
         private void RefreshRibbonDesignerLayoutState()
         {
-            RemoveUnavailableRibbonDesignerFeatures();
-            EnsureAllVisibleFeaturesInRibbonDesignerLayout();
-            NormalizeRibbonDesignerLayout();
-        }
-
-        private void RemoveUnavailableRibbonDesignerFeatures()
-        {
-            var visibleFeatureIds = new HashSet<string>(
-                _viewModel.RibbonDesignerFeatures
-                    .Where(feature => !string.IsNullOrWhiteSpace(feature.FeatureId))
-                    .Select(feature => feature.FeatureId),
-                StringComparer.OrdinalIgnoreCase);
-            foreach (var tab in _viewModel.RibbonDesignerTabs)
-            {
-                RemoveUnavailableRibbonDesignerFeatures(tab, visibleFeatureIds);
-            }
-        }
-
-        private static void RemoveUnavailableRibbonDesignerFeatures(RibbonDesignerNodeRow parent, ISet<string> visibleFeatureIds)
-        {
-            for (var index = parent.Children.Count - 1; index >= 0; index--)
-            {
-                var child = parent.Children[index];
-                if (RibbonDesignerMapper.IsType(child, RibbonDesignerNodeRow.PushButton)
-                    && !string.IsNullOrWhiteSpace(child.FeatureId)
-                    && !visibleFeatureIds.Contains(child.FeatureId))
-                {
-                    parent.Children.RemoveAt(index);
-                    continue;
-                }
-
-                RemoveUnavailableRibbonDesignerFeatures(child, visibleFeatureIds);
-                if (ShouldRemoveEmptyRibbonDesignerContainer(child))
-                {
-                    parent.Children.RemoveAt(index);
-                }
-            }
-        }
-
-        private static bool ShouldRemoveEmptyRibbonDesignerContainer(RibbonDesignerNodeRow row)
-        {
-            if (row == null || row.Children.Count > 0)
-            {
-                return false;
-            }
-
-            return RibbonDesignerMapper.IsType(row, RibbonDesignerNodeRow.Panel)
-                || RibbonDesignerMapper.IsType(row, RibbonDesignerNodeRow.PulldownButton)
-                || RibbonDesignerMapper.IsType(row, RibbonDesignerNodeRow.SplitButton)
-                || RibbonDesignerMapper.IsType(row, RibbonDesignerNodeRow.Stack);
-        }
-
-        private void EnsureAllVisibleFeaturesInRibbonDesignerLayout()
-        {
-            var visibleFeatures = _viewModel.RibbonDesignerFeatures
-                .Where(feature => !string.IsNullOrWhiteSpace(feature.FeatureId))
-                .ToList();
-            var missingFeatures = visibleFeatures
-                .Where(feature => !_ribbonDesignerDropService.IsFeaturePlaced(_viewModel.RibbonDesignerTabs, feature.FeatureId))
-                .ToList();
-            if (missingFeatures.Count == 0)
-            {
-                return;
-            }
-
-            var defaultPanel = EnsureDefaultRibbonDesignerPanel();
-            foreach (var feature in missingFeatures)
-            {
-                defaultPanel.Children.Add(RibbonDesignerMapper.CreateFeatureNode(feature, (defaultPanel.Children.Count + 1) * 100));
-            }
-        }
-
-        private RibbonDesignerNodeRow EnsureDefaultRibbonDesignerPanel()
-        {
-            var tab = _viewModel.RibbonDesignerTabs.FirstOrDefault();
-            if (tab == null)
-            {
-                tab = new RibbonDesignerNodeRow
-                {
-                    NodeType = RibbonDesignerNodeRow.Tab,
-                    Id = "tab",
-                    Text = "PlugHub",
-                    Order = 100
-                };
-                _viewModel.RibbonDesignerTabs.Add(tab);
-            }
-
-            var panel = tab.Children.FirstOrDefault(row =>
-                RibbonDesignerMapper.IsType(row, RibbonDesignerNodeRow.Panel)
-                && (string.Equals(row.Id, DefaultRibbonDesignerPanelId, StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(row.Text, DefaultRibbonDesignerPanelName, StringComparison.OrdinalIgnoreCase)));
-            if (panel != null)
-            {
-                panel.Id = DefaultRibbonDesignerPanelId;
-                panel.Text = DefaultRibbonDesignerPanelName;
-                return panel;
-            }
-
-            panel = RibbonDesignerMapper.CreateContainerNode(
-                RibbonDesignerNodeRow.Panel,
-                DefaultRibbonDesignerPanelName,
-                (tab.Children.Count + 1) * 100);
-            panel.Id = DefaultRibbonDesignerPanelId;
-            tab.Children.Add(panel);
-            return panel;
-        }
-
-        private void NormalizeRibbonDesignerLayout()
-        {
-            foreach (var tab in _viewModel.RibbonDesignerTabs)
-            {
-                NormalizeRibbonDesignerChildSizes(tab);
-            }
-        }
-
-        private void NormalizeRibbonDesignerChildSizes(RibbonDesignerNodeRow parent)
-        {
-            foreach (var child in parent.Children)
-            {
-                child.Size = InferredRibbonDesignerButtonSize(parent, child);
-                if (!RibbonDesignerMapper.IsType(child, RibbonDesignerNodeRow.PushButton))
-                {
-                    child.IconPath = string.Empty;
-                }
-
-                NormalizeRibbonDesignerChildSizes(child);
-            }
-        }
-
-        private static string InferredRibbonDesignerButtonSize(RibbonDesignerNodeRow parent, RibbonDesignerNodeRow child)
-        {
-            if (RibbonDesignerMapper.IsType(child, RibbonDesignerNodeRow.Panel)
-                || RibbonDesignerMapper.IsType(child, RibbonDesignerNodeRow.Tab))
-            {
-                return "large";
-            }
-
-            return RibbonDesignerMapper.IsType(parent, RibbonDesignerNodeRow.Panel) ? "large" : "small";
+            _ribbonLayoutEditor.Synchronize(_viewModel.RibbonDesignerTabs, _viewModel.RibbonDesignerFeatures);
         }
 
         private void RefreshRibbonDesignerCanvas()
@@ -1828,7 +1595,7 @@ namespace PlugHub.Manager
         private UIElement BuildRibbonDesignerPushButtonPreview(RibbonDesignerNodeRow row)
         {
             var parent = FindRibbonDesignerParent(row);
-            var size = parent == null ? NormalizeButtonSize(row.Size) : InferredRibbonDesignerButtonSize(parent, row);
+            var size = parent == null ? NormalizeButtonSize(row.Size) : _ribbonLayoutEditor.InferButtonSize(parent, row);
             return string.Equals(size, "small", StringComparison.OrdinalIgnoreCase)
                 ? BuildRibbonDesignerSmallButtonPreview(row)
                 : BuildRibbonDesignerLargeButtonPreview(row);
@@ -2706,16 +2473,6 @@ namespace PlugHub.Manager
             CommitSelectedRibbonDesignerProperties(false);
         }
 
-        private void ApplySelectedRibbonDesignerProperties()
-        {
-            if (!CommitSelectedRibbonDesignerProperties(true))
-            {
-                return;
-            }
-
-            RefreshRibbonDesignerAfterLayoutChange("已更新布局属性，保存并重启 Revit 后生效。");
-        }
-
         private bool CommitSelectedRibbonDesignerProperties(bool showStatus)
         {
             if (_syncingSelectedRibbonDesignerEditor) return false;
@@ -2752,7 +2509,7 @@ namespace PlugHub.Manager
                 row.Text = RibbonNodeTypeDisplayName(row.NodeType);
             }
 
-            row.Size = InferredRibbonDesignerButtonSize(FindRibbonDesignerParent(row) ?? row, row);
+            row.Size = _ribbonLayoutEditor.InferButtonSize(FindRibbonDesignerParent(row) ?? row, row);
             if (!RibbonDesignerMapper.IsType(row, RibbonDesignerNodeRow.PushButton))
             {
                 row.IconPath = string.Empty;
@@ -2921,8 +2678,7 @@ namespace PlugHub.Manager
                 return;
             }
 
-            MoveRibbonDesignerChildrenToDefaultPanel(row);
-            if (RemoveRibbonDesignerNode(_viewModel.RibbonDesignerTabs, row))
+            if (_ribbonLayoutEditor.RemoveContainer(_viewModel.RibbonDesignerTabs, row))
             {
                 SelectRibbonDesignerNode(_viewModel.RibbonDesignerTabs.FirstOrDefault()?.Children.FirstOrDefault());
                 RefreshRibbonDesignerAfterLayoutChange("已移除布局项，保存并重启 Revit 后生效。");
@@ -2941,60 +2697,6 @@ namespace PlugHub.Manager
             return RibbonDesignerMapper.IsType(row, RibbonDesignerNodeRow.Panel)
                 && (string.Equals(row.Id, DefaultRibbonDesignerPanelId, StringComparison.OrdinalIgnoreCase)
                     || string.Equals(row.Text, DefaultRibbonDesignerPanelName, StringComparison.OrdinalIgnoreCase));
-        }
-
-        private void MoveRibbonDesignerChildrenToDefaultPanel(RibbonDesignerNodeRow row)
-        {
-            var featureNodes = CollectRibbonDesignerFeatureNodes(row)
-                .Where(node => !string.IsNullOrWhiteSpace(node.FeatureId))
-                .ToList();
-            if (featureNodes.Count == 0)
-            {
-                return;
-            }
-
-            var defaultPanel = EnsureDefaultRibbonDesignerPanel();
-            foreach (var featureNode in featureNodes)
-            {
-                defaultPanel.Children.Add(CloneRibbonDesignerFeatureNode(featureNode, (defaultPanel.Children.Count + 1) * 100));
-            }
-        }
-
-        private IEnumerable<RibbonDesignerNodeRow> CollectRibbonDesignerFeatureNodes(RibbonDesignerNodeRow row)
-        {
-            if (row == null)
-            {
-                yield break;
-            }
-
-            if (RibbonDesignerMapper.IsType(row, RibbonDesignerNodeRow.PushButton) && !string.IsNullOrWhiteSpace(row.FeatureId))
-            {
-                yield return row;
-            }
-
-            foreach (var child in row.Children)
-            {
-                foreach (var featureNode in CollectRibbonDesignerFeatureNodes(child))
-                {
-                    yield return featureNode;
-                }
-            }
-        }
-
-        private static RibbonDesignerNodeRow CloneRibbonDesignerFeatureNode(RibbonDesignerNodeRow source, int order)
-        {
-            return new RibbonDesignerNodeRow
-            {
-                NodeType = RibbonDesignerNodeRow.PushButton,
-                Id = source.Id,
-                Text = source.Text,
-                FeatureId = source.FeatureId,
-                Size = "large",
-                IconPath = source.IconPath,
-                Order = order,
-                RequiresRestart = true,
-                StatusText = "需重启"
-            };
         }
 
         private static bool RemoveRibbonDesignerNode(IList<RibbonDesignerNodeRow> roots, RibbonDesignerNodeRow target)
@@ -3083,11 +2785,6 @@ namespace PlugHub.Manager
 
             _warehousePackageList.ItemsSource = _viewModel.RepositoryPackages;
             RefreshItems(_warehousePackageList);
-        }
-
-        private static bool ContainsText(string value, string search)
-        {
-            return (value ?? string.Empty).IndexOf(search ?? string.Empty, StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private RepositoryRow CreateRepositoryRow(PackageRepositoryConfiguration repository)
@@ -3182,7 +2879,7 @@ namespace PlugHub.Manager
 
             if (messages.Count > 0)
             {
-                LoadDiagnosticRowsFromMessages(messages);
+                LogDiagnostics("FrameworkSettingsWindow.LoadCachedRepositoryPackages", messages);
             }
 
             RefreshRepositorySourceCards();
@@ -3217,7 +2914,7 @@ namespace PlugHub.Manager
             LoadRepositoryPackageRows(packages);
             if (diagnostics.Count > 0)
             {
-                LoadDiagnosticRowsFromMessages(diagnostics);
+                LogDiagnostics("FrameworkSettingsWindow.LoadCachedRepositoryPackages", diagnostics);
             }
 
             row.Status = IsLocalRepository(row)
@@ -3229,7 +2926,6 @@ namespace PlugHub.Manager
 
         private void CheckRepositoryUpdates()
         {
-            EndGridEdits();
             ApplyRepositoryRows();
 
             var repositories = _viewModel.Repositories
@@ -3277,7 +2973,7 @@ namespace PlugHub.Manager
 
                     if (messages.Count > 0)
                     {
-                        LoadDiagnosticRowsFromMessages(messages);
+                        LogDiagnostics("FrameworkSettingsWindow.CheckRepositoryUpdates", messages);
                     }
 
                     foreach (var row in _viewModel.Repositories)
@@ -3304,100 +3000,6 @@ namespace PlugHub.Manager
                 .ToList();
         }
 
-        private void LoadDiagnosticRows(FrameworkRuntimeSnapshot? snapshot)
-        {
-            _diagnosticsGrid.Columns.Clear();
-            _diagnosticsGrid.Columns.Add(TextColumn(nameof(DiagnosticRow.Severity), "级别", true, 0.8));
-            _diagnosticsGrid.Columns.Add(TextColumn(nameof(DiagnosticRow.Code), "代码", true, 1.1));
-            _diagnosticsGrid.Columns.Add(TextColumn(nameof(DiagnosticRow.Scope), "对象", true, 1.4));
-            _diagnosticsGrid.Columns.Add(TextColumn(nameof(DiagnosticRow.Message), "消息", true, 4.6));
-
-            var rows = (snapshot?.Diagnostics ?? new List<DiagnosticMessage>())
-                .Select(message => new DiagnosticRow
-                {
-                    Severity = message.Severity.ToString(),
-                    Code = message.Code,
-                    Scope = message.ModuleId,
-                    Message = message.Message
-                })
-                .ToList();
-
-            if (rows.Count == 0)
-            {
-                rows.Add(new DiagnosticRow
-                {
-                    Severity = "Info",
-                    Code = "PH-OK",
-                    Scope = "runtime",
-                    Message = "当前没有日志消息。"
-                });
-            }
-
-            SetDiagnosticRows(rows);
-        }
-
-        private void LoadDiagnosticRowsFromMessages(IReadOnlyList<DiagnosticMessage> messages)
-        {
-            _diagnosticsGrid.Columns.Clear();
-            _diagnosticsGrid.Columns.Add(TextColumn(nameof(DiagnosticRow.Severity), "级别", true, 0.8));
-            _diagnosticsGrid.Columns.Add(TextColumn(nameof(DiagnosticRow.Code), "代码", true, 1.1));
-            _diagnosticsGrid.Columns.Add(TextColumn(nameof(DiagnosticRow.Scope), "对象", true, 1.4));
-            _diagnosticsGrid.Columns.Add(TextColumn(nameof(DiagnosticRow.Message), "消息", true, 4.6));
-
-            var rows = (messages ?? new List<DiagnosticMessage>())
-                .Select(message => new DiagnosticRow
-                {
-                    Severity = message.Severity.ToString(),
-                    Code = message.Code,
-                    Scope = message.ModuleId,
-                    Message = message.Message
-                })
-                .ToList();
-
-            if (rows.Count == 0)
-            {
-                rows.Add(new DiagnosticRow
-                {
-                    Severity = "Info",
-                    Code = "PH-REPOSITORY-OK",
-                    Scope = "repository",
-                    Message = "仓库浏览完成。"
-                });
-            }
-
-            SetDiagnosticRows(rows);
-        }
-
-        private void LoadPostSaveDiagnosticRows()
-        {
-            _diagnosticsGrid.Columns.Clear();
-            _diagnosticsGrid.Columns.Add(TextColumn(nameof(DiagnosticRow.Severity), "级别", true, 0.8));
-            _diagnosticsGrid.Columns.Add(TextColumn(nameof(DiagnosticRow.Code), "代码", true, 1.1));
-            _diagnosticsGrid.Columns.Add(TextColumn(nameof(DiagnosticRow.Scope), "对象", true, 1.4));
-            _diagnosticsGrid.Columns.Add(TextColumn(nameof(DiagnosticRow.Message), "消息", true, 4.6));
-            SetDiagnosticRows(new[]
-            {
-                new DiagnosticRow
-                {
-                    Severity = "Info",
-                    Code = "PH-SAVED",
-                    Scope = "settings",
-                    Message = "配置已保存。仓库设置和布局会在重启 Revit 后重新加载；此处不显示保存前的运行时日志。"
-                }
-            });
-        }
-
-        private void SetDiagnosticRows(IEnumerable<DiagnosticRow> rows)
-        {
-            _viewModel.Diagnostics.Clear();
-            foreach (var row in rows)
-            {
-                _viewModel.Diagnostics.Add(row);
-            }
-
-            _diagnosticsGrid.ItemsSource = _viewModel.Diagnostics;
-        }
-
         private void TrySave()
         {
             try
@@ -3412,7 +3014,6 @@ namespace PlugHub.Manager
 
         private void Save()
         {
-            EndGridEdits();
             CommitSelectedRibbonDesignerProperties(false);
             RefreshRibbonDesignerChangeSummary();
             ApplyFeatureRows();
@@ -3423,7 +3024,6 @@ namespace PlugHub.Manager
             _originalRibbonDesignerTabs = RibbonDesignerMapper.CloneTabs(_viewModel.RibbonDesignerTabs);
             RefreshRibbonDesignerChangeSummary();
 
-            LoadPostSaveDiagnosticRows();
             LoadRepositoryRows();
             RefreshStatus("已保存配置。布局和仓库设置已写回；布局和图标需重启 Revit 重绘。");
         }
@@ -3441,38 +3041,6 @@ namespace PlugHub.Manager
             {
                 ReportSettingsError("重新加载失败", ex);
             }
-        }
-
-        private void ApplyPluginPackageRows()
-        {
-            var rows = _viewModel.Modules.ToDictionary(row => row.Id, StringComparer.OrdinalIgnoreCase);
-            foreach (var module in EditableModules())
-            {
-                if (!rows.TryGetValue(module.Id, out var row)) continue;
-                module.DisplayName = row.DisplayName ?? string.Empty;
-                module.Enabled = row.Enabled;
-                module.Visible = row.Visible;
-                module.SourceId = row.SourceId ?? string.Empty;
-                module.Order = row.Order;
-            }
-        }
-
-        private void ApplyGroupRows()
-        {
-            var view = WorkspaceView();
-            view.Groups = _viewModel.Groups
-                .Where(row => !string.IsNullOrWhiteSpace(row.Id))
-                .Select(row => new ViewGroupConfiguration
-                {
-                    Id = row.Id.Trim(),
-                    Name = DisplayName(row.Name, row.Id, row.Id),
-                    Description = string.Empty,
-                    IncludeCategories = new List<string>(),
-                    IncludeTags = new List<string>(),
-                    Order = row.Order,
-                    Presentation = "panel"
-                })
-                .ToList();
         }
 
         private void ApplyFeatureRows()
@@ -3511,10 +3079,12 @@ namespace PlugHub.Manager
 
         private void ApplyRibbonLayoutRows()
         {
-            RefreshRibbonDesignerLayoutState();
-            NormalizeInvalidRibbonDesignerStacksForSave(_viewModel.RibbonDesignerTabs);
-            ValidateNoNestedRibbonDesignerStacks();
-            ValidateUniqueRibbonFeaturePlacement();
+            var selectedNode = _viewModel.SelectedRibbonDesignerNode;
+            var panels = _ribbonLayoutEditor.PrepareForSave(_viewModel.RibbonDesignerTabs, _viewModel.RibbonDesignerFeatures);
+            if (selectedNode != null && !_ribbonDesignerDropService.Flatten(_viewModel.RibbonDesignerTabs).Contains(selectedNode))
+            {
+                _viewModel.SelectedRibbonDesignerNode = null;
+            }
             if (_viewModel.SelectedRibbonDesignerNode == null)
             {
                 _viewModel.SelectedRibbonDesignerNode = _viewModel.RibbonDesignerTabs.FirstOrDefault()?.Children.FirstOrDefault();
@@ -3527,7 +3097,7 @@ namespace PlugHub.Manager
             }
 
             view.Ribbon.LayoutVersion = "1.0";
-            view.Ribbon.Panels = _ribbonDesignerMapper.ToPanels(_viewModel.RibbonDesignerTabs, _viewModel.Features);
+            view.Ribbon.Panels = panels;
             InitializeRibbonDesignerContainerExpansionState();
             RefreshRibbonDesignerCanvas();
             SyncSelectedRibbonDesignerEditor();
@@ -3546,114 +3116,6 @@ namespace PlugHub.Manager
                 .ToList();
         }
 
-        private List<RibbonLayoutNodeRow> CreateDefaultRibbonLayoutNodes()
-        {
-            var result = new List<RibbonLayoutNodeRow>();
-            var placedFeatureIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var features = _viewModel.Features
-                .Where(feature => feature.Visible && !string.IsNullOrWhiteSpace(feature.FeatureId))
-                .OrderBy(DefaultRibbonPanelName, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(feature => feature.Order)
-                .ThenBy(feature => feature.Name, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(feature => feature.FeatureId, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-
-            foreach (var moduleGroup in features.GroupBy(DefaultRibbonPanelKey, StringComparer.OrdinalIgnoreCase))
-            {
-                var panelIndex = result.Count + 1;
-                var firstFeature = moduleGroup.First();
-                var panel = new RibbonLayoutNodeRow
-                {
-                    NodeType = "panel",
-                    Id = "default-panel-" + panelIndex,
-                    Text = DefaultRibbonPanelName(firstFeature),
-                    Order = panelIndex * 100
-                };
-
-                foreach (var feature in moduleGroup
-                    .OrderBy(feature => feature.Order)
-                    .ThenBy(feature => feature.Name, StringComparer.OrdinalIgnoreCase)
-                    .ThenBy(feature => feature.FeatureId, StringComparer.OrdinalIgnoreCase))
-                {
-                    if (!placedFeatureIds.Add(feature.FeatureId))
-                    {
-                        continue;
-                    }
-
-                    panel.Children.Add(CreateRibbonFeatureNode(feature, panel.Children.Count + 1));
-                }
-
-                if (panel.Children.Count > 0)
-                {
-                    result.Add(panel);
-                }
-            }
-
-            return result;
-        }
-
-        private static string DefaultRibbonPanelKey(FeatureRow feature)
-        {
-            return DefaultRibbonPanelName(feature).Trim();
-        }
-
-        private static string DefaultRibbonPanelName(FeatureRow feature)
-        {
-            return DisplayName(
-                feature == null ? string.Empty : feature.GroupDisplayText,
-                DisplayName(
-                    feature == null ? string.Empty : feature.ModuleName,
-                    feature == null ? string.Empty : feature.ModuleId,
-                    "默认工具"),
-                "默认工具");
-        }
-
-        private static List<RibbonLayoutNodeRow> MergeRibbonPanelsByDisplayName(IEnumerable<RibbonLayoutNodeRow> panels)
-        {
-            var result = new List<RibbonLayoutNodeRow>();
-            var panelsByName = new Dictionary<string, RibbonLayoutNodeRow>(StringComparer.OrdinalIgnoreCase);
-            foreach (var panel in panels ?? new List<RibbonLayoutNodeRow>())
-            {
-                var key = DisplayName(panel.Text, panel.Id, "默认工具").Trim();
-                if (panelsByName.TryGetValue(key, out var existing))
-                {
-                    var existingFeatureIds = new HashSet<string>(CollectRibbonFeatureIds(existing.Children), StringComparer.OrdinalIgnoreCase);
-                    foreach (var child in panel.Children)
-                    {
-                        if (!string.IsNullOrWhiteSpace(child.FeatureId) && !existingFeatureIds.Add(child.FeatureId))
-                        {
-                            continue;
-                        }
-
-                        existing.Children.Add(child);
-                    }
-
-                    continue;
-                }
-
-                panelsByName[key] = panel;
-                result.Add(panel);
-            }
-
-            return result;
-        }
-
-        private static IEnumerable<string> CollectRibbonFeatureIds(IEnumerable<RibbonLayoutNodeRow> rows)
-        {
-            foreach (var row in rows ?? new List<RibbonLayoutNodeRow>())
-            {
-                if (!string.IsNullOrWhiteSpace(row.FeatureId))
-                {
-                    yield return row.FeatureId;
-                }
-
-                foreach (var childFeatureId in CollectRibbonFeatureIds(row.Children))
-                {
-                    yield return childFeatureId;
-                }
-            }
-        }
-
         private void ResetDefaultRibbonLayout()
         {
             _viewModel.RibbonDesignerTabs.Clear();
@@ -3668,276 +3130,6 @@ namespace PlugHub.Manager
 
             SelectRibbonDesignerNode(_viewModel.RibbonDesignerTabs.FirstOrDefault()?.Children.FirstOrDefault());
             RefreshRibbonDesignerAfterLayoutChange("已按当前已安装功能重新生成默认布局，保存并重启 Revit 后生效。");
-        }
-
-        private void NormalizeRibbonLayoutFeatureBindings(IEnumerable<RibbonLayoutNodeRow> rows)
-        {
-            foreach (var row in rows ?? new List<RibbonLayoutNodeRow>())
-            {
-                NormalizeRibbonNodeFeatureBinding(row);
-                NormalizeRibbonLayoutFeatureBindings(row.Children);
-            }
-        }
-
-        private static void NormalizeDefaultRibbonFeatureIds(IEnumerable<RibbonLayoutNodeRow> rows)
-        {
-            foreach (var row in rows ?? new List<RibbonLayoutNodeRow>())
-            {
-                if (string.Equals(row.NodeType, "splitButton", StringComparison.OrdinalIgnoreCase))
-                {
-                    var childFeatureIds = row.Children
-                        .Where(child => string.Equals(child.NodeType, "pushButton", StringComparison.OrdinalIgnoreCase))
-                        .Select(child => child.FeatureId)
-                        .Where(featureId => !string.IsNullOrWhiteSpace(featureId))
-                        .ToList();
-                    if (!childFeatureIds.Contains(row.DefaultFeatureId, StringComparer.OrdinalIgnoreCase))
-                    {
-                        row.DefaultFeatureId = childFeatureIds.FirstOrDefault() ?? string.Empty;
-                    }
-                }
-                else
-                {
-                    row.DefaultFeatureId = string.Empty;
-                }
-
-                NormalizeDefaultRibbonFeatureIds(row.Children);
-            }
-        }
-
-        private void NormalizeRibbonNodeFeatureBinding(RibbonLayoutNodeRow row)
-        {
-            if (row == null || IsRibbonNodeType(row, "pushButton") || string.IsNullOrWhiteSpace(row.FeatureId))
-            {
-                return;
-            }
-
-            ConvertFeatureNodeToRibbonContainer(row);
-        }
-
-        private void ConvertFeatureNodeToRibbonContainer(RibbonLayoutNodeRow row)
-        {
-            var featureId = row.FeatureId.Trim();
-            if (string.IsNullOrWhiteSpace(featureId))
-            {
-                return;
-            }
-
-            if (FeatureIdExistsInRibbonLayout(row.Children, featureId, null))
-            {
-                row.FeatureId = string.Empty;
-                return;
-            }
-
-            if (IsRibbonNodeType(row, "stack") && row.Children.Count >= 3)
-            {
-                RefreshStatus("堆叠控件最多包含 3 个子项，无法把原功能自动转为子按钮。");
-                return;
-            }
-
-            var feature = _viewModel.Features.FirstOrDefault(item => string.Equals(item.FeatureId, featureId, StringComparison.OrdinalIgnoreCase));
-            var child = feature == null
-                ? new RibbonLayoutNodeRow
-                {
-                    NodeType = "pushButton",
-                    Id = featureId,
-                    Text = DisplayName(row.Text, featureId, featureId),
-                    FeatureId = featureId,
-                    Size = NormalizeButtonSize(row.Size),
-                    IconPath = row.IconPath,
-                    Order = 100
-                }
-                : CreateRibbonFeatureNode(feature, 1);
-
-            child.Text = DisplayName(row.Text, child.Text, featureId);
-            child.Size = NormalizeButtonSize(row.Size);
-            if (!string.IsNullOrWhiteSpace(row.IconPath))
-            {
-                child.IconPath = row.IconPath;
-            }
-
-            row.FeatureId = string.Empty;
-            row.Children.Insert(0, child);
-            if (IsRibbonNodeType(row, "splitButton") && string.IsNullOrWhiteSpace(row.DefaultFeatureId))
-            {
-                row.DefaultFeatureId = featureId;
-            }
-        }
-
-        private static bool IsRibbonNodeType(RibbonLayoutNodeRow row, string type)
-        {
-            return row != null && string.Equals(row.NodeType, type, StringComparison.OrdinalIgnoreCase);
-        }
-
-        private RibbonLayoutNodeRow CreateRibbonFeatureNode(FeatureRow feature, int index)
-        {
-            return new RibbonLayoutNodeRow
-            {
-                NodeType = "pushButton",
-                Id = feature.FeatureId,
-                Text = DisplayName(feature.DisplayName, feature.Name, feature.FeatureId),
-                FeatureId = feature.FeatureId,
-                Size = NormalizeButtonSize(feature.ButtonSize),
-                IconPath = feature.IconPath,
-                Order = index * 100
-            };
-        }
-
-        private bool FeatureIdExistsInRibbonLayout(string featureId)
-        {
-            return FeatureIdExistsInRibbonLayout(featureId, null);
-        }
-
-        private bool FeatureIdExistsInRibbonLayout(string featureId, RibbonDesignerNodeRow? excludedNode)
-        {
-            if (string.IsNullOrWhiteSpace(featureId)) return false;
-            return FeatureIdExistsInRibbonLayout(_viewModel.RibbonDesignerTabs, featureId, excludedNode);
-        }
-
-        private void NormalizeInvalidRibbonDesignerStacksForSave(IList<RibbonDesignerNodeRow> rows)
-        {
-            for (var index = rows.Count - 1; index >= 0; index--)
-            {
-                var row = rows[index];
-                NormalizeInvalidRibbonDesignerStacksForSave(row.Children);
-                if (!RibbonDesignerMapper.IsType(row, RibbonDesignerNodeRow.Stack))
-                {
-                    continue;
-                }
-
-                if (row.Children.Count == 0)
-                {
-                    if (ReferenceEquals(_viewModel.SelectedRibbonDesignerNode, row))
-                    {
-                        _viewModel.SelectedRibbonDesignerNode = null;
-                    }
-
-                    rows.RemoveAt(index);
-                    continue;
-                }
-
-                if (row.Children.Count == 1)
-                {
-                    var onlyChild = row.Children[0];
-                    onlyChild.Order = row.Order;
-                    rows[index] = onlyChild;
-                    if (ReferenceEquals(_viewModel.SelectedRibbonDesignerNode, row))
-                    {
-                        _viewModel.SelectedRibbonDesignerNode = onlyChild;
-                    }
-                }
-            }
-        }
-
-        private void ValidateNoNestedRibbonDesignerStacks()
-        {
-            var nestedStack = FindNestedRibbonDesignerStack(_viewModel.RibbonDesignerTabs, false);
-            if (nestedStack != null)
-            {
-                throw new InvalidOperationException("堆叠控件不能嵌套堆叠: " + DisplayName(nestedStack.Text, nestedStack.Id, "堆叠"));
-            }
-
-            var invalidStack = _ribbonDesignerDropService
-                .Flatten(_viewModel.RibbonDesignerTabs)
-                .FirstOrDefault(row => RibbonDesignerMapper.IsType(row, RibbonDesignerNodeRow.Stack)
-                    && row.Children.Count != 2
-                    && row.Children.Count != 3);
-            if (invalidStack != null)
-            {
-                throw new InvalidOperationException("堆叠控件需要包含 2 或 3 个按钮: " + DisplayName(invalidStack.Text, invalidStack.Id, "堆叠"));
-            }
-        }
-
-        private static RibbonDesignerNodeRow? FindNestedRibbonDesignerStack(IEnumerable<RibbonDesignerNodeRow> rows, bool insideStack)
-        {
-            foreach (var row in rows ?? new List<RibbonDesignerNodeRow>())
-            {
-                var isStack = RibbonDesignerMapper.IsType(row, RibbonDesignerNodeRow.Stack);
-                if (insideStack && isStack)
-                {
-                    return row;
-                }
-
-                var nestedStack = FindNestedRibbonDesignerStack(row.Children, insideStack || isStack);
-                if (nestedStack != null)
-                {
-                    return nestedStack;
-                }
-            }
-
-            return null;
-        }
-
-        private static bool FeatureIdExistsInRibbonLayout(IEnumerable<RibbonDesignerNodeRow> rows, string featureId, RibbonDesignerNodeRow? excludedNode)
-        {
-            foreach (var row in rows ?? new List<RibbonDesignerNodeRow>())
-            {
-                if (!ReferenceEquals(row, excludedNode)
-                    && !string.IsNullOrWhiteSpace(row.FeatureId)
-                    && string.Equals(row.FeatureId, featureId, StringComparison.OrdinalIgnoreCase))
-                {
-                    return true;
-                }
-
-                if (FeatureIdExistsInRibbonLayout(row.Children, featureId, excludedNode)) return true;
-            }
-
-            return false;
-        }
-
-        private static bool FeatureIdExistsInRibbonLayout(IEnumerable<RibbonLayoutNodeRow> rows, string featureId, RibbonLayoutNodeRow? excludedNode)
-        {
-            foreach (var row in rows ?? new List<RibbonLayoutNodeRow>())
-            {
-                if (!ReferenceEquals(row, excludedNode)
-                    && string.Equals(row.NodeType, "pushButton", StringComparison.OrdinalIgnoreCase)
-                    && string.Equals(row.FeatureId, featureId, StringComparison.OrdinalIgnoreCase))
-                {
-                    return true;
-                }
-
-                if (FeatureIdExistsInRibbonLayout(row.Children, featureId, excludedNode)) return true;
-            }
-
-            return false;
-        }
-
-        private void ValidateUniqueRibbonFeaturePlacement()
-        {
-            var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            CountRibbonFeatureIds(_viewModel.RibbonDesignerTabs, counts);
-            var duplicates = counts.Where(item => item.Value > 1).Select(item => item.Key).OrderBy(item => item, StringComparer.OrdinalIgnoreCase).ToList();
-            if (duplicates.Count > 0)
-            {
-                throw new InvalidOperationException("布局中存在重复功能: " + string.Join(", ", duplicates));
-            }
-        }
-
-        private static void CountRibbonFeatureIds(IEnumerable<RibbonDesignerNodeRow> rows, IDictionary<string, int> counts)
-        {
-            foreach (var row in rows ?? new List<RibbonDesignerNodeRow>())
-            {
-                if (!string.IsNullOrWhiteSpace(row.FeatureId))
-                {
-                    counts.TryGetValue(row.FeatureId, out var count);
-                    counts[row.FeatureId] = count + 1;
-                }
-
-                CountRibbonFeatureIds(row.Children, counts);
-            }
-        }
-
-        private static void CountRibbonFeatureIds(IEnumerable<RibbonLayoutNodeRow> rows, IDictionary<string, int> counts)
-        {
-            foreach (var row in rows ?? new List<RibbonLayoutNodeRow>())
-            {
-                if (string.Equals(row.NodeType, "pushButton", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(row.FeatureId))
-                {
-                    counts.TryGetValue(row.FeatureId, out var count);
-                    counts[row.FeatureId] = count + 1;
-                }
-
-                CountRibbonFeatureIds(row.Children, counts);
-            }
         }
 
         private static string RibbonNodeTypeDisplayName(string type)
@@ -4007,142 +3199,6 @@ namespace PlugHub.Manager
             return _moduleDocuments.SelectMany(document => document.Modules.Modules ?? new List<ModuleConfiguration>());
         }
 
-        private static DataGridTextColumn TextColumn(string propertyName, string header, bool readOnly, double starWidth)
-        {
-            return new DataGridTextColumn
-            {
-                Header = header,
-                IsReadOnly = readOnly,
-                Binding = new Binding(propertyName) { UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged },
-                Width = new DataGridLength(starWidth, DataGridLengthUnitType.Star)
-            };
-        }
-
-        private static DataGridCheckBoxColumn CheckColumn(string propertyName, string header)
-        {
-            return new DataGridCheckBoxColumn
-            {
-                Header = header,
-                Binding = new Binding(propertyName) { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged },
-                Width = new DataGridLength(68)
-            };
-        }
-
-        private static DataGridComboBoxColumn ComboColumn<T>(string propertyName, string header, IEnumerable<T> values, double starWidth, string displayMemberPath = "", string selectedValuePath = "")
-        {
-            var column = new DataGridComboBoxColumn
-            {
-                Header = header,
-                ItemsSource = values,
-                Width = new DataGridLength(starWidth, DataGridLengthUnitType.Star)
-            };
-
-            if (!string.IsNullOrWhiteSpace(displayMemberPath) && !string.IsNullOrWhiteSpace(selectedValuePath))
-            {
-                column.DisplayMemberPath = displayMemberPath;
-                column.SelectedValuePath = selectedValuePath;
-                column.SelectedValueBinding = new Binding(propertyName) { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged };
-                return column;
-            }
-
-            column.SelectedItemBinding = new Binding(propertyName) { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged };
-            return column;
-        }
-
-        private static DataGridTemplateColumn ComboBoxTemplateColumn<T>(
-            string propertyName,
-            string header,
-            IEnumerable<T> values,
-            double starWidth,
-            string displayMemberPath = "",
-            string selectedValuePath = "",
-            SelectionChangedEventHandler? selectionChanged = null)
-        {
-            var template = new DataTemplate();
-            var factory = new FrameworkElementFactory(typeof(ComboBox));
-            factory.SetValue(ItemsControl.ItemsSourceProperty, values);
-            factory.SetValue(Control.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch);
-            factory.SetValue(FrameworkElement.MarginProperty, new Thickness(2, 0, 2, 0));
-            factory.SetValue(ComboBox.IsSynchronizedWithCurrentItemProperty, false);
-
-            if (!string.IsNullOrWhiteSpace(displayMemberPath) && !string.IsNullOrWhiteSpace(selectedValuePath))
-            {
-                factory.SetValue(ItemsControl.DisplayMemberPathProperty, displayMemberPath);
-                factory.SetValue(Selector.SelectedValuePathProperty, selectedValuePath);
-                factory.SetBinding(Selector.SelectedValueProperty, new Binding(propertyName) { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged });
-            }
-            else
-            {
-                factory.SetBinding(Selector.SelectedItemProperty, new Binding(propertyName) { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged });
-            }
-
-            if (selectionChanged != null)
-            {
-                factory.AddHandler(Selector.SelectionChangedEvent, selectionChanged);
-            }
-
-            template.VisualTree = factory;
-            return new DataGridTemplateColumn
-            {
-                Header = header,
-                CellTemplate = template,
-                CellEditingTemplate = template,
-                Width = new DataGridLength(starWidth, DataGridLengthUnitType.Star)
-            };
-        }
-
-        private ContextMenu BuildPluginPackageMenu()
-        {
-            var menu = new ContextMenu();
-            menu.Items.Add(MenuItem("启用并显示", (sender, args) => SetSelectedModuleState(true, true)));
-            menu.Items.Add(MenuItem("禁用", (sender, args) => SetSelectedModuleState(false, false)));
-            menu.Items.Add(MenuItem("仅隐藏", (sender, args) => SetSelectedModuleState(true, false)));
-            menu.Items.Add(new Separator());
-            menu.Items.Add(MenuItem("上移", (sender, args) => MoveSelectedRow(_pluginPackagesGrid, -1)));
-            menu.Items.Add(MenuItem("下移", (sender, args) => MoveSelectedRow(_pluginPackagesGrid, 1)));
-            return menu;
-        }
-
-        private ContextMenu BuildFeatureMenu()
-        {
-            var menu = new ContextMenu();
-            menu.Items.Add(MenuItem("显示", (sender, args) => SetSelectedFeatureVisible(true)));
-            menu.Items.Add(MenuItem("隐藏", (sender, args) => SetSelectedFeatureVisible(false)));
-            menu.Items.Add(new Separator());
-            menu.Items.Add(MenuItem("设为大按钮", (sender, args) => SetSelectedFeatureSize("large")));
-            menu.Items.Add(MenuItem("设为小按钮", (sender, args) => SetSelectedFeatureSize("small")));
-            menu.Items.Add(MenuItem("设置图标...", (sender, args) => SetSelectedFeatureIcon()));
-            menu.Items.Add(BuildBuiltinIconMenu());
-            menu.Items.Add(MenuItem("清空图标", (sender, args) => SetSelectedFeatureIcon(string.Empty)));
-            menu.Items.Add(new Separator());
-            menu.Items.Add(MenuItem("上移", (sender, args) => MoveSelectedRow(_featuresGrid, -1)));
-            menu.Items.Add(MenuItem("下移", (sender, args) => MoveSelectedRow(_featuresGrid, 1)));
-            return menu;
-        }
-
-        private ContextMenu BuildGroupMenu()
-        {
-            var menu = new ContextMenu();
-            menu.Items.Add(MenuItem("新增分组", (sender, args) => AddCustomGroup()));
-            menu.Items.Add(MenuItem("删除分组", (sender, args) => RemoveSelectedGroup()));
-            menu.Items.Add(new Separator());
-            menu.Items.Add(MenuItem("上移", (sender, args) => MoveSelectedRow(_groupsGrid, -1)));
-            menu.Items.Add(MenuItem("下移", (sender, args) => MoveSelectedRow(_groupsGrid, 1)));
-            return menu;
-        }
-
-        private MenuItem BuildBuiltinIconMenu()
-        {
-            var menu = new MenuItem { Header = "选择内置图标" };
-            foreach (var option in BuiltinIconOptions())
-            {
-                var value = option.Value;
-                menu.Items.Add(MenuItem(option.DisplayText, (sender, args) => SetSelectedFeatureBuiltinIcon(value)));
-            }
-
-            return menu;
-        }
-
         private ContextMenu BuildRepositoryMenu()
         {
             var menu = new ContextMenu();
@@ -4172,68 +3228,6 @@ namespace PlugHub.Manager
             var item = new MenuItem { Header = text };
             item.Click += handler;
             return item;
-        }
-
-        private void SetSelectedModuleState(bool enabled, bool visible)
-        {
-            if (_pluginPackagesGrid.SelectedItem is ModuleRow row)
-            {
-                row.Enabled = enabled;
-                row.Visible = visible;
-                SafeRefreshGrid(_pluginPackagesGrid);
-            }
-        }
-
-        private void SetSelectedFeatureVisible(bool visible)
-        {
-            if (_featuresGrid.SelectedItem is FeatureRow row)
-            {
-                row.Visible = visible;
-                SafeRefreshGrid(_featuresGrid);
-            }
-        }
-
-        private void SetSelectedFeatureSize(string size)
-        {
-            if (_featuresGrid.SelectedItem is FeatureRow row)
-            {
-                row.ButtonSize = NormalizeButtonSize(size);
-                SafeRefreshGrid(_featuresGrid);
-            }
-        }
-
-        private void SetSelectedFeatureIcon(string? iconPath = null)
-        {
-            if (!(_featuresGrid.SelectedItem is FeatureRow row)) return;
-
-            if (iconPath == null)
-            {
-                var dialog = new Microsoft.Win32.OpenFileDialog
-                {
-                    Title = "选择功能图标",
-                    Filter = "图标和图片|*.png;*.jpg;*.jpeg;*.ico;*.bmp|所有文件|*.*"
-                };
-                if (dialog.ShowDialog(this) != true) return;
-                iconPath = ToPluginRelativePath(dialog.FileName);
-            }
-
-            row.IconPath = iconPath;
-            SafeRefreshGrid(_featuresGrid);
-        }
-
-        private void SetSelectedFeatureBuiltinIcon(string iconPath)
-        {
-            SetSelectedFeatureIcon(iconPath);
-        }
-
-        private void SetSelectedRepositoryEnabled(bool enabled)
-        {
-            if (SelectedRepositorySourceRow() is RepositoryRow row)
-            {
-                row.Enabled = enabled;
-                row.Status = enabled ? "可浏览" : "停用";
-                RefreshRepositorySourceCards();
-            }
         }
 
         private void AddRepository()
@@ -4296,20 +3290,6 @@ namespace PlugHub.Manager
             {
                 mouseArgs.Handled = true;
             }
-        }
-
-        private void BrowseRepositorySourceFromCard(object sender, RoutedEventArgs args)
-        {
-            if (!(RowFromSender<RepositoryRow>(sender) is RepositoryRow row)) return;
-            _repositorySourcesList.SelectedItem = row;
-            BrowseSelectedRepository();
-        }
-
-        private void EditRepositorySourceFromCard(object sender, RoutedEventArgs args)
-        {
-            if (!(RowFromSender<RepositoryRow>(sender) is RepositoryRow row)) return;
-            _repositorySourcesList.SelectedItem = row;
-            EditRepository(row);
         }
 
         private void EditSelectedRepository()
@@ -4491,7 +3471,6 @@ namespace PlugHub.Manager
         {
             try
             {
-                EndGridEdits();
                 ApplyRepositoryRows();
 
                 if (!(SelectedRepositorySourceRow() is RepositoryRow row)) return;
@@ -4512,7 +3491,6 @@ namespace PlugHub.Manager
                 RefreshRepositorySourceCards();
 
                 LoadRepositoryPackageRows(packages);
-                LoadDiagnosticRowsFromMessages(diagnostics);
                 WriteManagerLog(DiagnosticSeverity.Info, "PH-REPOSITORY-BROWSE", "FrameworkSettingsWindow.BrowseSelectedRepository", row.Status);
                 LogDiagnostics("FrameworkSettingsWindow.BrowseSelectedRepository", diagnostics);
                 RefreshStatus(row.Status);
@@ -4549,8 +3527,6 @@ namespace PlugHub.Manager
         {
             try
             {
-                EndGridEdits();
-
                 WriteManagerLog(DiagnosticSeverity.Info, "PH-PACKAGE-OPERATION", "FrameworkSettingsWindow.RunRepositoryPackageOperation", "Starting package operation: " + row.PackageId);
                 var result = operation(row.ToDescriptor());
                 RefreshRepositoryPackageInstallState(row.PackageId, row.InstallDirectory);
@@ -4617,22 +3593,6 @@ namespace PlugHub.Manager
             RunRepositoryPackageOperation(row, package => _packageRepositoryService.Uninstall(BaseDirectory(), package));
         }
 
-        private void RepositoryPackageUninstallHoverEnter(object sender, MouseEventArgs args)
-        {
-            if (!(sender is Button button)) return;
-            button.Background = RepositoryPackageUninstallHoverBackground();
-            button.Foreground = RepositoryPackageUninstallHoverForeground();
-            button.BorderBrush = RepositoryPackageUninstallHoverBorder();
-        }
-
-        private void RepositoryPackageUninstallHoverLeave(object sender, MouseEventArgs args)
-        {
-            if (!(sender is Button button)) return;
-            button.Background = RepositoryPackageUninstallBackground();
-            button.Foreground = RepositoryPackageUninstallForeground();
-            button.BorderBrush = RepositoryPackageUninstallBorder();
-        }
-
         private RepositoryRow? SelectedRepositorySourceRow()
         {
             return _repositorySourcesList.SelectedItem as RepositoryRow;
@@ -4683,7 +3643,7 @@ namespace PlugHub.Manager
                 row.IsInstalled = refreshed.IsInstalled;
                 row.InstalledVersion = refreshed.InstalledVersion;
                 row.PendingOperation = refreshed.PendingOperation;
-                row.InstallState = RepositoryPackageRow.InstallStateFor(row.IsInstalled, row.Version, row.InstalledVersion, row.PendingOperation, isRevitHostRunning, IsLoadedInCurrentRuntime(row.PackageId, row.ModuleId));
+                row.InstallState = RepositoryPackageInstallState.Resolve(row.IsInstalled, row.Version, row.InstalledVersion, row.PendingOperation, isRevitHostRunning, IsLoadedInCurrentRuntime(row.PackageId, row.ModuleId));
                 _repositorySettingsController.PreparePackageRow(row, _viewModel.Repositories);
             }
         }
@@ -4717,177 +3677,6 @@ namespace PlugHub.Manager
             catch (InvalidOperationException)
             {
                 return false;
-            }
-        }
-
-        private void AddCustomGroup()
-        {
-            EndGridEdits();
-            var id = UniqueGroupId(_viewModel.Groups, "custom-group");
-            var index = _viewModel.Groups.Count + 1;
-            var row = new GroupRow
-            {
-                Id = id,
-                Name = "自定义分组 " + index,
-                FeatureCount = 0,
-                Order = (_viewModel.Groups.Count + 1) * 100
-            };
-
-            _viewModel.Groups.Add(row);
-            RefreshGroupPositions();
-            RefreshFeatureGroupOptions();
-            _groupsGrid.SelectedItem = row;
-            RefreshStatus("已新增自定义分组，可在布局页重置默认布局或手动添加功能。");
-        }
-
-        private void RemoveSelectedGroup()
-        {
-            if (!(_groupsGrid.SelectedItem is GroupRow row)) return;
-
-            EndGridEdits();
-            var isInUse = _viewModel.Features.Any(feature => string.Equals(feature.Group, row.Id, StringComparison.OrdinalIgnoreCase));
-            if (isInUse)
-            {
-                RefreshStatus("该分组仍有功能使用。请先调整布局或功能来源后再删除。");
-                return;
-            }
-
-            _viewModel.Groups.Remove(row);
-            RefreshGroupPositions();
-            RefreshFeatureGroupOptions();
-            RefreshStatus("已删除未使用的自定义分组。");
-        }
-
-        private List<GroupOption> GroupOptionsForFeatureRows()
-        {
-            var rows = _viewModel.Groups.Any()
-                ? _viewModel.Groups
-                : new ObservableCollection<GroupRow>(EditableModules()
-                    .SelectMany(module => (module.Features ?? new List<FeatureConfiguration>()).Select(feature => new GroupRow
-                    {
-                        Id = GroupIdForFeature(module, feature),
-                        Name = DefaultGroupDisplayName(module, feature)
-                    }))
-                    .Where(row => !string.IsNullOrWhiteSpace(row.Id))
-                    .GroupBy(row => row.Id, StringComparer.OrdinalIgnoreCase)
-                    .Select(group => group.First()));
-
-            return rows
-                .Where(row => !string.IsNullOrWhiteSpace(row.Id))
-                .Select(row => new GroupOption
-                {
-                    Id = row.Id,
-                    DisplayText = DisplayName(row.Name, row.Id, row.Id)
-                })
-                .OrderBy(option => option.DisplayText, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(option => option.Id, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-        }
-
-        private static List<IconOption> BuiltinIconOptions()
-        {
-            return DefaultRibbonIconProvider.FeatureIconKeys
-                .Select(key => new IconOption
-                {
-                    Value = DefaultRibbonIconProvider.ToIconPath(key),
-                    DisplayText = BuiltinIconDisplayName(key)
-                })
-                .ToList();
-        }
-
-        private static string BuiltinIconDisplayName(string key)
-        {
-            if (string.Equals(key, "settings", StringComparison.OrdinalIgnoreCase)) return "设置";
-            if (string.Equals(key, "tool", StringComparison.OrdinalIgnoreCase)) return "工具";
-            if (string.Equals(key, "duct", StringComparison.OrdinalIgnoreCase)) return "风管";
-            if (string.Equals(key, "family", StringComparison.OrdinalIgnoreCase)) return "族";
-            if (string.Equals(key, "batch", StringComparison.OrdinalIgnoreCase)) return "批处理";
-            if (string.Equals(key, "document", StringComparison.OrdinalIgnoreCase)) return "文档";
-            if (string.Equals(key, "warning", StringComparison.OrdinalIgnoreCase)) return "提示";
-            return "默认";
-        }
-
-        private void RefreshFeatureGroupOptions()
-        {
-            var options = GroupOptionsForFeatureRows();
-            _groupOptions.Clear();
-            foreach (var option in options)
-            {
-                _groupOptions.Add(option);
-            }
-
-            SafeRefreshGrid(_featuresGrid);
-            SyncSelectedFeatureEditor();
-        }
-
-        private void SyncSelectedFeatureEditor()
-        {
-            _syncingSelectedFeatureEditor = true;
-            try
-            {
-                var row = _featuresGrid.SelectedItem as FeatureRow;
-                var hasSelection = row != null;
-                _selectedFeatureName.Text = hasSelection ? row!.Name : "未选择功能";
-                _selectedFeatureGroupCombo.IsEnabled = hasSelection;
-                _selectedFeatureButtonSizeCombo.IsEnabled = hasSelection;
-                _selectedFeatureGroupCombo.SelectedValue = hasSelection ? row!.Group : null;
-                _selectedFeatureButtonSizeCombo.SelectedItem = hasSelection ? NormalizeButtonSize(row!.ButtonSize) : null;
-            }
-            finally
-            {
-                _syncingSelectedFeatureEditor = false;
-            }
-        }
-
-        private void ApplySelectedFeatureGroup()
-        {
-            if (_syncingSelectedFeatureEditor) return;
-            if (!(_featuresGrid.SelectedItem is FeatureRow row)) return;
-
-            var groupId = Convert.ToString(_selectedFeatureGroupCombo.SelectedValue);
-            if (string.IsNullOrWhiteSpace(groupId)) return;
-            row.Group = groupId.Trim();
-            UpdateFeatureDisplayFields(row);
-            SortFeatureRowsForRuntimeOrder();
-            RefreshFeaturePositionsByGroup();
-            _featuresGrid.SelectedItem = row;
-            _featuresGrid.ScrollIntoView(row);
-            SyncSelectedFeatureEditor();
-            RefreshStatus("已调整功能所属分组，保存并重启 Revit 后 Ribbon 分组生效。");
-        }
-
-        private void ApplySelectedFeatureButtonSize()
-        {
-            if (_syncingSelectedFeatureEditor) return;
-            if (!(_featuresGrid.SelectedItem is FeatureRow row)) return;
-
-            var buttonSize = Convert.ToString(_selectedFeatureButtonSizeCombo.SelectedItem);
-            if (string.IsNullOrWhiteSpace(buttonSize)) return;
-            row.ButtonSize = NormalizeButtonSize(buttonSize);
-            UpdateFeatureDisplayFields(row);
-            SafeRefreshGrid(_featuresGrid);
-            RefreshStatus("已调整功能显示设置，保存并重启 Revit 后生效。");
-        }
-
-        private FeatureRow? SelectedFeatureRow()
-        {
-            return _featuresGrid.SelectedItem as FeatureRow;
-        }
-
-        private void SelectFeatureRow(FeatureRow row)
-        {
-            if (row == null) return;
-            _featuresGrid.SelectedItem = row;
-            _featuresGrid.ScrollIntoView(row);
-            SyncSelectedFeatureEditor();
-        }
-
-        private void RefreshFeatureOrderAndSelection(FeatureRow? selectedRow)
-        {
-            RefreshFeaturePositionsByGroup();
-            if (selectedRow != null)
-            {
-                SelectFeatureRow(selectedRow);
             }
         }
 
@@ -5031,85 +3820,6 @@ namespace PlugHub.Manager
             }
         }
 
-        private void MoveSelectedRow(DataGrid grid, int direction)
-        {
-            var sourceIndex = grid.SelectedIndex;
-            if (sourceIndex < 0) return;
-
-            var targetIndex = sourceIndex + direction;
-            if (grid == _pluginPackagesGrid)
-            {
-                MoveRow(_viewModel.Modules, sourceIndex, targetIndex);
-                RecalculatePluginPackageOrders();
-                _pluginPackagesGrid.SelectedIndex = targetIndex;
-                return;
-            }
-
-            if (grid == _featuresGrid)
-            {
-                MoveSelectedFeature(direction);
-                return;
-            }
-
-            if (grid == _groupsGrid)
-            {
-                MoveRow(_viewModel.Groups, sourceIndex, targetIndex);
-                RecalculateGroupOrders();
-                _groupsGrid.SelectedIndex = targetIndex;
-            }
-        }
-
-        private static void MoveRow<T>(ObservableCollection<T> rows, int sourceIndex, int targetIndex)
-        {
-            if (targetIndex < 0 || targetIndex >= rows.Count) return;
-            rows.Move(sourceIndex, targetIndex);
-        }
-
-        private void MoveSelectedFeature(int direction)
-        {
-            var row = SelectedFeatureRow();
-            if (row == null) return;
-
-            var sameGroupIndexes = _viewModel.Features
-                .Select((feature, index) => new { Feature = feature, Index = index })
-                .Where(item => string.Equals(item.Feature.Group, row.Group, StringComparison.OrdinalIgnoreCase))
-                .Select(item => item.Index)
-                .ToList();
-            var groupPosition = sameGroupIndexes.IndexOf(_viewModel.Features.IndexOf(row));
-            var targetGroupPosition = groupPosition + direction;
-            if (groupPosition < 0 || targetGroupPosition < 0 || targetGroupPosition >= sameGroupIndexes.Count) return;
-
-            MoveRow(_viewModel.Features, _viewModel.Features.IndexOf(row), sameGroupIndexes[targetGroupPosition]);
-            RecalculateFeatureOrders();
-            SelectFeatureRow(row);
-        }
-
-        private void RecalculatePluginPackageOrders()
-        {
-            RefreshPluginPackagePositions();
-        }
-
-        private void RecalculateFeatureOrders()
-        {
-            RefreshFeaturePositionsByGroup();
-        }
-
-        private void RecalculateGroupOrders()
-        {
-            RefreshGroupPositions();
-        }
-
-        private void RefreshPluginPackagePositions()
-        {
-            for (var index = 0; index < _viewModel.Modules.Count; index++)
-            {
-                _viewModel.Modules[index].Order = (index + 1) * 100;
-                _viewModel.Modules[index].PositionText = "第 " + (index + 1) + " 项";
-            }
-
-            SafeRefreshGrid(_pluginPackagesGrid);
-        }
-
         private void SortFeatureRowsForRuntimeOrder()
         {
             var sorted = _viewModel.Features
@@ -5139,12 +3849,10 @@ namespace PlugHub.Manager
                 groupIndexes[groupKey] = groupIndex;
 
                 row.Order = groupIndex * 10;
-                row.PositionText = GroupDisplayName(groupKey) + " 第 " + groupIndex + " 项";
                 UpdateFeatureDisplayFields(row);
             }
 
             RefreshFeatureCounts();
-            SafeRefreshGrid(_featuresGrid);
         }
 
         private void RefreshGroupPositions()
@@ -5152,11 +3860,7 @@ namespace PlugHub.Manager
             for (var index = 0; index < _viewModel.Groups.Count; index++)
             {
                 _viewModel.Groups[index].Order = (index + 1) * 100;
-                _viewModel.Groups[index].PositionText = "第 " + (index + 1) + " 项";
-                _viewModel.Groups[index].FeatureCountText = _viewModel.Groups[index].FeatureCount + " 个";
             }
-
-            SafeRefreshGrid(_groupsGrid);
         }
 
         private void RefreshFeatureCounts()
@@ -5164,10 +3868,7 @@ namespace PlugHub.Manager
             foreach (var group in _viewModel.Groups)
             {
                 group.FeatureCount = _viewModel.Features.Count(feature => string.Equals(feature.Group, group.Id, StringComparison.OrdinalIgnoreCase));
-                group.FeatureCountText = group.FeatureCount + " 个";
             }
-
-            SafeRefreshGrid(_groupsGrid);
         }
 
         private void UpdateFeatureDisplayFields(FeatureRow row)
@@ -5175,27 +3876,6 @@ namespace PlugHub.Manager
             if (row == null) return;
             row.GroupDisplayText = GroupDisplayName(row.Group);
             row.ButtonSize = NormalizeButtonSize(row.ButtonSize);
-            row.ButtonSizeDisplayText = ButtonSizeDisplayName(row.ButtonSize);
-        }
-
-        private void AttachGridBehaviors(DataGrid grid)
-        {
-            grid.AllowDrop = true;
-            grid.PreviewMouseRightButtonDown += GridPreviewMouseRightButtonDown;
-            grid.PreviewMouseLeftButtonDown += GridPreviewMouseLeftButtonDown;
-            grid.MouseMove += GridMouseMove;
-            grid.DragOver += GridDragOver;
-            grid.Drop += GridDrop;
-        }
-
-        private static void GridPreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
-        {
-            if (!(sender is DataGrid grid)) return;
-            var row = FindAncestor<DataGridRow>(e.OriginalSource as DependencyObject);
-            if (row == null) return;
-
-            row.IsSelected = true;
-            grid.CurrentItem = row.Item;
         }
 
         private static void ListBoxPreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
@@ -5206,150 +3886,6 @@ namespace PlugHub.Manager
 
             row.IsSelected = true;
             list.SelectedItem = row.DataContext;
-        }
-
-        private void GridPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-        {
-            if (!(sender is DataGrid grid)) return;
-            if (IsInteractiveGridEditor(e.OriginalSource as DependencyObject))
-            {
-                ResetDragSource();
-                return;
-            }
-
-            var row = FindAncestor<DataGridRow>(e.OriginalSource as DependencyObject);
-            _dragSourceGrid = grid;
-            _dragSourceRowIndex = row?.GetIndex() ?? -1;
-        }
-
-        private void GridMouseMove(object sender, MouseEventArgs e)
-        {
-            if (e.LeftButton != MouseButtonState.Pressed || _dragSourceRowIndex < 0) return;
-            if (!(sender is DataGrid grid) || grid != _dragSourceGrid) return;
-            if (_dragSourceRowIndex >= grid.Items.Count) return;
-
-            try
-            {
-                DragDrop.DoDragDrop(grid, grid.Items[_dragSourceRowIndex], DragDropEffects.Move);
-            }
-            catch (Exception ex)
-            {
-                ReportSettingsError("拖拽排序失败", ex);
-                ResetDragSource();
-            }
-        }
-
-        private static void GridDragOver(object sender, DragEventArgs e)
-        {
-            e.Effects = DragDropEffects.Move;
-            e.Handled = true;
-        }
-
-        private void GridDrop(object sender, DragEventArgs e)
-        {
-            if (!(sender is DataGrid grid) || grid != _dragSourceGrid)
-            {
-                ResetDragSource();
-                return;
-            }
-
-            if (_dragSourceRowIndex < 0)
-            {
-                ResetDragSource();
-                return;
-            }
-
-            var row = FindAncestor<DataGridRow>(e.OriginalSource as DependencyObject);
-            var targetIndex = row?.GetIndex() ?? grid.Items.Count - 1;
-            if (targetIndex < 0 || targetIndex == _dragSourceRowIndex)
-            {
-                ResetDragSource();
-                return;
-            }
-
-            if (grid == _pluginPackagesGrid)
-            {
-                MoveRow(_viewModel.Modules, _dragSourceRowIndex, targetIndex);
-                RecalculatePluginPackageOrders();
-            }
-            else if (grid == _featuresGrid)
-            {
-                var dragged = _viewModel.Features[_dragSourceRowIndex];
-                var target = _viewModel.Features[targetIndex];
-                if (!string.Equals(dragged.Group, target.Group, StringComparison.OrdinalIgnoreCase))
-                {
-                    dragged.Group = target.Group;
-                    UpdateFeatureDisplayFields(dragged);
-                }
-
-                MoveRow(_viewModel.Features, _dragSourceRowIndex, targetIndex);
-                RecalculateFeatureOrders();
-                SelectFeatureRow(dragged);
-                ResetDragSource();
-                return;
-            }
-            else if (grid == _groupsGrid)
-            {
-                MoveRow(_viewModel.Groups, _dragSourceRowIndex, targetIndex);
-                RecalculateGroupOrders();
-            }
-
-            grid.SelectedIndex = targetIndex;
-            ResetDragSource();
-        }
-
-        private void ResetDragSource()
-        {
-            _dragSourceRowIndex = -1;
-            _dragSourceGrid = null;
-        }
-
-        private void SafeRefreshGrid(DataGrid grid)
-        {
-            if (grid == null) return;
-
-            if (!grid.Dispatcher.CheckAccess())
-            {
-                grid.Dispatcher.BeginInvoke(new Action(() => SafeRefreshGrid(grid)), DispatcherPriority.Background);
-                return;
-            }
-
-            if (TryRefreshGrid(grid)) return;
-            grid.Dispatcher.BeginInvoke(new Action(() => TryRefreshGrid(grid)), DispatcherPriority.Background);
-        }
-
-        private static bool TryRefreshGrid(DataGrid grid)
-        {
-            try
-            {
-                CommitGrid(grid);
-                grid.Items.Refresh();
-                return true;
-            }
-            catch (InvalidOperationException ex) when (IsEditTransactionRefreshError(ex))
-            {
-                return false;
-            }
-        }
-
-        private static bool IsEditTransactionRefreshError(Exception ex)
-        {
-            var message = ex.Message ?? string.Empty;
-            return message.IndexOf("AddNew", StringComparison.OrdinalIgnoreCase) >= 0
-                || message.IndexOf("EditItem", StringComparison.OrdinalIgnoreCase) >= 0;
-        }
-
-        private void EndGridEdits()
-        {
-            CommitGrid(_pluginPackagesGrid);
-            CommitGrid(_featuresGrid);
-            CommitGrid(_groupsGrid);
-        }
-
-        private static void CommitGrid(DataGrid grid)
-        {
-            grid.CommitEdit(DataGridEditingUnit.Cell, true);
-            grid.CommitEdit(DataGridEditingUnit.Row, true);
         }
 
         private void CheckFrameworkUpdate()
@@ -5567,16 +4103,6 @@ namespace PlugHub.Manager
         {
             var message = title + "：" + ex.Message;
             new PlugHubLogger().Error(BaseDirectory(), "PH-SETTINGS", "settings", string.Empty, "FrameworkSettingsWindow", message, ex);
-            LoadDiagnosticRowsFromMessages(new[]
-            {
-                new DiagnosticMessage
-                {
-                    Severity = DiagnosticSeverity.Warning,
-                    Code = "PH-SETTINGS",
-                    ModuleId = "settings",
-                    Message = message
-                }
-            });
             RefreshStatus(message);
         }
 
@@ -5641,18 +4167,6 @@ namespace PlugHub.Manager
             });
         }
 
-        private string ToPluginRelativePath(string path)
-        {
-            var baseDirectory = BaseDirectory();
-            var fullPath = Path.GetFullPath(path);
-            if (fullPath.StartsWith(baseDirectory, StringComparison.OrdinalIgnoreCase))
-            {
-                return fullPath.Substring(baseDirectory.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            }
-
-            return fullPath;
-        }
-
         private string BaseDirectory()
         {
             return _configurationStore.BaseDirectory();
@@ -5703,23 +4217,6 @@ namespace PlugHub.Manager
             return null;
         }
 
-        private static bool IsInteractiveGridEditor(DependencyObject? source)
-        {
-            return FindAncestor<ComboBox>(source) != null
-                || FindAncestor<TextBox>(source) != null
-                || FindAncestor<CheckBox>(source) != null
-                || FindAncestor<ButtonBase>(source) != null
-                || FindAncestor<Thumb>(source) != null;
-        }
-
-        private static Dictionary<string, string> DiagnosticsBySourceId(FrameworkRuntimeSnapshot? snapshot)
-        {
-            return (snapshot?.Diagnostics ?? new List<DiagnosticMessage>())
-                .Where(message => !string.IsNullOrWhiteSpace(message.ModuleId))
-                .GroupBy(message => message.ModuleId, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(group => group.Key, group => group.Last().Message, StringComparer.OrdinalIgnoreCase);
-        }
-
         private static string DisplayName(string displayName, string name, string fallback)
         {
             if (!string.IsNullOrWhiteSpace(displayName)) return displayName.Trim();
@@ -5744,11 +4241,6 @@ namespace PlugHub.Manager
             return string.Equals(value, "small", StringComparison.OrdinalIgnoreCase) ? "small" : "large";
         }
 
-        private static string ButtonSizeDisplayName(string value)
-        {
-            return string.Equals(NormalizeButtonSize(value), "small", StringComparison.OrdinalIgnoreCase) ? "小" : "大";
-        }
-
         private static string UniqueRepositoryId(IEnumerable<RepositoryRow> rows, string prefix)
         {
             var existing = new HashSet<string>(rows.Select(row => row.Id), StringComparer.OrdinalIgnoreCase);
@@ -5761,32 +4253,6 @@ namespace PlugHub.Manager
             while (existing.Contains(candidate));
 
             return candidate;
-        }
-
-        private static string UniqueGroupId(IEnumerable<GroupRow> rows, string prefix)
-        {
-            var existing = new HashSet<string>(rows.Select(row => row.Id), StringComparer.OrdinalIgnoreCase);
-            var index = 1;
-            string candidate;
-            do
-            {
-                candidate = prefix + "-" + index++;
-            }
-            while (existing.Contains(candidate));
-
-            return candidate;
-        }
-
-        private sealed class GroupOption
-        {
-            public string Id { get; set; } = string.Empty;
-            public string DisplayText { get; set; } = string.Empty;
-        }
-
-        private sealed class IconOption
-        {
-            public string Value { get; set; } = string.Empty;
-            public string DisplayText { get; set; } = string.Empty;
         }
 
         private sealed class RibbonDisplayModeOption
@@ -5862,21 +4328,6 @@ namespace PlugHub.Manager
         private static Brush RepositoryPackageUninstallBorder()
         {
             return RevitUiTheme.Current.BorderBrush;
-        }
-
-        private static Brush RepositoryPackageUninstallHoverBackground()
-        {
-            return RevitUiTheme.Current.DangerBrush;
-        }
-
-        private static Brush RepositoryPackageUninstallHoverForeground()
-        {
-            return RevitUiTheme.Current.AccentForegroundBrush;
-        }
-
-        private static Brush RepositoryPackageUninstallHoverBorder()
-        {
-            return RevitUiTheme.Current.DangerBrush;
         }
 
         private sealed class RepositoryMetaLabelConverter : IValueConverter
