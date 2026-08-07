@@ -207,6 +207,7 @@ namespace PlugHub.StaticValidation
                 "src/PlugHub.Framework/Updates/FrameworkUpdatePackageValidator.cs",
                 "src/PlugHub.Revit2020/PlugHub.Revit2020.csproj",
                 "src/PlugHub.Installer/PlugHub.Installer.csproj",
+                "src/PlugHub.Installer/app.manifest",
                 "src/PlugHub.Installer/Program.cs",
                 "src/PlugHub.Installer/InstallerForm.cs",
                 "src/PlugHub.Installer/InstallerPayload.cs",
@@ -2186,8 +2187,8 @@ namespace PlugHub.StaticValidation
             Require(repositoryAddress.Contains("ProviderFromHost(uri.Host)") && repositoryAddress.Contains("new RepositoryAddress(hostProvider"), "absolute repository URLs must infer GitHub or Gitee from the URL host instead of failing when the provider field is stale.");
             Require(repositoryArchiveSynchronizer.Contains("ArchiveDownloadUrl(address, repository)") && repositoryArchiveSynchronizer.Contains("ShouldAppendArchiveCacheBust") && repositoryArchiveSynchronizer.Contains("RequestCachePolicy(RequestCacheLevel.Reload)"), "repository source sync must bypass stale GitHub HTTP/archive cache without adding unsupported cache-bust query parameters to Gitee archive URLs.");
             Require(repositoryArchiveSynchronizer.Contains("HttpStatusCode.BadRequest") && repositoryArchiveSynchronizer.Contains("RepositoryRequiresToken(repository)") && repositoryArchiveSynchronizer.Contains("SyncGiteeRepositoryViaApi(address, repository, stagingDirectory)"), "public Gitee archive failures must fall back to the Gitee API file download path instead of surfacing a raw 400 response.");
-            Require(repositoryArchiveSynchronizer.Contains("Parallel.ForEach") && repositoryArchiveSynchronizer.Contains("MaxDegreeOfParallelism") && repositoryArchiveSynchronizer.Contains("GiteeApiDownloadParallelism"), "Gitee API fallback must download repository files with bounded parallelism so public archive failures do not make source sync unnecessarily slow.");
-            Require(repositoryArchiveSynchronizer.Contains("SyncFastestCloudRepository") && repositoryArchiveSynchronizer.Contains("CloudSyncCandidates") && repositoryArchiveSynchronizer.Contains("Task.WaitAny"), "public cloud repositories must race available Gitee/GitHub mirrors and use the first valid response.");
+            Require(!repositoryArchiveSynchronizer.Contains("Parallel.ForEach") && repositoryArchiveSynchronizer.Contains("foreach (var path in entries)") && repositoryArchiveSynchronizer.Contains("GiteeApiRetryCount") && repositoryArchiveSynchronizer.Contains("Thread.Sleep"), "Gitee API fallback must serialize content requests and use bounded rate-limit backoff instead of amplifying public API 403/429 responses.");
+            Require(repositoryArchiveSynchronizer.Contains("SyncConfiguredCloudRepositoryWithMirrorFallback") && repositoryArchiveSynchronizer.Contains("CloudSyncCandidates") && repositoryArchiveSynchronizer.Contains("foreach (var candidate in candidates)") && !repositoryArchiveSynchronizer.Contains("Task.WaitAny"), "public cloud repositories must try the configured provider before its mirror rather than racing both providers and multiplying rate-limit traffic.");
             Require(repositoryArchiveSynchronizer.Contains("ValidateArchiveFile") && repositoryArchiveSynchronizer.IndexOf("ValidateArchiveFile(archivePath, archiveUrl)", StringComparison.Ordinal) < repositoryArchiveSynchronizer.IndexOf("ExtractArchive(archivePath, stagingDirectory)", StringComparison.Ordinal), "repository archive synchronizer must validate downloaded zip content before extraction.");
             Require(repositoryArchiveSynchronizer.Contains("Downloaded repository archive is not a zip file") && repositoryArchiveSynchronizer.Contains("Check repository URL, ref, and credentials"), "repository archive synchronizer must report a clear URL/ref diagnostic for non-zip responses.");
             Require(repositoryArchiveSynchronizer.Contains("EnsureHttpsResponse(response.ResponseUri)") && repositoryArchiveSynchronizer.IndexOf("EnsureHttpsResponse(response.ResponseUri)", StringComparison.Ordinal) < repositoryArchiveSynchronizer.IndexOf("source.CopyTo(target)", StringComparison.Ordinal), "repository archive downloads must reject redirects away from HTTPS before writing archive bytes.");
@@ -2195,6 +2196,7 @@ namespace PlugHub.StaticValidation
             Require(repositoryArchiveSynchronizer.Contains("https://gitee.com/") && repositoryArchiveSynchronizer.Contains("/repository/archive/"), "repository archive synchronizer must support Gitee repository archive downloads.");
             Require(repositoryArchiveSynchronizer.Contains("access_token") && repositoryArchiveSynchronizer.Contains("Authorization"), "repository archive synchronizer must support private Gitee and GitHub repositories with tokens.");
             Require(repositoryArchiveSynchronizer.Contains("ShouldUseGiteeApiFallback") && repositoryArchiveSynchronizer.Contains("HttpStatusCode.Forbidden") && repositoryArchiveSynchronizer.Contains("SyncGiteeRepositoryViaApi") && repositoryArchiveSynchronizer.Contains("git/trees/") && repositoryArchiveSynchronizer.Contains("contents/"), "private Gitee repositories must fall back to the Gitee API when the web archive endpoint returns 403.");
+            Require(repositoryArchiveSynchronizer.Contains("retryForbidden") && repositoryArchiveSynchronizer.Contains("Gitee API rate limit persisted after retries"), "only public Gitee 403 responses may be retried as rate limiting, and exhausted retries must produce an actionable diagnostic.");
             Require(repositoryArchiveSynchronizer.Contains("IsUnderDirectory") && repositoryArchiveSynchronizer.Contains("ExtractToFile"), "repository archive extraction must guard against zip-slip paths.");
             Require(repositoryArchiveSynchronizer.Contains("SensitiveTextRedactor.Redact"), "repository archive diagnostics must redact tokens and URLs before showing errors.");
             Require(repositoryArchiveSynchronizer.Contains("ValidateCacheDirectory(cacheDirectory)") && repositoryArchiveSynchronizer.IndexOf("ValidateCacheDirectory(cacheDirectory)", StringComparison.Ordinal) < repositoryArchiveSynchronizer.IndexOf("ReplaceCacheDirectory(stagingDirectory, fullCacheDirectory)", StringComparison.Ordinal), "repository archive synchronizer must validate cache directory ownership before replacing it.");
@@ -2996,6 +2998,7 @@ namespace PlugHub.StaticValidation
             var installerForm = ReadText("src/PlugHub.Installer/InstallerForm.cs");
             var installerPayload = ReadText("src/PlugHub.Installer/InstallerPayload.cs");
             var addinWriter = ReadText("src/PlugHub.Installer/AddinManifestWriter.cs");
+            var installerManifest = ReadText("src/PlugHub.Installer/app.manifest");
             var workflow = ReadText(".github/workflows/release.yml");
             var testUpdateWorkflow = ReadText(".github/workflows/test-update-release.yml");
             var solution = ReadText("PlugHub.sln");
@@ -3004,6 +3007,7 @@ namespace PlugHub.StaticValidation
 
             Require(installerProject.Contains("<OutputType>WinExe</OutputType>"), "installer project must build a Windows EXE.");
             Require(installerProject.Contains("<TargetFramework>net48</TargetFramework>"), "installer project must target net48.");
+            Require(installerProject.Contains("<ApplicationManifest>app.manifest</ApplicationManifest>") && installerManifest.Contains("requestedExecutionLevel level=\"requireAdministrator\""), "installer must request UAC elevation before copying protected files or registering the machine-wide addin.");
             Require(installerProject.Contains("InstallerPayloadZip") && installerProject.Contains("PlugHubPayload.zip"), "installer project must embed the release payload zip through InstallerPayloadZip.");
             Require(solution.Contains("src\\PlugHub.Installer\\PlugHub.Installer.csproj"), "installer project must be included in PlugHub.sln.");
             Require(solutionX.Contains("src/PlugHub.Installer/PlugHub.Installer.csproj"), "installer project must be included in PlugHub.slnx.");
@@ -3033,6 +3037,7 @@ namespace PlugHub.StaticValidation
         private static void ValidateGiteeReleaseMirrorPackaging()
         {
             var releaseWorkflow = ReadText(".github/workflows/release.yml");
+            var syncWorkflow = ReadText(".github/workflows/sync-gitee.yml");
             Require(!File.Exists(FullPath(".workflow/PlugHubRelease.yml")), "Gitee Go release workflow must be removed; release publishing is mirrored from GitHub release.yml.");
             Require(!File.Exists(FullPath(".workflow/scripts/gitee-release.ps1")), "Gitee Go release script must be removed; release.yml owns Gitee release publishing.");
             Require(!File.Exists(FullPath(".gitee/workflows/release.yml")), "Gitee release publishing must not use a copied GitHub Actions .gitee/workflows file.");
@@ -3057,6 +3062,7 @@ namespace PlugHub.StaticValidation
             }
 
             Require(!releaseWorkflow.Contains("PlugHub*.dll.sigstore.json"), "Gitee release mirror must not reintroduce DLL signature bundles.");
+            Require(syncWorkflow.Contains("timeout 20 ssh-keyscan -T 10") && syncWorkflow.Contains("host_keys=\"$(mktemp)\"") && syncWorkflow.Contains("ConnectTimeout 20") && syncWorkflow.Contains("push_with_retry") && syncWorkflow.Contains("for attempt in 1 2 3") && syncWorkflow.Contains("Gitee SSH push failed after 3 attempts"), "Gitee git mirroring must retain host keys only after a bounded successful lookup, then retry transient SSH failures with a diagnostic that distinguishes reachability from credentials.");
         }
 
         private static void ValidateFeatureButtonTooltipBehavior()
@@ -3109,7 +3115,7 @@ namespace PlugHub.StaticValidation
             Require(!solution.Contains("PlugHub.Uninstaller") && !solutionX.Contains("PlugHub.Uninstaller"), "solutions must not include the old standalone uninstaller project.");
             Require(managerProgram.Contains("ManagerMaintenanceArguments.Parse") && managerProgram.Contains("ManagerMaintenanceRunner"), "PlugHub Manager must dispatch maintenance mode before opening the settings window.");
             Require(maintenanceArguments.Contains("/uninstall") && maintenanceArguments.Contains("/installDirBase64") && maintenanceArguments.Contains("Encoding.UTF8"), "Manager maintenance arguments must support uninstall with UTF-8 Base64 install directory.");
-            Require(maintenanceLauncher.Contains("StartUninstall") && maintenanceLauncher.Contains("CreateTemporaryManagerCopy") && maintenanceLauncher.Contains("Path.GetTempPath()") && maintenanceLauncher.Contains("PlugHub.Manager.exe"), "Manager uninstall must run from a temporary PlugHub.Manager.exe copy.");
+            Require(maintenanceLauncher.Contains("StartUninstall") && maintenanceLauncher.Contains("CreateTemporaryManagerCopy") && maintenanceLauncher.Contains("Path.GetTempPath()") && maintenanceLauncher.Contains("PlugHub.Manager.exe") && maintenanceLauncher.Contains("UseShellExecute = true") && maintenanceLauncher.Contains("Verb = \"runas\""), "Manager update and uninstall must run from a temporary elevated PlugHub.Manager.exe copy so protected install directories remain maintainable.");
             Require(maintenanceRunner.Contains("PlugHub Manager - Uninstall") && maintenanceRunner.Contains("MessageBoxButton.YesNo") && maintenanceRunner.Contains("WaitForProcesses"), "Manager uninstall maintenance mode must confirm and wait for locking processes.");
             Require(managerUninstaller.Contains("PlugHub.addin") && managerUninstaller.Contains("SpecialFolder.CommonApplicationData"), "Manager uninstaller must remove the machine-wide ProgramData addin manifest.");
             Require(managerUninstaller.Contains("Directory.Delete") && managerUninstaller.Contains("Refusing to delete a drive root") && managerUninstaller.Contains("RequiredInstallMarkers") && managerUninstaller.Contains("ContainsPlugHubInstallMarkers") && managerUninstaller.Contains("IsAllowedInstallRootName") && managerUninstaller.Contains("Revit2020"), "Manager uninstaller must delete only a marker-validated PlugHub install directory or the local dist/Revit2020 test output.");

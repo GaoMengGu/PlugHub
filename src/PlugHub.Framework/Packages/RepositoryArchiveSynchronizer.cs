@@ -7,7 +7,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Cache;
 using System.Text;
-using System.Threading.Tasks;
+using System.Threading;
 using System.Web.Script.Serialization;
 using PlugHub.Contracts.Modules;
 using PlugHub.Framework.Configuration;
@@ -19,7 +19,7 @@ namespace PlugHub.Framework.Packages
     {
         private const string ArchiveDownloadUserAgent = "curl/8.0.1";
         private const string RepositoryCacheRootName = "repository-cache";
-        private const int GiteeApiDownloadParallelism = 4;
+        private const int GiteeApiRetryCount = 2;
 
         private readonly RepositoryCredentialService _credentialService;
 
@@ -48,7 +48,7 @@ namespace PlugHub.Framework.Packages
             try
             {
                 Directory.CreateDirectory(parentDirectory);
-                stagingDirectory = SyncFastestCloudRepository(address, repository, parentDirectory);
+                stagingDirectory = SyncConfiguredCloudRepositoryWithMirrorFallback(address, repository, parentDirectory);
 
                 ReplaceCacheDirectory(stagingDirectory, fullCacheDirectory);
                 stagingDirectory = string.Empty;
@@ -65,46 +65,23 @@ namespace PlugHub.Framework.Packages
             }
         }
 
-        private string SyncFastestCloudRepository(RepositoryAddress address, PackageRepositoryConfiguration repository, string parentDirectory)
+        private string SyncConfiguredCloudRepositoryWithMirrorFallback(RepositoryAddress address, PackageRepositoryConfiguration repository, string parentDirectory)
         {
             var candidates = CloudSyncCandidates(address, repository).ToList();
-            if (candidates.Count == 1)
-            {
-                return SyncCloudRepositoryCandidate(candidates[0], repository, parentDirectory);
-            }
-
-            var tasks = candidates
-                .Select(candidate => Task.Run(() => SyncCloudRepositoryCandidate(candidate, repository, parentDirectory)))
-                .ToList();
             var errors = new List<string>();
-            while (tasks.Count > 0)
+            foreach (var candidate in candidates)
             {
-                var finished = Task.WaitAny(tasks.ToArray());
-                var task = tasks[finished];
-                tasks.RemoveAt(finished);
-                if (task.Status == TaskStatus.RanToCompletion && !string.IsNullOrWhiteSpace(task.Result))
+                try
                 {
-                    foreach (var remaining in tasks)
-                    {
-                        remaining.ContinueWith(item =>
-                        {
-                            if (item.Status == TaskStatus.RanToCompletion)
-                            {
-                                DeleteDirectoryQuietly(item.Result);
-                            }
-                        });
-                    }
-
-                    return task.Result;
+                    return SyncCloudRepositoryCandidate(candidate, repository, parentDirectory);
                 }
-
-                if (task.Exception != null)
+                catch (Exception ex)
                 {
-                    errors.Add(SensitiveTextRedactor.Redact(task.Exception.GetBaseException().Message));
+                    errors.Add(candidate.Provider + ": " + SensitiveTextRedactor.Redact(ex.Message));
                 }
             }
 
-            throw new InvalidOperationException("Cloud repository sync failed for all mirrors: " + string.Join("；", errors));
+            throw new InvalidOperationException("Cloud repository sync failed for the configured source and its mirror: " + string.Join("；", errors));
         }
 
         private string SyncCloudRepositoryCandidate(RepositoryAddress address, PackageRepositoryConfiguration repository, string parentDirectory)
@@ -193,7 +170,8 @@ namespace PlugHub.Framework.Packages
             }
 
             var gitRef = string.IsNullOrWhiteSpace(repository.Ref) ? "main" : repository.Ref.Trim();
-            var tree = ReadJsonObject(GiteeApiUrl(address, "git/trees/" + Uri.EscapeDataString(gitRef), apiKey, "recursive=1"));
+            var retryForbidden = !RepositoryRequiresToken(repository);
+            var tree = ReadJsonObject(GiteeApiUrl(address, "git/trees/" + Uri.EscapeDataString(gitRef), apiKey, "recursive=1"), retryForbidden);
             var entries = ArrayValue(tree, "tree")
                 .Select(item => item as Dictionary<string, object>)
                 .Where(item => item != null)
@@ -209,10 +187,10 @@ namespace PlugHub.Framework.Packages
                 throw new InvalidDataException("Gitee repository tree did not contain downloadable files.");
             }
 
-            Parallel.ForEach(
-                entries,
-                new ParallelOptions { MaxDegreeOfParallelism = GiteeApiDownloadParallelism },
-                path => DownloadGiteeApiFile(address, gitRef, path, apiKey, stagingDirectory));
+            foreach (var path in entries)
+            {
+                DownloadGiteeApiFile(address, gitRef, path, apiKey, stagingDirectory, retryForbidden);
+            }
         }
 
         private void DownloadGiteeApiFile(
@@ -220,9 +198,10 @@ namespace PlugHub.Framework.Packages
             string gitRef,
             string repositoryPath,
             string apiKey,
-            string stagingDirectory)
+            string stagingDirectory,
+            bool retryForbidden)
         {
-            var file = ReadJsonObject(GiteeApiUrl(address, "contents/" + EscapePath(repositoryPath), apiKey, "ref=" + Uri.EscapeDataString(gitRef)));
+            var file = ReadJsonObject(GiteeApiUrl(address, "contents/" + EscapePath(repositoryPath), apiKey, "ref=" + Uri.EscapeDataString(gitRef)), retryForbidden);
             var type = StringValue(file, "type");
             if (!string.Equals(type, "file", StringComparison.OrdinalIgnoreCase))
             {
@@ -244,30 +223,57 @@ namespace PlugHub.Framework.Packages
             File.WriteAllBytes(targetPath, bytes);
         }
 
-        private Dictionary<string, object> ReadJsonObject(Uri uri)
+        private Dictionary<string, object> ReadJsonObject(Uri uri, bool retryForbidden)
         {
-            var request = (HttpWebRequest)WebRequest.Create(uri);
-            request.Method = "GET";
-            request.Timeout = 30000;
-            request.ReadWriteTimeout = 30000;
-            request.UserAgent = ArchiveDownloadUserAgent;
-            request.Accept = "application/json";
-
-            using (var response = (HttpWebResponse)request.GetResponse())
-            using (var source = response.GetResponseStream())
+            for (var attempt = 0; ; attempt++)
             {
-                EnsureHttpsResponse(response.ResponseUri);
-                if (source == null)
+                try
                 {
-                    throw new InvalidOperationException("Gitee API response did not contain a body.");
-                }
+                    var request = (HttpWebRequest)WebRequest.Create(uri);
+                    request.Method = "GET";
+                    request.Timeout = 30000;
+                    request.ReadWriteTimeout = 30000;
+                    request.UserAgent = ArchiveDownloadUserAgent;
+                    request.Accept = "application/json";
 
-                using (var reader = new StreamReader(source, Encoding.UTF8))
+                    using (var response = (HttpWebResponse)request.GetResponse())
+                    using (var source = response.GetResponseStream())
+                    {
+                        EnsureHttpsResponse(response.ResponseUri);
+                        if (source == null)
+                        {
+                            throw new InvalidOperationException("Gitee API response did not contain a body.");
+                        }
+
+                        using (var reader = new StreamReader(source, Encoding.UTF8))
+                        {
+                            var serializer = new JavaScriptSerializer { MaxJsonLength = int.MaxValue, RecursionLimit = 128 };
+                            return serializer.Deserialize<Dictionary<string, object>>(reader.ReadToEnd()) ?? new Dictionary<string, object>();
+                        }
+                    }
+                }
+                catch (WebException ex)
                 {
-                    var serializer = new JavaScriptSerializer { MaxJsonLength = int.MaxValue, RecursionLimit = 128 };
-                    return serializer.Deserialize<Dictionary<string, object>>(reader.ReadToEnd()) ?? new Dictionary<string, object>();
+                    var response = ex.Response as HttpWebResponse;
+                    if (!IsTransientGiteeRateLimit(response, retryForbidden))
+                    {
+                        throw;
+                    }
+
+                    if (attempt >= GiteeApiRetryCount)
+                    {
+                        throw new InvalidOperationException("Gitee API rate limit persisted after retries; try again later or use the configured mirror.", ex);
+                    }
+
+                    Thread.Sleep((attempt + 1) * 1000);
                 }
             }
+        }
+
+        private static bool IsTransientGiteeRateLimit(HttpWebResponse response, bool retryForbidden)
+        {
+            return response != null
+                && ((retryForbidden && response.StatusCode == HttpStatusCode.Forbidden) || (int)response.StatusCode == 429);
         }
 
         private static Uri GiteeApiUrl(RepositoryAddress address, string apiPath, string apiKey, string extraQuery)

@@ -43,13 +43,14 @@ D:\Program Files\PlugHub
 
 ### 文件夹权限
 
-如果安装或更新时遇到文件夹权限问题，优先按下面方式处理：
+安装器和 Manager 维护程序会在需要写入安装目录或 machine-wide addin 时自动请求 Windows UAC 管理员确认。取消 UAC 后，不会继续执行半完成的安装、更新或卸载。
 
-1. 右键安装程序，选择「以管理员身份运行」。
-2. 如果公司电脑不允许写入 `D:\Program Files\PlugHub`，在安装器中选择一个你有写入权限的目录，例如 `D:\PlugHub` 或 IT 已授权的共享软件目录。
+如果仍遇到文件夹权限问题，按下面方式处理：
+
+1. 在 UAC 对话框中选择「是」；公司设备被策略阻止时，请 IT 用管理员账户运行安装器。
+2. 即使选择 `D:\PlugHub` 等普通目录，machine-wide 的 `C:\ProgramData\Autodesk\Revit\Addins\2020` 注册仍需要一次管理员授权。
 3. 不要把 PlugHub 安装到会被自动清理、同步冲突或权限收回的目录，例如临时目录、桌面同步目录、网盘缓存目录。
-4. 如果无法写入 `C:\ProgramData\Autodesk\Revit\Addins\2020`，需要管理员或 IT 帮你完成一次 addin 注册。注册成功后，日常使用 Revit 不需要管理员权限。
-5. 安装后不要手动移动 PlugHub 文件夹；如果必须换目录，请重新运行安装程序，让 addin 路径同步更新。
+4. 安装后不要手动移动 PlugHub 文件夹；如果必须换目录，请重新运行安装程序，让 addin 路径同步更新。
 
 ## 更新
 
@@ -70,7 +71,7 @@ D:\Program Files\PlugHub
 - 仓库缓存
 - 日志
 
-当前 Revit 会话不会热替换已加载 DLL。确认更新后，Manager 会关闭并启动临时维护进程；关闭并重新打开 Revit 后，新框架 DLL 和 `PlugHub.Manager.exe` 才会生效。
+当前 Revit 会话不会热替换已加载 DLL。确认更新后，Manager 会关闭并启动临时维护进程；维护进程会请求一次 UAC 授权，以便可靠更新受保护安装目录。关闭并重新打开 Revit 后，新框架 DLL 和 `PlugHub.Manager.exe` 才会生效。
 
 ## 布局设置
 
@@ -148,7 +149,7 @@ PlugHub 通过 HTTP archive 同步仓库源，普通建模用户不需要安装 
 
 ### 仓库源同步失败
 
-检查仓库地址、分支名称、网络访问和 Token。公司电脑无法访问 GitHub 时，优先使用 Gitee 仓库源。
+检查仓库地址、分支名称、网络访问和 Token。公开仓库会先尝试配置的提供方，失败后再尝试同名镜像；Gitee 出现 `403 Rate Limit Exceeded` 时会降低请求频率并重试。
 
 ### 插件安装后没有显示按钮
 
@@ -156,7 +157,7 @@ PlugHub 通过 HTTP archive 同步仓库源，普通建模用户不需要安装 
 
 ### 公司电脑不允许安装到 Program Files
 
-选择一个你有写入权限的安装目录，例如 `D:\PlugHub`。如果 addin 注册目录也没有权限，需要管理员完成 `C:\ProgramData\Autodesk\Revit\Addins\2020\PlugHub.addin` 的写入。
+选择一个合规安装目录后，在 UAC 对话框中确认管理员授权。若 UAC 被组织策略禁止，需要 IT 代为执行安装、更新或卸载；不要手工复制文件来绕过 addin 注册。
 
 ## 适用范围
 

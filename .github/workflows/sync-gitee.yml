@@ -43,12 +43,31 @@ jobs:
           mkdir -p ~/.ssh
           printf '%s\n' "$GITEE_PRIVATE_KEY" > ~/.ssh/gitee_sync
           chmod 600 ~/.ssh/gitee_sync
-          ssh-keyscan gitee.com >> ~/.ssh/known_hosts
+          for attempt in 1 2 3; do
+            host_keys="$(mktemp)"
+            if timeout 20 ssh-keyscan -T 10 gitee.com > "$host_keys"; then
+              cat "$host_keys" >> ~/.ssh/known_hosts
+              rm -f "$host_keys"
+              break
+            fi
+            rm -f "$host_keys"
+
+            if [ "$attempt" -eq 3 ]; then
+              echo "Gitee SSH host-key lookup failed after 3 attempts; check Gitee SSH reachability from GitHub Actions." >&2
+              exit 1
+            fi
+
+            sleep $((attempt * 5))
+          done
           cat > ~/.ssh/config <<'EOF'
           Host gitee.com
             HostName gitee.com
             User git
             IdentityFile ~/.ssh/gitee_sync
+            ConnectTimeout 20
+            ConnectionAttempts 1
+            ServerAliveInterval 15
+            ServerAliveCountMax 2
             StrictHostKeyChecking yes
           EOF
 
@@ -57,17 +76,35 @@ jobs:
         env:
           GITEE_USER: ${{ secrets.GITEE_USER }}
         run: |
+          push_with_retry() {
+            local refspec="$1"
+            local attempt
+            for attempt in 1 2 3; do
+              if git push gitee "$refspec"; then
+                return 0
+              fi
+
+              if [ "$attempt" -lt 3 ]; then
+                echo "Gitee SSH push failed on attempt $attempt/3; retrying after $((attempt * 10)) seconds." >&2
+                sleep $((attempt * 10))
+              fi
+            done
+
+            echo "Gitee SSH push failed after 3 attempts. Check Gitee SSH reachability from GitHub Actions before rotating credentials." >&2
+            return 1
+          }
+
           git config user.name "$GITEE_USER"
           git config user.email "$GITEE_USER@users.noreply.gitee.com"
           git remote remove gitee 2>/dev/null || true
           git remote add gitee git@gitee.com:GaoMengGu/PlugHub.git
           case "$GITHUB_REF" in
             refs/heads/main)
-              git push gitee +HEAD:main
+              push_with_retry +HEAD:main
               ;;
             refs/tags/V*)
               tag="${GITHUB_REF#refs/tags/}"
-              git push gitee "+refs/tags/$tag:refs/tags/$tag"
+              push_with_retry "+refs/tags/$tag:refs/tags/$tag"
               ;;
             *)
               echo "Skipping unsupported ref: $GITHUB_REF"
