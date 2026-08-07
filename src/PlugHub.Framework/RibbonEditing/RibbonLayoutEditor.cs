@@ -78,6 +78,32 @@ namespace PlugHub.Framework.RibbonEditing
             return RemoveNode(tabs, container);
         }
 
+        public int RemoveFeatures(ViewsConfiguration views, IEnumerable<string> featureIds)
+        {
+            if (views == null) throw new ArgumentNullException(nameof(views));
+            var removedFeatureIds = new HashSet<string>(
+                (featureIds ?? new List<string>()).Where(featureId => !string.IsNullOrWhiteSpace(featureId)),
+                StringComparer.OrdinalIgnoreCase);
+            if (removedFeatureIds.Count == 0) return 0;
+
+            var removedCount = 0;
+            foreach (var view in views.Views ?? new List<ViewConfiguration>())
+            {
+                if (view?.Ribbon == null) continue;
+                var panels = view.Ribbon.Panels ?? new List<RibbonPanelLayoutConfiguration>();
+                view.Ribbon.Panels = panels;
+                for (var panelIndex = panels.Count - 1; panelIndex >= 0; panelIndex--)
+                {
+                    var items = panels[panelIndex].Items ?? new List<RibbonItemLayoutConfiguration>();
+                    panels[panelIndex].Items = items;
+                    removedCount += RemoveConfiguredFeatures(items, removedFeatureIds);
+                    if (items.Count == 0) panels.RemoveAt(panelIndex);
+                }
+            }
+
+            return removedCount;
+        }
+
         public void Validate(IEnumerable<RibbonDesignerNodeRow> tabs)
         {
             var nestedStack = FindNestedStack(tabs, false);
@@ -215,6 +241,46 @@ namespace PlugHub.Framework.RibbonEditing
                 RemoveUnavailableFeatures(row.Children, visibleFeatureIds);
                 if (IsEmptyContainer(row)) roots.RemoveAt(index);
             }
+        }
+
+        private static int RemoveConfiguredFeatures(IList<RibbonItemLayoutConfiguration> items, ISet<string> featureIds)
+        {
+            if (items == null) return 0;
+            var removedCount = 0;
+            for (var index = items.Count - 1; index >= 0; index--)
+            {
+                var item = items[index];
+                if (item == null)
+                {
+                    items.RemoveAt(index);
+                    continue;
+                }
+
+                if (featureIds.Contains(item.FeatureId ?? string.Empty))
+                {
+                    items.RemoveAt(index);
+                    removedCount++;
+                    continue;
+                }
+
+                var children = item.Items ?? new List<RibbonItemLayoutConfiguration>();
+                item.Items = children;
+                removedCount += RemoveConfiguredFeatures(children, featureIds);
+                if (featureIds.Contains(item.DefaultFeatureId ?? string.Empty)) item.DefaultFeatureId = string.Empty;
+                if (string.Equals(item.Type, RibbonDesignerNodeRow.Stack, StringComparison.OrdinalIgnoreCase)
+                    && children.Count == 1)
+                {
+                    items[index] = children[0];
+                    continue;
+                }
+                if (!string.Equals(item.Type, RibbonDesignerNodeRow.PushButton, StringComparison.OrdinalIgnoreCase)
+                    && children.Count == 0)
+                {
+                    items.RemoveAt(index);
+                }
+            }
+
+            return removedCount;
         }
 
         private static bool IsEmptyContainer(RibbonDesignerNodeRow row)

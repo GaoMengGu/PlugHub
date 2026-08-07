@@ -73,6 +73,7 @@ namespace PlugHub.Tests
                 new TestCase("framework update treats test channel tags as comparable versions", FrameworkUpdateTreatsTestChannelTagsAsComparableVersions),
                 new TestCase("ribbon designer mapper hydrates configured feature icons", RibbonDesignerMapperHydratesConfiguredFeatureIcons),
                 new TestCase("ribbon layout editor merges panels and restores visible features", RibbonLayoutEditorMergesPanelsAndRestoresVisibleFeatures),
+                new TestCase("ribbon layout editor removes uninstalled features from every persisted workspace", RibbonLayoutEditorRemovesUninstalledFeaturesFromEveryPersistedWorkspace),
                 new TestCase("ribbon layout editor normalizes stacks before save", RibbonLayoutEditorNormalizesStacksBeforeSave),
                 new TestCase("ribbon layout editor rejects invalid layouts", RibbonLayoutEditorRejectsInvalidLayouts),
                 new TestCase("framework update package accepts single manager maintenance payload", FrameworkUpdatePackageAcceptsSingleManagerMaintenancePayload),
@@ -1633,6 +1634,119 @@ namespace PlugHub.Tests
             var tools = panels.Single(panel => panel.Text == "Tools");
             Require(new RibbonLayoutEditor().RemoveContainer(tabs, tools), "editing seam must remove a selected layout container.");
             Require(tabs.Single().Children.Single(panel => panel.Id == "default").Children.Select(child => child.FeatureId).OrderBy(id => id).SequenceEqual(new[] { "feature.a", "feature.b" }), "removing a container must return its features to the default panel atomically.");
+        }
+
+        private static void RibbonLayoutEditorRemovesUninstalledFeaturesFromEveryPersistedWorkspace()
+        {
+            using (var temp = TempDirectory.Create())
+            {
+                var configDirectory = Path.Combine(temp.Path, "config");
+                var unrelatedManifest = Path.Combine(temp.Path, "packages", "keep", "packages.json");
+                const string unrelatedManifestText = "{\"schemaVersion\":\"1.1\",\"modules\":[]}";
+                WriteText(unrelatedManifest, unrelatedManifestText);
+                var configuration = new FrameworkConfiguration
+                {
+                    Views = new ViewsConfiguration
+                    {
+                        SchemaVersion = "1.0",
+                        DefaultView = "workspace-a",
+                        Views = new List<ViewConfiguration>
+                        {
+                            new ViewConfiguration
+                            {
+                                Id = "workspace-a",
+                                Ribbon = new RibbonConfiguration
+                                {
+                                    Panels = new List<RibbonPanelLayoutConfiguration>
+                                    {
+                                        new RibbonPanelLayoutConfiguration
+                                        {
+                                            Id = "mixed",
+                                            Name = "Mixed",
+                                            Items = new List<RibbonItemLayoutConfiguration>
+                                            {
+                                                new RibbonItemLayoutConfiguration { Type = "pushButton", FeatureId = "module.removed.run" },
+                                                new RibbonItemLayoutConfiguration { Type = "pushButton", FeatureId = "module.keep.run" }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            new ViewConfiguration
+                            {
+                                Id = "workspace-b",
+                                Ribbon = new RibbonConfiguration
+                                {
+                                    Panels = new List<RibbonPanelLayoutConfiguration>
+                                    {
+                                        new RibbonPanelLayoutConfiguration
+                                        {
+                                            Id = "removed-only",
+                                            Name = "Removed Only",
+                                            Items = new List<RibbonItemLayoutConfiguration>
+                                            {
+                                                new RibbonItemLayoutConfiguration
+                                                {
+                                                    Type = "pulldownButton",
+                                                    DefaultFeatureId = "module.removed.run",
+                                                    Items = new List<RibbonItemLayoutConfiguration>
+                                                    {
+                                                        new RibbonItemLayoutConfiguration { Type = "pushButton", FeatureId = "module.removed.run" }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            new ViewConfiguration
+                            {
+                                Id = "workspace-c",
+                                Ribbon = new RibbonConfiguration
+                                {
+                                    Panels = new List<RibbonPanelLayoutConfiguration>
+                                    {
+                                        new RibbonPanelLayoutConfiguration
+                                        {
+                                            Id = "stack-panel",
+                                            Name = "Stack Panel",
+                                            Items = new List<RibbonItemLayoutConfiguration>
+                                            {
+                                                new RibbonItemLayoutConfiguration
+                                                {
+                                                    Type = "stack",
+                                                    Items = new List<RibbonItemLayoutConfiguration>
+                                                    {
+                                                        new RibbonItemLayoutConfiguration { Type = "pushButton", FeatureId = "module.removed.run" },
+                                                        new RibbonItemLayoutConfiguration { Type = "pushButton", FeatureId = "module.keep.run" }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                };
+                var store = new SettingsConfigurationStore(configDirectory);
+
+                var removed = new RibbonLayoutEditor().RemoveFeatures(
+                    configuration.Views,
+                    new[] { "module.removed.run" });
+                store.SaveViews(configuration.Views);
+                var reloaded = store.LoadConfiguration();
+
+                Require(removed == 3, "layout cleanup must report every removed feature button across workspaces.");
+                Require(reloaded.Views.Views.Single(view => view.Id == "workspace-a").Ribbon.Panels.Single().Items.Single().FeatureId == "module.keep.run",
+                    "layout cleanup must preserve unrelated feature buttons.");
+                Require(reloaded.Views.Views.Single(view => view.Id == "workspace-b").Ribbon.Panels.Count == 0,
+                    "layout cleanup must recursively remove empty containers and panels.");
+                Require(reloaded.Views.Views.Single(view => view.Id == "workspace-c").Ribbon.Panels.Single().Items.Single().Type == "pushButton",
+                    "layout cleanup must unwrap a stack left with one button.");
+                Require(File.ReadAllText(unrelatedManifest) == unrelatedManifestText,
+                    "persisting uninstall layout cleanup must not rewrite unrelated package manifests.");
+            }
         }
 
         private static void RibbonLayoutEditorNormalizesStacksBeforeSave()

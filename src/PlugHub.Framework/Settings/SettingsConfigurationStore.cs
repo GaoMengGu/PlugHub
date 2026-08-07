@@ -113,6 +113,13 @@ namespace PlugHub.Framework.Settings
             SaveJson(Path.Combine(ConfigDirectory, "feature-combinations.json"), configuration.FeatureCombinations);
         }
 
+        public void SaveViews(ViewsConfiguration views)
+        {
+            if (views == null) throw new ArgumentNullException(nameof(views));
+            Directory.CreateDirectory(ConfigDirectory);
+            SaveJson(Path.Combine(ConfigDirectory, "views.json"), views);
+        }
+
         public string BaseDirectory()
         {
             return Directory.GetParent(ConfigDirectory)?.FullName ?? ConfigDirectory;

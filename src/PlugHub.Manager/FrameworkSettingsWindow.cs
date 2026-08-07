@@ -3514,7 +3514,7 @@ namespace PlugHub.Manager
         private void UninstallSelectedRepositoryPackage()
         {
             if (!(SelectedRepositoryPackageRow() is RepositoryPackageRow row)) return;
-            RunRepositoryPackageOperation(row, package => _packageRepositoryService.Uninstall(BaseDirectory(), package));
+            RunRepositoryPackageOperation(row, package => _packageRepositoryService.Uninstall(BaseDirectory(), package), true);
         }
 
         private void RunRepositoryPackageOperation(Func<RepositoryPackageDescriptor, PackageRepositoryOperationResult> operation)
@@ -3523,22 +3523,37 @@ namespace PlugHub.Manager
             RunRepositoryPackageOperation(row, operation);
         }
 
-        private void RunRepositoryPackageOperation(RepositoryPackageRow row, Func<RepositoryPackageDescriptor, PackageRepositoryOperationResult> operation)
+        private void RunRepositoryPackageOperation(
+            RepositoryPackageRow row,
+            Func<RepositoryPackageDescriptor, PackageRepositoryOperationResult> operation,
+            bool removeModuleFeaturesFromLayout = false)
         {
             try
             {
                 WriteManagerLog(DiagnosticSeverity.Info, "PH-PACKAGE-OPERATION", "FrameworkSettingsWindow.RunRepositoryPackageOperation", "Starting package operation: " + row.PackageId);
+                var removedModuleFeatureIds = removeModuleFeaturesFromLayout
+                    ? FeatureIdsForModule(string.IsNullOrWhiteSpace(row.ModuleId) ? row.PackageId : row.ModuleId)
+                    : new List<string>();
                 var result = operation(row.ToDescriptor());
                 RefreshRepositoryPackageInstallState(row.PackageId, row.InstallDirectory);
                 ApplyRepositoryPackageFilter();
                 RefreshItems(_warehousePackageList);
 
                 _moduleDocuments = _configurationStore.LoadModuleDocuments(_configuration);
+                var statusMessage = result.Message;
+                if (result.Success && removeModuleFeaturesFromLayout)
+                {
+                    var removedLayoutItems = _ribbonLayoutEditor.RemoveFeatures(_configuration.Views, removedModuleFeatureIds);
+                    _configurationStore.SaveViews(_configuration.Views);
+                    statusMessage += removedLayoutItems > 0
+                        ? " 已从工具栏布局中删除 " + removedLayoutItems + " 个功能；重启 Revit 后工具栏更新。"
+                        : " 重启 Revit 后工具栏更新。";
+                }
                 LoadGroupRows();
                 LoadFeatureRows();
                 LoadRibbonLayoutRows();
-                RefreshStatusWithPendingPackageOperations(result.Message);
-                WriteManagerLog(result.Success ? DiagnosticSeverity.Info : DiagnosticSeverity.Warning, "PH-PACKAGE-OPERATION", "FrameworkSettingsWindow.RunRepositoryPackageOperation", result.Message);
+                RefreshStatusWithPendingPackageOperations(statusMessage);
+                WriteManagerLog(result.Success ? DiagnosticSeverity.Info : DiagnosticSeverity.Warning, "PH-PACKAGE-OPERATION", "FrameworkSettingsWindow.RunRepositoryPackageOperation", statusMessage);
             }
             catch (Exception ex)
             {
@@ -3590,7 +3605,7 @@ namespace PlugHub.Manager
                 return;
             }
 
-            RunRepositoryPackageOperation(row, package => _packageRepositoryService.Uninstall(BaseDirectory(), package));
+            RunRepositoryPackageOperation(row, package => _packageRepositoryService.Uninstall(BaseDirectory(), package), true);
         }
 
         private RepositoryRow? SelectedRepositorySourceRow()
@@ -3861,6 +3876,18 @@ namespace PlugHub.Manager
             {
                 _viewModel.Groups[index].Order = (index + 1) * 100;
             }
+        }
+
+        private List<string> FeatureIdsForModule(string moduleId)
+        {
+            if (string.IsNullOrWhiteSpace(moduleId)) return new List<string>();
+            return EditableModules()
+                .Where(module => string.Equals(module.Id, moduleId, StringComparison.OrdinalIgnoreCase))
+                .SelectMany(module => module.Features ?? new List<FeatureConfiguration>())
+                .Select(feature => feature.Id)
+                .Where(featureId => !string.IsNullOrWhiteSpace(featureId))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
 
         private void RefreshFeatureCounts()

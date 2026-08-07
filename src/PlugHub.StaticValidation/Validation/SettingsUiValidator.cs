@@ -329,13 +329,18 @@ namespace PlugHub.StaticValidation.Validation
         {
             var settingsWindow = _source.ReadText("src/PlugHub.Manager/FrameworkSettingsWindow.cs");
             var settingsStore = _source.ReadText("src/PlugHub.Framework/Settings/SettingsConfigurationStore.cs");
+            var ribbonLayoutEditor = _source.ReadText("src/PlugHub.Framework/RibbonEditing/RibbonLayoutEditor.cs");
             var ribbonBuilder = _source.ReadText("src/PlugHub.Revit2020/FeatureRibbonBuilder.cs");
             var addinTemplate = _source.ReadText("manifests/PlugHub.addin.template");
             var buildProps = _source.ReadText("build/Directory.Build.props");
             var views = _source.ReadObject("config/views.example.json");
 
             Require(settingsWindow.Contains("LoadModuleDocuments") && !settingsWindow.Contains(RemovedSamplesDirectory()), "settings must not reference removed sample module manifests.");
+            Require(settingsWindow.Contains("FeatureIdsForModule(") && settingsWindow.Contains("_ribbonLayoutEditor.RemoveFeatures(_configuration.Views, removedModuleFeatureIds)") && ribbonLayoutEditor.Contains("foreach (var view in views.Views") && ribbonLayoutEditor.Contains("RemoveConfiguredFeatures"), "successful package uninstall must remove the module's features from every workspace layout.");
+            Require(settingsWindow.Split(new[] { "_packageRepositoryService.Uninstall(BaseDirectory(), package), true" }, StringSplitOptions.None).Length == 3, "both package uninstall entry points must enable persistent layout cleanup.");
+            Require(settingsWindow.Contains("重启 Revit 后工具栏更新"), "package uninstall status must explain that the current Revit Ribbon updates after restart.");
             Require(settingsStore.Contains("Save(") && settingsStore.Contains("ModuleManifestDocument"), "settings must save edits back to their owning module manifest through SettingsConfigurationStore.");
+            Require(settingsStore.Contains("public void SaveViews(ViewsConfiguration views)") && settingsWindow.Contains("_configurationStore.SaveViews(_configuration.Views)"), "package uninstall must persist only the cleaned views.json without rewriting unrelated manifests.");
             Require(!settingsStore.Contains("Save(configuration, LoadModuleDocuments(configuration))"), "SettingsConfigurationStore must not expose a Save overload that reloads module documents from disk.");
             Require(settingsStore.Contains("ValidateOwnedDocuments(documents)") && settingsStore.Contains("foreach (var document in documents)") && settingsStore.Contains("SaveModuleDocument(document)"), "SettingsConfigurationStore Save must validate ownership before persisting the provided module documents.");
             Require(settingsStore.Contains("_loadedManifestPaths") && settingsStore.Contains("was not loaded by this store") && settingsStore.IndexOf("ValidateOwnedDocuments(documents)", StringComparison.Ordinal) < settingsStore.IndexOf("Directory.CreateDirectory(ConfigDirectory)", StringComparison.Ordinal), "SettingsConfigurationStore must reject unowned manifest paths before any configuration write begins.");
@@ -406,8 +411,8 @@ namespace PlugHub.StaticValidation.Validation
             Require(settingsWindow.Contains("ListPendingOperations(BaseDirectory())"), "settings window must still read pending package operations for status reminders.");
             var packageOperationStart = settingsWindow.IndexOf("private void RunRepositoryPackageOperation(", StringComparison.Ordinal);
             var packageOperationResult = packageOperationStart < 0 ? -1 : settingsWindow.IndexOf("var result = operation(row.ToDescriptor());", packageOperationStart, StringComparison.Ordinal);
-            var packageOperationStatus = packageOperationResult < 0 ? -1 : settingsWindow.IndexOf("RefreshStatusWithPendingPackageOperations(result.Message)", packageOperationResult, StringComparison.Ordinal);
-            Require(packageOperationStart >= 0 && packageOperationResult >= 0 && packageOperationStatus > packageOperationResult, "repository package operations must refresh footer pending-operation status.");
+            var packageOperationStatus = packageOperationResult < 0 ? -1 : settingsWindow.IndexOf("RefreshStatusWithPendingPackageOperations(statusMessage)", packageOperationResult, StringComparison.Ordinal);
+            Require(packageOperationStart >= 0 && packageOperationResult >= 0 && packageOperationStatus > packageOperationResult, "repository package operations must refresh footer pending-operation status with the persisted layout cleanup result.");
 
             var ribbonDesignerMapper = _source.ReadText("src/PlugHub.Framework/RibbonEditing/RibbonDesignerMapper.cs");
             Require(!settingsWindow.Contains("body.Children.Add(BuildRibbonDesignerPreviewButton(tab"), "layout canvas must not render a synthetic PlugHub tab button above panels.");
