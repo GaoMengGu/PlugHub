@@ -16,6 +16,7 @@ namespace PlugHub.Framework.Settings
 
         private readonly JavaScriptSerializer _serializer = new JavaScriptSerializer { MaxJsonLength = int.MaxValue, RecursionLimit = 128 };
         private readonly PackageManifestWriter _packageManifestWriter = new PackageManifestWriter();
+        private readonly HashSet<string> _loadedManifestPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         public SettingsConfigurationStore(string configDirectory)
         {
@@ -37,6 +38,7 @@ namespace PlugHub.Framework.Settings
         public List<ModuleManifestDocument> LoadModuleDocuments(FrameworkConfiguration configuration)
         {
             if (configuration == null) throw new ArgumentNullException(nameof(configuration));
+            _loadedManifestPaths.Clear();
 
             var documents = new List<ModuleManifestDocument>();
             var seenPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -86,6 +88,11 @@ namespace PlugHub.Framework.Settings
                 }
             }
 
+            foreach (var document in documents)
+            {
+                _loadedManifestPaths.Add(Path.GetFullPath(document.Path));
+            }
+
             return documents;
         }
 
@@ -93,15 +100,24 @@ namespace PlugHub.Framework.Settings
         {
             if (configuration == null) throw new ArgumentNullException(nameof(configuration));
             if (moduleDocuments == null) throw new ArgumentNullException(nameof(moduleDocuments));
+            var documents = moduleDocuments.ToList();
+            ValidateOwnedDocuments(documents);
 
             Directory.CreateDirectory(ConfigDirectory);
-            foreach (var document in moduleDocuments)
+            foreach (var document in documents)
             {
                 SaveModuleDocument(document);
             }
 
             SaveJson(Path.Combine(ConfigDirectory, "views.json"), configuration.Views);
             SaveJson(Path.Combine(ConfigDirectory, "feature-combinations.json"), configuration.FeatureCombinations);
+        }
+
+        public void SaveViews(ViewsConfiguration views)
+        {
+            if (views == null) throw new ArgumentNullException(nameof(views));
+            Directory.CreateDirectory(ConfigDirectory);
+            SaveJson(Path.Combine(ConfigDirectory, "views.json"), views);
         }
 
         public string BaseDirectory()
@@ -112,6 +128,23 @@ namespace PlugHub.Framework.Settings
         private void SaveJson(string path, object value)
         {
             File.WriteAllText(path, _serializer.Serialize(value));
+        }
+
+        private void ValidateOwnedDocuments(IEnumerable<ModuleManifestDocument> documents)
+        {
+            foreach (var document in documents)
+            {
+                if (document == null)
+                {
+                    throw new InvalidOperationException("Settings cannot save a null module manifest document.");
+                }
+
+                var fullPath = Path.GetFullPath(document.Path);
+                if (!_loadedManifestPaths.Contains(fullPath))
+                {
+                    throw new InvalidOperationException("Settings cannot save a module manifest that was not loaded by this store: " + fullPath);
+                }
+            }
         }
 
         private void SaveModuleDocument(ModuleManifestDocument document)
@@ -181,7 +214,10 @@ namespace PlugHub.Framework.Settings
         {
             if (string.IsNullOrWhiteSpace(path) || modules == null) return;
             var fullPath = Path.GetFullPath(path);
-            if (!File.Exists(fullPath) && !IsModulesManifestFileName(Path.GetFileName(fullPath))) return;
+            var fileName = Path.GetFileName(fullPath);
+            if (!File.Exists(fullPath)
+                && !IsModulesManifestFileName(fileName)
+                && !string.Equals(fileName, SourcesFileName, StringComparison.OrdinalIgnoreCase)) return;
             if (!seenPaths.Add(fullPath)) return;
             documents.Add(new ModuleManifestDocument(fullPath, modules));
         }

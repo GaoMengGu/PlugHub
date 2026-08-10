@@ -41,8 +41,8 @@ namespace PlugHub.Manager.Maintenance
                 {
                     FileName = temporaryManagerPath,
                     Arguments = arguments,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
+                    UseShellExecute = true,
+                    Verb = "runas",
                     WorkingDirectory = Path.GetDirectoryName(temporaryManagerPath) ?? string.Empty
                 });
 
@@ -79,7 +79,8 @@ namespace PlugHub.Manager.Maintenance
                 {
                     FileName = temporaryManagerPath,
                     Arguments = arguments,
-                    UseShellExecute = false,
+                    UseShellExecute = true,
+                    Verb = "runas",
                     WorkingDirectory = Path.GetDirectoryName(temporaryManagerPath) ?? string.Empty
                 });
 

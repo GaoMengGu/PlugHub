@@ -6,6 +6,7 @@
     <RootNamespace>PlugHub.Installer</RootNamespace>
     <OutputType>WinExe</OutputType>
     <ApplicationIcon>Resources\LOGO.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="System" />

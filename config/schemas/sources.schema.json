@@ -35,6 +35,8 @@
           "ref": {"type": "string"},
           "manifestPath": {"type": "string"},
           "apiKey": {"type": "string"},
+          "encryptedApiKey": {"type": "string"},
+          "apiKeyProtection": {"type": "string"},
           "enabled": {"type": "boolean"}
         }
       }

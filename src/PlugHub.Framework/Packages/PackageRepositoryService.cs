@@ -4,7 +4,6 @@ using System.IO;
 using System.Linq;
 using PlugHub.Contracts.Modules;
 using PlugHub.Framework.Configuration;
-using PlugHub.Framework.Diagnostics;
 
 namespace PlugHub.Framework.Packages
 {
@@ -13,7 +12,7 @@ namespace PlugHub.Framework.Packages
         private const string DefaultPackageManifestName = "packages.json";
         private const string PackagesDirectoryName = "packages";
 
-        private readonly PendingPackageOperationStore _pendingOperations = new PendingPackageOperationStore();
+        private readonly PendingPackageOperationLifecycle _pendingLifecycle;
         private readonly RepositoryCredentialService _credentialService = new RepositoryCredentialService();
         private readonly PackageManifestReader _manifestReader;
         private readonly RepositoryBrowser _repositoryBrowser;
@@ -21,13 +20,14 @@ namespace PlugHub.Framework.Packages
 
         public PackageRepositoryService()
         {
+            _pendingLifecycle = new PendingPackageOperationLifecycle(new PendingPackageOperationStore());
             _manifestReader = new PackageManifestReader();
             _repositoryBrowser = new RepositoryBrowser(
                 _manifestReader,
                 _credentialService,
                 InstalledPackageVersion,
                 IsModuleInstalled,
-                PendingOperationFor);
+                _pendingLifecycle.OperationFor);
             _packageInstallService = new PackageInstallService(_manifestReader);
         }
 
@@ -53,82 +53,17 @@ namespace PlugHub.Framework.Packages
 
         public IReadOnlyList<DiagnosticMessage> ApplyPendingOperations(string baseDirectory)
         {
-            if (string.IsNullOrWhiteSpace(baseDirectory)) throw new ArgumentException("Base directory is required.", nameof(baseDirectory));
-
-            var diagnostics = new List<DiagnosticMessage>();
-            var remaining = new List<PendingPackageOperation>();
-            foreach (var operation in ReadPendingOperations(baseDirectory))
-            {
-                if (string.Equals(operation.Operation, "delete", StringComparison.OrdinalIgnoreCase))
-                {
-                    if (!TryApplyPendingDelete(baseDirectory, operation, out var error))
-                    {
-                        remaining.Add(operation);
-                        AddDiagnostic(diagnostics, operation.PackageId, "PH-PACKAGE-PENDING-DELETE", "延迟卸载插件包失败，下次启动会重试: " + error, DiagnosticSeverity.Warning);
-                    }
-
-                    continue;
-                }
-
-                if (string.Equals(operation.Operation, "update", StringComparison.OrdinalIgnoreCase))
-                {
-                    if (!TryApplyPendingUpdate(baseDirectory, operation, out var error))
-                    {
-                        remaining.Add(operation);
-                        AddDiagnostic(diagnostics, operation.PackageId, "PH-PACKAGE-PENDING-UPDATE", "延迟更新插件包失败，下次启动会重试: " + error, DiagnosticSeverity.Warning);
-                    }
-
-                    continue;
-                }
-
-                if (string.Equals(operation.Operation, "restart", StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                AddDiagnostic(diagnostics, operation.PackageId, "PH-PACKAGE-PENDING-UNKNOWN", "已忽略未知的延迟插件包操作: " + operation.Operation, DiagnosticSeverity.Warning);
-            }
-
-            WritePendingOperations(baseDirectory, remaining);
-            return diagnostics;
+            return _pendingLifecycle.Apply(baseDirectory);
         }
 
         public IReadOnlyList<PendingPackageOperation> ListPendingOperations(string baseDirectory)
         {
-            return _pendingOperations.Read(baseDirectory);
+            return _pendingLifecycle.List(baseDirectory);
         }
 
         public PackageRepositoryOperationResult CancelPendingOperation(string baseDirectory, string packageId, string moduleId)
         {
-            if (string.IsNullOrWhiteSpace(baseDirectory)) throw new ArgumentException("Base directory is required.", nameof(baseDirectory));
-            if (string.IsNullOrWhiteSpace(packageId) || string.IsNullOrWhiteSpace(moduleId))
-            {
-                return PackageRepositoryOperationResult.Failed("取消待处理插件包操作必须提供 packageId 和 moduleId。");
-            }
-
-            var operation = _pendingOperations.Find(baseDirectory, packageId, moduleId);
-            if (operation == null)
-            {
-                return PackageRepositoryOperationResult.Failed("未找到待处理插件包操作: " + packageId);
-            }
-
-            if (!RestorePendingManifestBackups(baseDirectory, operation, out var restoreError))
-            {
-                return PackageRepositoryOperationResult.Failed("无法恢复待处理插件包清单: " + restoreError);
-            }
-
-            if (string.Equals(operation.Operation, "update", StringComparison.OrdinalIgnoreCase))
-            {
-                if (!TryValidatePendingStagingDirectory(baseDirectory, operation, out var stagingError))
-                {
-                    return PackageRepositoryOperationResult.Failed("Invalid pending update staging directory: " + stagingError);
-                }
-
-                DeleteDirectoryQuietly(operation.StagingDirectory);
-            }
-
-            _pendingOperations.Remove(baseDirectory, packageId, moduleId);
-            return PackageRepositoryOperationResult.Succeeded("已取消待处理插件包操作: " + packageId);
+            return _pendingLifecycle.Cancel(baseDirectory, packageId, moduleId);
         }
 
         public RepositoryPackageDescriptor RefreshInstallState(string baseDirectory, RepositoryPackageDescriptor package)
@@ -143,7 +78,7 @@ namespace PlugHub.Framework.Packages
             package.InstallDirectory = installDirectory;
             package.IsInstalled = IsModuleInstalled(baseDirectory, installDirectory, moduleId);
             package.InstalledVersion = InstalledPackageVersion(baseDirectory, installDirectory, moduleId);
-            package.PendingOperation = PendingOperationFor(baseDirectory, package.PackageId, moduleId);
+            package.PendingOperation = _pendingLifecycle.OperationFor(baseDirectory, package.PackageId, moduleId);
             return package;
         }
 
@@ -186,7 +121,7 @@ namespace PlugHub.Framework.Packages
 
             try
             {
-                if (Directory.Exists(installDirectory) && TryFindLockedFile(installDirectory, out var lockedFile))
+                if (Directory.Exists(installDirectory) && PendingPackageOperationLifecycle.TryFindLockedFile(installDirectory, out var lockedFile))
                 {
                     var manifestBackups = new List<PendingManifestBackup>();
                     if (!TryRemoveModuleFromInstalledManifests(installRoot, moduleId, string.Empty, manifestBackups, false, out var lockedCleanedManifests, out var lockedCleanupError))
@@ -196,7 +131,7 @@ namespace PlugHub.Framework.Packages
 
                     var operation = PendingPackageOperation.Delete(package.PackageId, moduleId, installDirectory);
                     operation.ManifestBackups = manifestBackups;
-                    QueuePendingOperation(baseDirectory, operation);
+                    _pendingLifecycle.Queue(baseDirectory, operation);
                     var queuedCleanupMessage = lockedCleanedManifests > 0 ? " 已先从 packages.json 移除插件声明。" : string.Empty;
                     return PackageRepositoryOperationResult.Succeeded("插件包已标记为待卸载。当前 DLL 正被 Revit 占用，请重启 Revit 后自动删除: " + package.PackageId + queuedCleanupMessage + " 占用文件: " + lockedFile);
                 }
@@ -211,7 +146,7 @@ namespace PlugHub.Framework.Packages
                     Directory.Delete(installDirectory, true);
                 }
 
-                RemovePendingOperations(baseDirectory, package.PackageId, moduleId);
+                _pendingLifecycle.Remove(baseDirectory, package.PackageId, moduleId);
                 var cleanupMessage = cleanedManifests > 0 ? " 已同步清理旧整包清单中的同名插件声明。" : string.Empty;
                 return PackageRepositoryOperationResult.Succeeded("插件包已卸载。请重启 Revit 让当前会话释放已加载的 DLL: " + package.PackageId + cleanupMessage);
             }
@@ -264,7 +199,7 @@ namespace PlugHub.Framework.Packages
                     return installResult;
                 }
 
-                if (replaceExisting && Directory.Exists(installDirectory) && TryFindLockedFile(installDirectory, out var lockedFile))
+                if (replaceExisting && Directory.Exists(installDirectory) && PendingPackageOperationLifecycle.TryFindLockedFile(installDirectory, out var lockedFile))
                 {
                     var manifestBackups = new List<PendingManifestBackup>();
                     if (!TryRemoveModuleFromInstalledManifests(installRoot, moduleId, string.Empty, manifestBackups, false, out var lockedCleanedManifests, out var lockedCleanupError))
@@ -275,7 +210,7 @@ namespace PlugHub.Framework.Packages
 
                     var operation = PendingPackageOperation.Update(package.PackageId, moduleId, installDirectory, stagingDirectory);
                     operation.ManifestBackups = manifestBackups;
-                    QueuePendingOperation(baseDirectory, operation);
+                    _pendingLifecycle.Queue(baseDirectory, operation);
                     var lockedCleanupMessage = lockedCleanedManifests > 0 ? " 已先从 packages.json 移除旧插件声明。" : string.Empty;
                     return PackageRepositoryOperationResult.Succeeded("插件包已标记为待更新。当前 DLL 正被 Revit 占用，请重启 Revit 后自动替换: " + package.PackageId + lockedCleanupMessage + " 占用文件: " + lockedFile);
                 }
@@ -316,7 +251,7 @@ namespace PlugHub.Framework.Packages
                 }
 
                 DeleteDirectoryQuietly(backupDirectory);
-                RemovePendingOperations(baseDirectory, package.PackageId, moduleId);
+                _pendingLifecycle.Remove(baseDirectory, package.PackageId, moduleId);
                 if (!TryRemoveModuleFromInstalledManifests(installRoot, moduleId, installDirectory, out var cleanedManifests, out var cleanupError))
                 {
                     return PackageRepositoryOperationResult.Failed("插件包已写入 packages，但清理旧插件包清单失败。请重启 Revit 后重试: " + cleanupError);
@@ -459,115 +394,6 @@ namespace PlugHub.Framework.Packages
             }
         }
 
-        private bool TryApplyPendingDelete(string baseDirectory, PendingPackageOperation operation, out string error)
-        {
-            error = string.Empty;
-            if (!TryValidatePendingInstallDirectory(baseDirectory, operation, out error))
-            {
-                return false;
-            }
-
-            if (string.IsNullOrWhiteSpace(operation.InstallDirectory) || !Directory.Exists(operation.InstallDirectory))
-            {
-                return true;
-            }
-
-            if (TryFindLockedFile(operation.InstallDirectory, out var lockedFile))
-            {
-                error = "文件仍被占用: " + lockedFile;
-                return false;
-            }
-
-            try
-            {
-                Directory.Delete(operation.InstallDirectory, true);
-                return true;
-            }
-            catch (IOException ex)
-            {
-                error = ex.Message;
-                return false;
-            }
-            catch (UnauthorizedAccessException ex)
-            {
-                error = ex.Message;
-                return false;
-            }
-        }
-
-        private bool TryApplyPendingUpdate(string baseDirectory, PendingPackageOperation operation, out string error)
-        {
-            error = string.Empty;
-            if (!TryValidatePendingInstallDirectory(baseDirectory, operation, out error)
-                || !TryValidatePendingStagingDirectory(baseDirectory, operation, out error))
-            {
-                return false;
-            }
-
-            if (string.IsNullOrWhiteSpace(operation.StagingDirectory) || !Directory.Exists(operation.StagingDirectory))
-            {
-                return true;
-            }
-
-            if (TryFindLockedFile(operation.InstallDirectory, out var lockedFile))
-            {
-                error = "文件仍被占用: " + lockedFile;
-                return false;
-            }
-
-            var temporaryRoot = TemporaryPackageRoot(baseDirectory);
-            var backupDirectory = TemporaryPackageDirectory(temporaryRoot, operation.PackageId, "pending-backup");
-            try
-            {
-                Directory.CreateDirectory(Path.GetDirectoryName(operation.InstallDirectory) ?? InstalledPackagesRoot(baseDirectory));
-                if (Directory.Exists(operation.InstallDirectory))
-                {
-                    Directory.Move(operation.InstallDirectory, backupDirectory);
-                }
-
-                Directory.Move(operation.StagingDirectory, operation.InstallDirectory);
-                DeleteDirectoryQuietly(backupDirectory);
-                return true;
-            }
-            catch (IOException ex)
-            {
-                RestorePackageBackup(backupDirectory, operation.InstallDirectory);
-                error = ex.Message;
-                return false;
-            }
-            catch (UnauthorizedAccessException ex)
-            {
-                RestorePackageBackup(backupDirectory, operation.InstallDirectory);
-                error = ex.Message;
-                return false;
-            }
-        }
-
-        private void QueuePendingOperation(string baseDirectory, PendingPackageOperation operation)
-        {
-            _pendingOperations.AddOrReplace(baseDirectory, operation);
-        }
-
-        private void RemovePendingOperations(string baseDirectory, string packageId, string moduleId)
-        {
-            _pendingOperations.Remove(baseDirectory, packageId, moduleId);
-        }
-
-        private string PendingOperationFor(string baseDirectory, string packageId, string moduleId)
-        {
-            return _pendingOperations.Find(baseDirectory, packageId, moduleId)?.Operation ?? string.Empty;
-        }
-
-        private List<PendingPackageOperation> ReadPendingOperations(string baseDirectory)
-        {
-            return _pendingOperations.Read(baseDirectory).ToList();
-        }
-
-        private void WritePendingOperations(string baseDirectory, IReadOnlyList<PendingPackageOperation> operations)
-        {
-            _pendingOperations.Write(baseDirectory, operations);
-        }
-
         private bool TryRemoveModuleFromInstalledManifests(string installRoot, string moduleId, string excludedDirectory, out int cleanedManifests, out string error)
         {
             return TryRemoveModuleFromInstalledManifests(installRoot, moduleId, excludedDirectory, null, out cleanedManifests, out error);
@@ -643,50 +469,6 @@ namespace PlugHub.Framework.Packages
             return true;
         }
 
-        private bool RestorePendingManifestBackups(string baseDirectory, PendingPackageOperation operation, out string error)
-        {
-            error = string.Empty;
-            var backups = operation.ManifestBackups ?? new List<PendingManifestBackup>();
-            if (backups.Count == 0)
-            {
-                return true;
-            }
-
-            var installRoot = InstalledPackagesRoot(baseDirectory);
-            foreach (var backup in backups.Where(item => item != null))
-            {
-                if (string.IsNullOrWhiteSpace(backup.ManifestPath))
-                {
-                    continue;
-                }
-
-                var manifestPath = Path.GetFullPath(backup.ManifestPath);
-                if (!IsUnderDirectory(installRoot, manifestPath))
-                {
-                    error = "Manifest backup path is outside the packages directory: " + backup.ManifestPath;
-                    return false;
-                }
-
-                try
-                {
-                    Directory.CreateDirectory(Path.GetDirectoryName(manifestPath) ?? installRoot);
-                    File.WriteAllText(manifestPath, backup.Content ?? string.Empty);
-                }
-                catch (IOException ex)
-                {
-                    error = ex.Message;
-                    return false;
-                }
-                catch (UnauthorizedAccessException ex)
-                {
-                    error = ex.Message;
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
         private bool TryRemoveModuleFromManifest(string manifestPath, string moduleId, out bool changed, out string error)
         {
             return TryRemoveModuleFromManifest(manifestPath, moduleId, true, out changed, out error);
@@ -734,7 +516,7 @@ namespace PlugHub.Framework.Packages
         private bool TryDeletePackageDirectoryOrClearManifest(string packageDirectory, string manifestPath, Dictionary<string, object> root, out string error)
         {
             error = string.Empty;
-            if (!TryFindLockedFile(packageDirectory, out var lockedFile))
+            if (!PendingPackageOperationLifecycle.TryFindLockedFile(packageDirectory, out var lockedFile))
             {
                 try
                 {
@@ -766,58 +548,6 @@ namespace PlugHub.Framework.Packages
         private bool TryWriteManifest(string manifestPath, Dictionary<string, object> root, out string error)
         {
             return _manifestReader.TryWriteManifest(manifestPath, root, out error);
-        }
-
-        private static bool TryValidatePendingInstallDirectory(string baseDirectory, PendingPackageOperation operation, out string error)
-        {
-            error = string.Empty;
-            if (operation == null)
-            {
-                error = "Pending operation is missing.";
-                return false;
-            }
-
-            if (string.IsNullOrWhiteSpace(operation.InstallDirectory))
-            {
-                error = "Pending operation install directory is missing.";
-                return false;
-            }
-
-            var installRoot = InstalledPackagesRoot(baseDirectory);
-            var installDirectory = Path.GetFullPath(operation.InstallDirectory);
-            if (!IsUnderDirectory(installRoot, installDirectory))
-            {
-                error = "Pending operation install directory is outside packages: " + operation.InstallDirectory;
-                return false;
-            }
-
-            return true;
-        }
-
-        private static bool TryValidatePendingStagingDirectory(string baseDirectory, PendingPackageOperation operation, out string error)
-        {
-            error = string.Empty;
-            if (operation == null)
-            {
-                error = "Pending operation is missing.";
-                return false;
-            }
-
-            if (string.IsNullOrWhiteSpace(operation.StagingDirectory))
-            {
-                error = "Pending operation staging directory is missing.";
-                return false;
-            }
-
-            var stagingRoot = TemporaryPackageRoot(baseDirectory);
-            var stagingDirectory = Path.GetFullPath(operation.StagingDirectory);
-            if (!IsUnderDirectory(stagingRoot, stagingDirectory))
-            {
-                error = "Pending operation staging directory is outside package-install cache: " + operation.StagingDirectory;
-                return false;
-            }
-
-            return true;
         }
 
         private static bool IsInstalledPackagesRoot(string directory)
@@ -854,36 +584,6 @@ namespace PlugHub.Framework.Packages
                 : Enumerable.Empty<object>();
         }
 
-        private static bool TryFindLockedFile(string directory, out string lockedFile)
-        {
-            lockedFile = string.Empty;
-            if (!Directory.Exists(directory)) return false;
-
-            foreach (var file in Directory.GetFiles(directory, "*", SearchOption.AllDirectories))
-            {
-                if (file.IndexOf(Path.DirectorySeparatorChar + ".git" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) >= 0) continue;
-
-                try
-                {
-                    using (File.Open(file, FileMode.Open, FileAccess.Read, FileShare.None))
-                    {
-                    }
-                }
-                catch (IOException)
-                {
-                    lockedFile = file;
-                    return true;
-                }
-                catch (UnauthorizedAccessException)
-                {
-                    lockedFile = file;
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
         private static string SafePathSegment(string value)
         {
             var chars = (value ?? string.Empty)
@@ -918,20 +618,5 @@ namespace PlugHub.Framework.Packages
             return values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
         }
 
-        private static void AddDiagnostic(ICollection<DiagnosticMessage> diagnostics, string repositoryId, string code, string message)
-        {
-            AddDiagnostic(diagnostics, repositoryId, code, message, DiagnosticSeverity.Warning);
-        }
-
-        private static void AddDiagnostic(ICollection<DiagnosticMessage> diagnostics, string repositoryId, string code, string message, DiagnosticSeverity severity)
-        {
-            diagnostics.Add(new DiagnosticMessage
-            {
-                ModuleId = repositoryId ?? string.Empty,
-                Severity = severity,
-                Code = code ?? string.Empty,
-                Message = SensitiveTextRedactor.Redact(message ?? string.Empty)
-            });
-        }
     }
 }

@@ -25,33 +25,35 @@ namespace PlugHub.Manager.Maintenance
 
         private void Write(string severity, string message, string exception)
         {
-            var directory = ResolveLogsDirectory();
-            Directory.CreateDirectory(directory);
-            var path = Path.Combine(directory, "plughub-manager-maintenance-" + DateTime.UtcNow.ToString("yyyyMMdd") + ".log");
             var line = string.Join("\t", DateTime.UtcNow.ToString("o"), severity, Normalize(message), Normalize(exception));
-            File.AppendAllText(path, line + Environment.NewLine, Encoding.UTF8);
-        }
-
-        private string ResolveLogsDirectory()
-        {
-            var preferred = Path.Combine(_installDirectory, "logs");
-            if (Directory.Exists(_installDirectory))
+            foreach (var directory in CandidateLogsDirectories())
             {
                 try
                 {
-                    Directory.CreateDirectory(preferred);
-                    return preferred;
+                    Directory.CreateDirectory(directory);
+                    var path = Path.Combine(directory, "plughub-manager-maintenance-" + DateTime.UtcNow.ToString("yyyyMMdd") + ".log");
+                    File.AppendAllText(path, line + Environment.NewLine, Encoding.UTF8);
+                    return;
                 }
                 catch
                 {
-                    // Fall through to per-user logs when the install directory is locked or already removed.
+                    // Logging must not interrupt update or uninstall maintenance.
                 }
             }
+        }
 
-            return Path.Combine(
+        private System.Collections.Generic.IEnumerable<string> CandidateLogsDirectories()
+        {
+            if (Directory.Exists(_installDirectory))
+            {
+                yield return Path.Combine(_installDirectory, "logs");
+            }
+
+            yield return Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "PlugHub",
                 "logs");
+            yield return Path.Combine(Path.GetTempPath(), "PlugHub", "logs");
         }
 
         private static string Normalize(string value)

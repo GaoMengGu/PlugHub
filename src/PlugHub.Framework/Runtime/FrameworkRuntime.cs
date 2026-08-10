@@ -40,6 +40,7 @@ namespace PlugHub.Framework.Runtime
 
         public FrameworkRuntimeSnapshot Load(string baseDirectory, string configDirectory, bool applyPendingPackageOperations)
         {
+            var effectiveConfigDirectory = configDirectory ?? string.Empty;
             var diagnostics = new DiagnosticsSink();
             var featureRegistry = new FeatureRegistry();
             var logger = new PlugHubLogger();
@@ -49,7 +50,7 @@ namespace PlugHub.Framework.Runtime
                 Severity = DiagnosticSeverity.Info,
                 Code = "RT-LOAD",
                 Operation = "FrameworkRuntime.Load",
-                Message = "PlugHub runtime load started. Config: " + (configDirectory ?? string.Empty)
+                Message = "PlugHub runtime load started. Config: " + effectiveConfigDirectory
             });
 
             if (applyPendingPackageOperations)
@@ -57,7 +58,7 @@ namespace PlugHub.Framework.Runtime
                 diagnostics.AddRange(_packageRepositoryService.ApplyPendingOperations(baseDirectory));
             }
 
-            var configuration = _configurationLoader.Load(configDirectory);
+            var configuration = _configurationLoader.Load(effectiveConfigDirectory);
             var sourceResult = _moduleSourceResolver.Resolve(baseDirectory, configuration.Modules);
             configuration.Modules = sourceResult.Modules;
             diagnostics.AddRange(sourceResult.Diagnostics);
@@ -86,7 +87,7 @@ namespace PlugHub.Framework.Runtime
                 composition,
                 diagnostics.Messages);
 
-            FrameworkRuntimeState.SetCurrent(baseDirectory, configDirectory, snapshot);
+            FrameworkRuntimeState.SetCurrent(baseDirectory, effectiveConfigDirectory, snapshot);
             LogRuntimeSnapshot(baseDirectory, logger, snapshot);
             return snapshot;
         }

@@ -2,16 +2,16 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace PlugHub.Manager.Settings.RibbonDesigner
+namespace PlugHub.Framework.RibbonEditing
 {
-    internal enum RibbonDesignerDropPlacement
+    public enum RibbonDesignerDropPlacement
     {
         Before,
         Inside,
         After
     }
 
-    internal sealed class RibbonDesignerDropPlan
+    public sealed class RibbonDesignerDropPlan
     {
         public bool IsAllowed { get; set; }
         public string Message { get; set; } = string.Empty;
@@ -20,7 +20,7 @@ namespace PlugHub.Manager.Settings.RibbonDesigner
         public RibbonDesignerDropPlacement Placement { get; set; } = RibbonDesignerDropPlacement.Inside;
     }
 
-    internal sealed class RibbonDesignerDropService
+    public sealed class RibbonDesignerDropService
     {
         public RibbonDesignerDropPlan PlanFeatureDrop(IEnumerable<RibbonDesignerNodeRow> roots, RibbonDesignerFeatureRow feature, RibbonDesignerNodeRow target)
         {

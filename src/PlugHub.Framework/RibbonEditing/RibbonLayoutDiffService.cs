@@ -2,9 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace PlugHub.Manager.Settings.RibbonDesigner
+namespace PlugHub.Framework.RibbonEditing
 {
-    internal sealed class RibbonLayoutDiffService
+    public sealed class RibbonLayoutDiffService
     {
         public List<RibbonLayoutDiffRow> Compare(IEnumerable<RibbonDesignerNodeRow> originalTabs, IEnumerable<RibbonDesignerNodeRow> currentTabs)
         {

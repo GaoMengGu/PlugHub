@@ -1,8 +1,8 @@
 using System.Collections.ObjectModel;
 
-namespace PlugHub.Manager.Settings.RibbonDesigner
+namespace PlugHub.Framework.RibbonEditing
 {
-    internal sealed class RibbonDesignerNodeRow
+    public sealed class RibbonDesignerNodeRow
     {
         public const string Tab = "tab";
         public const string Panel = "panel";

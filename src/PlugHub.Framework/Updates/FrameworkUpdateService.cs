@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Collections.Generic;
 
 namespace PlugHub.Framework.Updates
@@ -10,8 +9,6 @@ namespace PlugHub.Framework.Updates
     {
         private const string TestUpdateReleaseUriEnvironmentVariable = "PLUGHUB_TEST_UPDATE_RELEASE_URI";
         private const string TestUpdateDownloadTemplateEnvironmentVariable = "PLUGHUB_TEST_UPDATE_DOWNLOAD_TEMPLATE";
-        private static readonly Uri GitHubReleaseListUri = new Uri("https://api.github.com/repos/GaoMengGu/PlugHub/releases");
-
         private static readonly IReadOnlyList<FrameworkUpdateSource> DefaultUpdateSources =
             BuildDefaultUpdateSources();
 
@@ -63,13 +60,13 @@ namespace PlugHub.Framework.Updates
         {
             var failures = new List<string>();
             FrameworkUpdateCheckResult? noUpdateResult = null;
-            foreach (var source in BuildCheckSources(currentVersion, _updateSources))
+            foreach (var source in FrameworkUpdatePolicy.BuildCheckSources(currentVersion, _updateSources))
             {
                 try
                 {
                     var release = LoadRelease(source);
-                    var latestVersion = NormalizeVersionText(release.TagName);
-                    var current = NormalizeVersionText(currentVersion);
+                    var latestVersion = FrameworkUpdatePolicy.NormalizeVersionText(release.TagName);
+                    var current = FrameworkUpdatePolicy.NormalizeVersionText(currentVersion);
 
                     if (string.IsNullOrWhiteSpace(latestVersion))
                     {
@@ -77,7 +74,7 @@ namespace PlugHub.Framework.Updates
                         continue;
                     }
 
-                    var asset = SelectUpdateAsset(release, latestVersion);
+                    var asset = FrameworkUpdatePolicy.SelectUpdateAsset(release, latestVersion);
                     if (asset == null || string.IsNullOrWhiteSpace(asset.DownloadUrl))
                     {
                         failures.Add(source.Name + " latest release 未找到 PlugHub-Revit2020 更新包");
@@ -85,7 +82,7 @@ namespace PlugHub.Framework.Updates
                     }
 
                     var downloadUrls = DownloadFallbackUrls(source, latestVersion, asset.Name, asset.DownloadUrl);
-                    var hasUpdate = IsNewerVersion(latestVersion, current);
+                    var hasUpdate = FrameworkUpdatePolicy.IsNewerVersion(latestVersion, current);
                     var result = new FrameworkUpdateCheckResult
                     {
                         Success = true,
@@ -196,26 +193,9 @@ namespace PlugHub.Framework.Updates
             return new FrameworkUpdateCheckResult
             {
                 Success = false,
-                CurrentVersion = NormalizeVersionText(currentVersion),
+                CurrentVersion = FrameworkUpdatePolicy.NormalizeVersionText(currentVersion),
                 Message = message
             };
-        }
-
-        private static bool IsNewerVersion(string latestVersion, string currentVersion)
-        {
-            if (Version.TryParse(ComparableVersionText(latestVersion), out var latest)
-                && Version.TryParse(ComparableVersionText(currentVersion), out var current))
-            {
-                var comparison = latest.CompareTo(current);
-                if (comparison != 0)
-                {
-                    return comparison > 0;
-                }
-
-                return IsStableReleaseTag(latestVersion) && IsTestReleaseTag(currentVersion);
-            }
-
-            return !string.Equals(latestVersion, currentVersion, StringComparison.OrdinalIgnoreCase);
         }
 
         private static IReadOnlyList<FrameworkUpdateSource> BuildDefaultUpdateSources()
@@ -246,40 +226,6 @@ namespace PlugHub.Framework.Updates
                 new Uri("https://api.github.com/repos/GaoMengGu/PlugHub/releases/latest"),
                 "https://github.com/GaoMengGu/PlugHub/releases/download/{tag}/{asset}"));
             return sources;
-        }
-
-        private static IReadOnlyList<FrameworkUpdateSource> BuildDefaultCheckSources(string currentVersion)
-        {
-            return BuildCheckSources(currentVersion, DefaultUpdateSources);
-        }
-
-        private static IReadOnlyList<FrameworkUpdateSource> BuildCheckSources(string currentVersion, IReadOnlyList<FrameworkUpdateSource> updateSources)
-        {
-            if (!IsTestReleaseTag(NormalizeVersionText(currentVersion))
-                || updateSources.Any(source => source.Kind == FrameworkUpdateSourceKind.GitHubTestPrereleaseList))
-            {
-                return updateSources;
-            }
-
-            var sources = new List<FrameworkUpdateSource>
-            {
-                new FrameworkUpdateSource(
-                    FrameworkUpdateSourceKind.GitHubTestPrereleaseList,
-                    "GitHub Test",
-                    GitHubReleaseListUri,
-                    string.Empty,
-                    true)
-            };
-            sources.AddRange(updateSources);
-            return sources;
-        }
-
-        private static ReleaseAssetInfo? SelectUpdateAsset(ReleaseInfo release, string latestVersion)
-        {
-            if (release == null) return null;
-            var expectedName = "PlugHub-Revit2020-" + latestVersion + ".zip";
-            return release.Assets.FirstOrDefault(item =>
-                string.Equals(item.Name, expectedName, StringComparison.OrdinalIgnoreCase));
         }
 
         private static List<string> DownloadFallbackUrls(FrameworkUpdateSource source, string latestVersion, string assetName, string primaryUrl)
@@ -336,37 +282,6 @@ namespace PlugHub.Framework.Updates
                 : "unknown";
         }
 
-        private static string NormalizeVersionText(string version)
-        {
-            return string.IsNullOrWhiteSpace(version)
-                ? Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? string.Empty
-                : version.Trim();
-        }
-
-        private static string TrimVersionPrefix(string version)
-        {
-            return (version ?? string.Empty).Trim().TrimStart('v', 'V');
-        }
-
-        private static string ComparableVersionText(string version)
-        {
-            var text = (version ?? string.Empty).Trim();
-            var start = text.IndexOfAny(new[] { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' });
-            return start >= 0 ? text.Substring(start) : TrimVersionPrefix(text);
-        }
-
-        private static bool IsStableReleaseTag(string version)
-        {
-            var text = (version ?? string.Empty).Trim();
-            return text.StartsWith("V", StringComparison.OrdinalIgnoreCase)
-                && !IsTestReleaseTag(text);
-        }
-
-        private static bool IsTestReleaseTag(string version)
-        {
-            return (version ?? string.Empty).Trim().StartsWith("TV", StringComparison.OrdinalIgnoreCase);
-        }
-
         private static bool IsGitHubReleaseListUri(Uri uri)
         {
             var path = (uri?.AbsolutePath ?? string.Empty).TrimEnd('/');
@@ -383,38 +298,5 @@ namespace PlugHub.Framework.Updates
             return string.IsNullOrWhiteSpace(value) ? "unknown" : value;
         }
 
-        private enum FrameworkUpdateSourceKind
-        {
-            GiteeTagList,
-            GitHubLatestRelease,
-            GitHubTestPrereleaseList
-        }
-
-        private sealed class FrameworkUpdateSource
-        {
-            public FrameworkUpdateSource(FrameworkUpdateSourceKind kind, string name, Uri uri, string downloadUrlTemplate)
-                : this(kind, name, uri, downloadUrlTemplate, false)
-            {
-            }
-
-            public FrameworkUpdateSource(FrameworkUpdateSourceKind kind, string name, Uri uri, string downloadUrlTemplate, bool continueWhenNoUpdate)
-            {
-                Kind = kind;
-                Name = name ?? string.Empty;
-                Uri = uri ?? throw new ArgumentNullException(nameof(uri));
-                DownloadUrlTemplate = downloadUrlTemplate ?? string.Empty;
-                ContinueWhenNoUpdate = continueWhenNoUpdate;
-            }
-
-            public FrameworkUpdateSourceKind Kind { get; }
-
-            public string Name { get; }
-
-            public Uri Uri { get; }
-
-            public string DownloadUrlTemplate { get; }
-
-            public bool ContinueWhenNoUpdate { get; }
-        }
     }
 }
