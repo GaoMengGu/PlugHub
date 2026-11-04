@@ -38,11 +38,6 @@ namespace PlugHub.Framework.Runtime
                 return FeatureExecutionDecision.Blocked("Feature is not registered: " + featureIdOrCommandKey);
             }
 
-            if (feature.DefaultState != FeatureState.Visible)
-            {
-                return FeatureExecutionDecision.Blocked("Feature is disabled or hidden: " + feature.Name);
-            }
-
             var visibleInWorkspace = snapshot.Composition.Features.Any(item =>
                 string.Equals(item.FeatureId, feature.Id, StringComparison.OrdinalIgnoreCase));
             if (!visibleInWorkspace)

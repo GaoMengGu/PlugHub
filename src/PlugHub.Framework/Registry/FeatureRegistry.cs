@@ -13,21 +13,15 @@ namespace PlugHub.Framework.Registry
         private readonly HashSet<string> _moduleIds = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _featureIds = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
 
-        public void Register(ModuleDescriptor module, ConflictPolicyConfiguration? conflictPolicy = null)
+        public bool Register(ModuleDescriptor module, ConflictPolicyConfiguration? conflictPolicy = null)
         {
-            if (module == null) return;
+            if (module == null) return false;
             var policy = conflictPolicy ?? new ConflictPolicyConfiguration();
 
             if (!_moduleIds.Add(module.Id))
             {
                 AddDiagnostic(SeverityFor(policy.DuplicateModuleId), module.Id, "RT-MODULE-DUPLICATE", "Duplicate module id was skipped.");
-                return;
-            }
-
-            if (module.State != ModuleState.Enabled)
-            {
-                AddDiagnostic(DiagnosticSeverity.Info, module.Id, "RT-MODULE-SKIPPED", "Module is not enabled and was skipped.");
-                return;
+                return false;
             }
 
             foreach (var feature in module.Features ?? new List<FeatureDescriptor>())
@@ -40,6 +34,7 @@ namespace PlugHub.Framework.Registry
 
                 _features.Add(CloneFeature(module, feature));
             }
+            return true;
         }
 
         public IReadOnlyList<FeatureDescriptor> All() => _features.OrderBy(f => f.Order).ThenBy(f => f.Id).ToList();
@@ -58,7 +53,6 @@ namespace PlugHub.Framework.Registry
                 Group = feature.Group,
                 Tags = feature.Tags?.ToList() ?? new List<string>(),
                 Order = feature.Order,
-                DefaultState = feature.DefaultState,
                 CommandKey = feature.CommandKey,
                 CommandAssembly = feature.CommandAssembly,
                 CommandType = feature.CommandType,

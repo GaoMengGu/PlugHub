@@ -516,8 +516,6 @@ namespace PlugHub.StaticValidation.Validation
                             Id = "serialized-package",
                             Assembly = "Serialized.dll",
                             Type = "Demo.SerializedModule",
-                            Enabled = true,
-                            Visible = true,
                             Features = new List<PlugHub.Framework.Configuration.FeatureConfiguration>()
                         }
                     }

@@ -1,7 +1,7 @@
 ---
 title: 插件包启动生命周期与状态清理设计
 proposalUuid: 91981d6f-8fb8-4097-8ca8-e24b89432488
-documentUuid:
+documentUuid: 73138c6f-e8e3-417c-8d88-d517b38ad4bd
 ---
 
 # 插件包启动生命周期与状态清理设计
@@ -10,7 +10,7 @@ documentUuid:
 
 ## 最小契约
 
-以下是待实现契约，不能据此宣称当前版本已支持。沿用 `modules[]` 的模块 ID 作为包声明单元，不新增顶层包模型。同一清单可包含多个模块，每个模块独立选择是否自启；一个模块只声明一个入口。
+提案已批准；以下契约已落地并通过本机 C# 回归和适配器编译，启动任务已独立审查并验收；尚未发布或完成 Revit 实机验证。沿用 `modules[]` 的模块 ID 作为包声明单元，不新增顶层包模型。同一清单可包含多个模块，每个模块独立选择是否自启；一个模块只声明一个入口。
 
 ```json
 {
@@ -32,11 +32,11 @@ documentUuid:
 
 ## 调用点和生命周期
 
-`ExternalApplicationEntry.OnStartup` 先经现有 FrameworkRuntime.Load 完成来源合并、发现/兼容与 ID 校验，建立框架快照；再以原始合格模块配置建立启动候选，在 Ribbon 构建之前同步初始化，最后构建 Ribbon 返回。候选不能取 Composition.Features，否则无按钮/被布局筛选的包会漏掉。重复模块 ID 采用现有发现/注册冲突结果，不让冲突记录绕过校验启动。
+`ExternalApplicationEntry.OnStartup` 先经现有 FrameworkRuntime.Load 完成来源合并、发现/兼容与 ID 校验，建立框架快照；再以 `FrameworkRuntimeSnapshot.StartupModules` 中的合格模块配置建立启动候选，在 Ribbon 构建之前同步初始化，最后构建 Ribbon 返回。候选不能取 Composition.Features，否则无按钮/被布局筛选的包会漏掉。`ModuleDiscoveryResult.Configurations` 与描述对象保持对应，`FeatureRegistry.Register` 返回注册接受结果，重复模块 ID 沿用同一 first-wins 结果，不让冲突记录绕过校验启动。
 
-在 Revit2020 适配层以一个会话级生命周期管理对象持有尝试过的模块 ID 和成功实例。顺序沿用 Order，然后 ID 的不区分大小写排序；这不是依赖调度。进入加载前记录已尝试，关闭后不支持同进程重新启动一套包。FrameworkRuntime.Load 只负责元数据，不在刷新时调用启动入口。新安装、更新或修改参数须重启 Revit 生效。
+在 Revit2020 适配层以 `PackageStartupSession` 会话级生命周期管理对象持有尝试过的模块 ID 和成功实例。顺序沿用 Order，然后 ID 的不区分大小写排序；这不是依赖调度。进入加载前记录已尝试，关闭后不支持同进程重新启动一套包。FrameworkRuntime.Load 只负责元数据，不在刷新时调用启动入口。新安装、更新或修改参数须重启 Revit 生效。
 
-逐包执行现有相对路径解析 → 影子复制 → 取得类型及构造 → 调用 OnStartup。共享 `Net48ShadowCopyCommandAssemblyLoader` 已有 payload 哈希、复制、缓存清理和 Assembly.LoadFrom 路径，只提取/开放一处公共的内部程序集加载步骤，命令加载与自启加载共同使用，不复制整套实现，不直接锁源文件。程序集身份沿用现有 net48 规则，不承诺同会话热替换。连续刷新或点击不得另建启动管理器。
+逐包执行现有相对路径解析 → 影子复制 → 取得类型及构造 → 调用 OnStartup。共享 `Net48ShadowCopyCommandAssemblyLoader` 已有 payload 哈希、复制、缓存清理和 Assembly.LoadFrom 路径，只提取一处内部 `LoadAssembly` 步骤，命令加载与自启加载共同使用，不复制整套实现，不直接锁源文件。程序集身份沿用现有 net48 规则，不承诺同会话热替换。连续刷新或点击不得另建启动管理器。
 
 所有入口在 Revit 主线程调用；OnStartup 返回 Result.Succeeded 才进入成功列表。记录 ID、阶段、耗时、结果，异常消息沿用现有敏感内容脱敏和日志。缺文件/缺类型/不实现接口/无法构造/抛异常/非成功返回均隔离；候选后的其他包继续，框架不会因为单包失败返回失败。异常不改变旧功能状态，不阻止其他已注册功能，也不把点击当成重试入口。
 
@@ -66,3 +66,10 @@ documentUuid:
 核心回归矩阵：缺省/false/true；旧隐藏/禁用组合；true 但无文件/类型错误/异常/非成功；两个成功包及中间失败；布局无呈现；重复 ID/不兼容；刷新后不重试；关闭逆序与清理异常；安装/设置保存后声明不丢；预设只改排序。至少运行项目要求的静态命令和相关 Tests。适配器编译采用已有 Revit 参考方式；本机没有 Revit，不编造实机会话结果。
 
 源包读取权限、路径和装载失败均沿用原有校验；不扩大信任边界。发布时给新 Contracts 和包记录一致的目标版本，重新编译引用已删除成员的所有包。先在发布区准备完整框架/包与旧版本回退副本，再安装匹配版本；本提案不授权发布、推送或覆盖用户部署。实机验收记录留待 Windows/Revit 2020：启动返回前已注册、无文档安全、单包失败继续、布局独立、关闭注销及重启切换。
+
+## 已落地验证接口
+
+- `PackageManifestDefaults.ReadModules` 在 JSON 转换前检查 autoStart 的 boolean 类型和 startupType 的 string 类型；非法值按模块放入 `[ScriptIgnore] StartupConfigurationError`，合格相邻模块仍可发现，启动管理器在 configuration 阶段诊断后跳过。
+- 清单缺省/false 正常写回时可省略 autoStart，保持 false 语义；startupType 按可选字符串保存，不作为 false 包的加载依据。
+- `LegacyStateMigrationValidator` 与 `PackageStartupConfigurationValidator` 由规定的 StaticValidation 入口实际执行，覆盖旧状态迁移、配置/来源/资格和安装保存链。
+- `PlugHub.RevitStartup.Tests` 链接生产 PackageStartupSession、ExternalApplicationEntry、CommandAssemblyLoader，以小型 Revit 接口替身检查真实调度与资源释放；输出隔离在 `.tmp/revit-startup-tests/`。它与真实 API 引用编译分别记录，均不替代实机。

@@ -101,7 +101,7 @@ namespace PlugHub.Framework.Packages
                     return false;
                 }
 
-                modules = _serializer.Deserialize<ModulesConfiguration>(text) ?? new ModulesConfiguration();
+                modules = PackageManifestDefaults.ReadModules(root);
                 NormalizeRepositoryModuleDefaults(root, modules);
                 return true;
             }
@@ -145,6 +145,15 @@ namespace PlugHub.Framework.Packages
             error = string.Empty;
             try
             {
+                foreach (var module in ArrayValue(root, "modules").OfType<Dictionary<string, object>>())
+                {
+                    RemoveFields(module, "enabled", "visible");
+                    foreach (var feature in ArrayValue(module, "features").OfType<Dictionary<string, object>>())
+                    {
+                        RemoveFields(feature, "defaultState");
+                    }
+                }
+
                 File.WriteAllText(manifestPath, _serializer.Serialize(root));
                 return true;
             }
@@ -160,9 +169,17 @@ namespace PlugHub.Framework.Packages
             }
         }
 
+        private static void RemoveFields(Dictionary<string, object> source, params string[] fields)
+        {
+            foreach (var key in source.Keys.Where(key => fields.Contains(key, StringComparer.OrdinalIgnoreCase)).ToList())
+            {
+                source.Remove(key);
+            }
+        }
+
         public static IEnumerable<object> ArrayValue(Dictionary<string, object> root, string key)
         {
-            return TryGetValue(root, key, out var value) && value is System.Collections.ArrayList list
+            return TryGetValue(root, key, out var value) && value is System.Collections.IEnumerable list && !(value is string)
                 ? list.Cast<object>()
                 : Enumerable.Empty<object>();
         }
@@ -194,7 +211,7 @@ namespace PlugHub.Framework.Packages
 
         private static void NormalizeRepositoryModuleDefaults(Dictionary<string, object> root, ModulesConfiguration modules)
         {
-            PackageManifestDefaults.NormalizeModuleState(root, modules);
+            PackageManifestDefaults.NormalizeRuntimeFields(root, modules);
         }
 
         private static bool ContainsKey(Dictionary<string, object> source, string key)

@@ -48,6 +48,8 @@ namespace PlugHub.Framework.Packages
                 ["assembly"] = module.Assembly ?? string.Empty
             };
 
+            if (module.AutoStart) result["autoStart"] = true;
+            AddOptional(result, "startupType", module.StartupType);
             AddOptional(result, "author", module.Author);
             AddOptional(result, "displayName", FirstNonEmpty(module.DisplayName, module.Name));
             AddOptional(result, "description", module.Description);

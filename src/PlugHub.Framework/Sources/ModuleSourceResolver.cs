@@ -159,7 +159,7 @@ namespace PlugHub.Framework.Sources
                 return false;
             }
 
-            modules = _serializer.Deserialize<ModulesConfiguration>(text) ?? new ModulesConfiguration();
+            modules = PackageManifestDefaults.ReadModules(root);
             NormalizeRepositoryModuleDefaults(root, modules);
             PushRootCompatibilityToModules(modules);
             return true;
@@ -167,7 +167,7 @@ namespace PlugHub.Framework.Sources
 
         private static void NormalizeRepositoryModuleDefaults(Dictionary<string, object> root, ModulesConfiguration modules)
         {
-            PackageManifestDefaults.NormalizeModuleState(root, modules);
+            PackageManifestDefaults.NormalizeRuntimeFields(root, modules);
         }
 
         private static void PushRootCompatibilityToModules(ModulesConfiguration modules)

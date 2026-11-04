@@ -113,7 +113,7 @@ namespace PlugHub.Framework.RibbonEditing
         {
             var panels = new List<RibbonDesignerNodeRow>();
             foreach (var featureGroup in (features ?? new List<RibbonDesignerFeatureRow>())
-                .Where(feature => feature.Visible && !string.IsNullOrWhiteSpace(feature.FeatureId))
+                .Where(feature => !string.IsNullOrWhiteSpace(feature.FeatureId))
                 .OrderBy(feature => DefaultPanelName(feature), StringComparer.OrdinalIgnoreCase)
                 .ThenBy(feature => feature.Order)
                 .ThenBy(feature => SafeText(feature.DisplayName, feature.Name), StringComparer.OrdinalIgnoreCase)

@@ -18,7 +18,6 @@ namespace PlugHub.Manager.Settings.Rows
         public string Group { get; set; } = string.Empty;
         public string GroupDisplayText { get; set; } = string.Empty;
         public List<string> Tags { get; set; } = new List<string>();
-        public bool Visible { get; set; }
         public string IconPath { get; set; } = string.Empty;
         public string ModuleBaseDirectory { get; set; } = string.Empty;
         public int Order { get; set; }
@@ -39,7 +38,6 @@ namespace PlugHub.Manager.Settings.Rows
                 Group = Group ?? string.Empty,
                 Tags = new List<string>(Tags ?? new List<string>()),
                 Order = Order,
-                DefaultState = Visible ? "Visible" : "Hidden",
                 CommandKey = CommandKey ?? string.Empty,
                 CommandAssembly = CommandAssembly ?? string.Empty,
                 CommandType = CommandType ?? string.Empty,

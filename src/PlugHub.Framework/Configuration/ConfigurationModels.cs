@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Web.Script.Serialization;
 
 namespace PlugHub.Framework.Configuration
 {
@@ -63,6 +64,10 @@ namespace PlugHub.Framework.Configuration
         public string Author { get; set; } = string.Empty;
         public string Assembly { get; set; } = string.Empty;
         public string Type { get; set; } = string.Empty;
+        public bool AutoStart { get; set; }
+        public string StartupType { get; set; } = string.Empty;
+        [ScriptIgnore]
+        public string StartupConfigurationError { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
         public string DisplayName { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;
@@ -71,8 +76,6 @@ namespace PlugHub.Framework.Configuration
         public string ResolvedBaseDirectory { get; set; } = string.Empty;
         public List<string> RevitVersions { get; set; } = new List<string>();
         public string FrameworkVersionRange { get; set; } = string.Empty;
-        public bool Enabled { get; set; }
-        public bool Visible { get; set; }
         public int Order { get; set; }
         public List<string> Tags { get; set; } = new List<string>();
         public List<string> DependsOn { get; set; } = new List<string>();
@@ -89,7 +92,6 @@ namespace PlugHub.Framework.Configuration
         public string Group { get; set; } = string.Empty;
         public List<string> Tags { get; set; } = new List<string>();
         public int Order { get; set; }
-        public string DefaultState { get; set; } = "Visible";
         public string CommandKey { get; set; } = string.Empty;
         public string CommandAssembly { get; set; } = string.Empty;
         public string CommandType { get; set; } = string.Empty;
@@ -123,8 +125,6 @@ namespace PlugHub.Framework.Configuration
     public sealed class ModuleOverrideConfiguration
     {
         public string ModuleId { get; set; } = string.Empty;
-        public bool? Enabled { get; set; }
-        public bool? Visible { get; set; }
         public int? Order { get; set; }
     }
 

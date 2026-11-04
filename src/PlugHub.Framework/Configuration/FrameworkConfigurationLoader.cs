@@ -168,7 +168,10 @@ namespace PlugHub.Framework.Configuration
 
             try
             {
-                return _serializer.Deserialize<T>(File.ReadAllText(path)) ?? fallback;
+                var text = File.ReadAllText(path);
+                if (typeof(T) == typeof(ModulesConfiguration))
+                    return (T)(object)PackageManifestDefaults.ReadModules(_serializer.Deserialize<Dictionary<string, object>>(text));
+                return _serializer.Deserialize<T>(text) ?? fallback;
             }
             catch (Exception exception) when (IsOptionalJsonReadFailure(exception))
             {
@@ -250,7 +253,6 @@ namespace PlugHub.Framework.Configuration
         private IReadOnlyList<ModuleConfiguration> ResolveModules(ModulesConfiguration modules, FeatureCombinationPresetConfiguration? preset)
         {
             return ApplyPreset(modules, preset).Modules
-                .Where(module => module.Enabled && module.Visible)
                 .OrderBy(module => module.Order)
                 .ThenBy(module => module.Id, StringComparer.OrdinalIgnoreCase)
                 .ToList();
@@ -267,6 +269,9 @@ namespace PlugHub.Framework.Configuration
                 Author = module.Author,
                 Assembly = module.Assembly,
                 Type = module.Type,
+                AutoStart = module.AutoStart,
+                StartupType = module.StartupType,
+                StartupConfigurationError = module.StartupConfigurationError,
                 Name = module.Name,
                 DisplayName = module.DisplayName,
                 Description = module.Description,
@@ -275,8 +280,6 @@ namespace PlugHub.Framework.Configuration
                 ResolvedBaseDirectory = module.ResolvedBaseDirectory,
                 RevitVersions = new List<string>(module.RevitVersions ?? new List<string>()),
                 FrameworkVersionRange = module.FrameworkVersionRange,
-                Enabled = moduleOverride.Enabled ?? module.Enabled,
-                Visible = moduleOverride.Visible ?? module.Visible,
                 Order = moduleOverride.Order ?? module.Order,
                 Tags = new List<string>(module.Tags ?? new List<string>()),
                 DependsOn = new List<string>(module.DependsOn ?? new List<string>()),
@@ -290,7 +293,6 @@ namespace PlugHub.Framework.Configuration
                     Group = feature.Group,
                     Tags = MergeTags(module.Tags ?? new List<string>(), feature.Tags),
                     Order = feature.Order,
-                    DefaultState = feature.DefaultState,
                     CommandKey = feature.CommandKey,
                     CommandAssembly = feature.CommandAssembly,
                     CommandType = feature.CommandType,
@@ -313,18 +315,12 @@ namespace PlugHub.Framework.Configuration
                 Group = feature.Group,
                 Tags = MergeTags(module.Tags, feature.Tags),
                 Order = feature.Order,
-                DefaultState = ParseFeatureState(feature.DefaultState),
                 CommandKey = feature.CommandKey,
                 CommandAssembly = string.IsNullOrWhiteSpace(feature.CommandAssembly) ? module.Assembly : feature.CommandAssembly,
                 CommandType = feature.CommandType,
                 ButtonSize = string.IsNullOrWhiteSpace(feature.ButtonSize) ? "large" : feature.ButtonSize,
                 IconPath = feature.IconPath
             };
-        }
-
-        private static FeatureState ParseFeatureState(string value)
-        {
-            return Enum.TryParse(value, true, out FeatureState state) ? state : FeatureState.Visible;
         }
 
         private static string FirstNonEmpty(params string[] values)

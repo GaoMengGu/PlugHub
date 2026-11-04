@@ -73,7 +73,7 @@ namespace PlugHub.Tests
                 new TestCase("framework update checks GitHub test prereleases for TV builds", FrameworkUpdateChecksGitHubTestPrereleasesForTvBuilds),
                 new TestCase("framework update treats test channel tags as comparable versions", FrameworkUpdateTreatsTestChannelTagsAsComparableVersions),
                 new TestCase("ribbon designer mapper hydrates configured feature icons", RibbonDesignerMapperHydratesConfiguredFeatureIcons),
-                new TestCase("ribbon layout editor merges panels and restores visible features", RibbonLayoutEditorMergesPanelsAndRestoresVisibleFeatures),
+                new TestCase("ribbon layout editor merges panels and restores installed features", RibbonLayoutEditorMergesPanelsAndRestoresInstalledFeatures),
                 new TestCase("ribbon layout editor removes uninstalled features from every persisted workspace", RibbonLayoutEditorRemovesUninstalledFeaturesFromEveryPersistedWorkspace),
                 new TestCase("ribbon layout editor normalizes stacks before save", RibbonLayoutEditorNormalizesStacksBeforeSave),
                 new TestCase("ribbon layout editor rejects invalid layouts", RibbonLayoutEditorRejectsInvalidLayouts),
@@ -155,8 +155,6 @@ namespace PlugHub.Tests
                         Type = "Legacy.Type",
                         SourceId = "legacy-source",
                         ResolvedBaseDirectory = @"C:\legacy",
-                        Enabled = false,
-                        Visible = false,
                         Order = 99,
                         DisplayName = "Module One",
                         Category = "Review",
@@ -171,7 +169,6 @@ namespace PlugHub.Tests
                                 CommandAssembly = "bin/LegacyCommand.dll",
                                 CommandKey = "legacy-command-key",
                                 ButtonSize = "small",
-                                DefaultState = "Hidden",
                                 Category = "Old Category",
                                 Group = "Old Group",
                                 Order = 10,
@@ -259,12 +256,11 @@ namespace PlugHub.Tests
                 Require(runtime.ActivePreset != null && runtime.ActivePreset.Id == "model-preset", "view-specific preset must be selected.");
                 Require(runtime.EffectiveModules.PackageDirectories.SequenceEqual(new[] { "packages" }), "missing packageDirectories must default to packages.");
                 Require(runtime.EffectiveModules.Modules.First(module => module.Id == "module.visible").Order == 5, "preset must override module order.");
-                Require(!runtime.EffectiveModules.Modules.First(module => module.Id == "module.hidden").Visible, "preset must hide module.");
+                Require(runtime.EffectiveModules.Modules.Any(module => module.Id == "module.hidden"), "legacy preset visibility must not remove installed modules.");
 
-                Require(descriptors.Count == 1, "hidden modules must not produce feature descriptors.");
+                Require(descriptors.Count == 2, "legacy hidden modules must still produce feature descriptors.");
                 var descriptor = descriptors[0];
                 Require(descriptor.Id == "feature.visible", "visible feature descriptor must be returned.");
-                Require(descriptor.DefaultState == FeatureState.Hidden, "feature defaultState must be parsed.");
                 Require(descriptor.CommandAssembly == "bin/visible.dll", "feature commandAssembly must fall back to module assembly.");
                 Require(descriptor.Category == "Model", "feature category must fall back to module category.");
                 Require(descriptor.Tags.SequenceEqual(new[] { "module-tag", "feature-tag" }), "module and feature tags must merge in order.");
@@ -619,6 +615,8 @@ namespace PlugHub.Tests
                             Id = "module.a",
                             Version = "1.0.0",
                             Assembly = "bin/A.dll",
+                            AutoStart = true,
+                            StartupType = "Vendor.ModuleA.Startup",
                             Features = new List<FeatureConfiguration>
                             {
                                 new FeatureConfiguration
@@ -668,6 +666,8 @@ namespace PlugHub.Tests
 
                 var installedManifest = File.ReadAllText(Path.Combine(stagingDirectory, "packages.json"));
                 RequireContains(installedManifest, "module.a");
+                RequireContains(installedManifest, "\"autoStart\":true");
+                RequireContains(installedManifest, "Vendor.ModuleA.Startup");
                 RequireDoesNotContain(installedManifest, "module.b");
                 RequireDoesNotContain(installedManifest, "\"indexVersion\"");
             }
@@ -1180,7 +1180,6 @@ namespace PlugHub.Tests
                         ModuleId = module.Id,
                         FeatureId = feature.Id,
                         DisplayName = feature.DisplayName,
-                        Visible = true
                     }))
                     .ToList();
                 var tabs = editor.Load(snapshot.Configuration.ActiveView.Ribbon, featureRows);
@@ -1655,7 +1654,7 @@ namespace PlugHub.Tests
             Require(result.SlotToFeatureId.All(pair => result.FeatureIdToSlot[pair.Value] == pair.Key), "slot mappings must remain bidirectionally consistent.");
         }
 
-        private static void RibbonLayoutEditorMergesPanelsAndRestoresVisibleFeatures()
+        private static void RibbonLayoutEditorMergesPanelsAndRestoresInstalledFeatures()
         {
             var ribbon = new RibbonConfiguration
             {
@@ -2139,7 +2138,6 @@ namespace PlugHub.Tests
                 GroupName = "Group",
                 GroupOrder = 1,
                 DisplayOrder = order,
-                IsEnabled = true,
                 ButtonSize = "large",
                 IconPath = "icons/" + id + ".png"
             };
@@ -2175,7 +2173,6 @@ namespace PlugHub.Tests
                 GroupDisplayText = groupName,
                 ButtonSize = "large",
                 Order = order,
-                Visible = true
             };
         }
 

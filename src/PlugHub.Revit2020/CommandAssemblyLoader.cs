@@ -25,14 +25,19 @@ namespace PlugHub.Revit2020
             if (string.IsNullOrWhiteSpace(assemblyPath)) throw new ArgumentException("Command assembly path is required.", nameof(assemblyPath));
             if (string.IsNullOrWhiteSpace(commandTypeName)) throw new ArgumentException("Command type is required.", nameof(commandTypeName));
 
-            var cachedAssemblyPath = PrepareShadowCopy(assemblyPath, baseDirectory);
-            var commandType = Assembly.LoadFrom(cachedAssemblyPath).GetType(commandTypeName, throwOnError: false);
+            var commandType = LoadAssembly(assemblyPath, baseDirectory).GetType(commandTypeName, throwOnError: false);
             if (commandType == null || !typeof(IExternalCommand).IsAssignableFrom(commandType))
             {
                 throw new InvalidOperationException("Command type was not found or does not implement IExternalCommand: " + commandTypeName);
             }
 
             return (IExternalCommand)Activator.CreateInstance(commandType)!;
+        }
+
+        internal static Assembly LoadAssembly(string assemblyPath, string baseDirectory)
+        {
+            var cachedAssemblyPath = PrepareShadowCopy(assemblyPath, baseDirectory);
+            return Assembly.LoadFrom(cachedAssemblyPath);
         }
 
         private static string PrepareShadowCopy(string assemblyPath, string baseDirectory)

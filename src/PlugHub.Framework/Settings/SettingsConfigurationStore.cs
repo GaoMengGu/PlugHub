@@ -179,7 +179,7 @@ namespace PlugHub.Framework.Settings
 
             if (root == null || !ContainsKey(root, "schemaVersion") || !ContainsKey(root, "modules")) return null;
 
-            var modules = _serializer.Deserialize<ModulesConfiguration>(File.ReadAllText(path));
+            var modules = PackageManifestDefaults.ReadModules(root);
             NormalizePackageManifestDefaults(root, modules);
             ApplyResolvedBaseDirectory(path, modules);
             return modules;
@@ -202,7 +202,7 @@ namespace PlugHub.Framework.Settings
         {
             if (modules == null) return;
 
-            PackageManifestDefaults.NormalizeModuleState(root, modules);
+            PackageManifestDefaults.NormalizeRuntimeFields(root, modules);
         }
 
         private static bool ContainsKey(Dictionary<string, object> source, string key)

@@ -1409,7 +1409,6 @@ namespace PlugHub.Manager
                     Category = feature.Category,
                     Group = GroupIdForFeature(module, feature),
                     Tags = new List<string>(feature.Tags ?? new List<string>()),
-                    Visible = string.Equals(feature.DefaultState, "Visible", StringComparison.OrdinalIgnoreCase),
                     IconPath = feature.IconPath,
                     ModuleBaseDirectory = module.ResolvedBaseDirectory,
                     Order = feature.Order,
@@ -1435,7 +1434,6 @@ namespace PlugHub.Manager
 
             var ribbon = WorkspaceView().Ribbon ?? new RibbonConfiguration();
             foreach (var feature in _viewModel.Features
-                .Where(row => row.Visible)
                 .OrderBy(row => row.ModuleName, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(row => row.Order)
                 .ThenBy(row => row.Name, StringComparer.OrdinalIgnoreCase)
@@ -1457,7 +1455,6 @@ namespace PlugHub.Manager
                     ModuleBaseDirectory = feature.ModuleBaseDirectory,
                     ButtonSize = NormalizeButtonSize(feature.ButtonSize),
                     Order = feature.Order,
-                    Visible = feature.Visible,
                     DisplayText = displayName
                 });
             }

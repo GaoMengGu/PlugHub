@@ -15,7 +15,6 @@ namespace PlugHub.Framework.RibbonEditing
         public string ModuleBaseDirectory { get; set; } = string.Empty;
         public string ButtonSize { get; set; } = "large";
         public int Order { get; set; }
-        public bool Visible { get; set; }
         public bool IsPlaced { get; set; }
         public string DisplayText { get; set; } = string.Empty;
     }

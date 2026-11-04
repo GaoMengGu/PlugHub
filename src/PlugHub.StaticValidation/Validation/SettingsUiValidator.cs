@@ -110,7 +110,7 @@ namespace PlugHub.StaticValidation.Validation
             Require(settingsWindow.Contains("RefreshRibbonDesignerLayoutState"), "settings window must refresh layout state without a separate feature pool.");
             Require(settingsWindow.Contains("RibbonDesignerNodeTypeOptions") && settingsWindow.Contains("常规按钮"), "visual designer must show localized control type names and label pushButton as 常规按钮.");
             Require(settingsWindow.Contains("DefaultRibbonDesignerPanelName") && settingsWindow.Contains("\"默认\""), "visual designer must keep unplaced features in a 默认 panel.");
-            Require(settingsWindow.Contains("_ribbonLayoutEditor.Synchronize") && ribbonLayoutEditor.Contains("EnsureAllVisibleFeatures"), "visual designer must automatically place all visible installed features through the editing seam.");
+            Require(settingsWindow.Contains("_ribbonLayoutEditor.Synchronize") && ribbonLayoutEditor.Contains("EnsureAllAvailableFeatures"), "visual designer must automatically place all installed features through the editing seam.");
             Require(settingsWindow.Contains("_ribbonLayoutEditor.RemoveContainer") && ribbonLayoutEditor.Contains("EnsureDefaultPanel"), "removing a layout container must atomically return contained features to the 默认 panel through the editing seam.");
             Require(settingsWindow.Contains("ResolveRibbonDesignerDropPlan"), "visual designer must move existing canvas items directly between containers.");
             Require(settingsWindow.Contains("InsertRibbonDesignerNode"), "visual designer must insert moved or new items at the resolved drop position.");

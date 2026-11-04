@@ -1,16 +1,16 @@
 ---
 title: 插件包开发迁移指南与旧机制核查
 proposalUuid: 91981d6f-8fb8-4097-8ca8-e24b89432488
-documentUuid:
+documentUuid: 6f80b2d2-6449-44fe-aa82-15435695a3b3
 ---
 
 # 插件包开发迁移指南与旧机制核查
 
 ## 交付状态与接收方
 
-2026-11-04：用户已确认迁移规则；框架提案尚待批准，下面的新参数和删除项是目标契约，当前源码尚未实现。此文交给 PlugHub_Packages 开发 agent，先清点并准备迁移，待框架新 Contracts 和实现可用后再重编译、验证及协调发布。不要直接改正在使用的安装包，也不要假设新功能已发布。
+2026-11-04：用户已确认迁移规则；框架提案已批准，状态清理已独立验收，启动实现及本机回归已独立审查并验收。下面的新参数已落地于本工作区；尚未发布、尚未进行 Revit 实机联调。此文交给 PlugHub_Packages 开发 agent，按本地新 Contracts 清点和重编译、验证，协调匹配版本后才可发布。不要直接改正在使用的安装包，也不要假设新功能已发布。
 
-框架唯一工作区与成果目录为 `/home/yilan/codex-project/PlugHub`；插件包源码只读核查位置 `/home/yilan/codex-project/PlugHub_Packages`。本轮未修改包仓库。2026-11-04 按用户指示将本次方案迁回框架工作区并修改 AGENTS.md；该目录原有未提交源码变更保留，不属于本提案的实现。插件包 agent 后续从本指南的新位置读取框架契约和交接内容。
+框架唯一工作区与成果目录为 `/home/yilan/codex-project/PlugHub`；插件包源码只读核查位置 `/home/yilan/codex-project/PlugHub_Packages`。本轮未修改包仓库。2026-11-04 按用户指示将本次方案迁回框架工作区并修改 AGENTS.md；该目录原有源码修复保留并单独提交，不属于本提案的实现。插件包 agent 后续从本指南的新位置读取框架契约和交接内容。
 
 ## 必须迁移的旧状态
 
@@ -32,7 +32,7 @@ documentUuid:
 
 对应源码在 `src/<模块名>/<模块名去掉 PlugHub. 前缀>Module.cs`，以实际 rg 结果为准。删除上述两行状态赋值后保留 Describe 里的功能 ID、名称、分组、排序、commandKey/命令映射；不要为这次迁移改业务行为或图标。检索其余生成器、测试、模板和随包 Contracts，防止仅修改 9 个类却发出旧产物。
 
-## 新启动声明用法（待框架实现后）
+## 新启动声明用法
 
 在要自启的 `modules[]` 记录声明 `autoStart: true` 和 `startupType`，使用该记录的 `assembly`。入口为 DLL 中实现 Revit IExternalApplication 的类型，公开可无参构造；OnStartup 只注册必要事件/资源，OnShutdown 成对释放，失败前已建立的注册必须撤销。无需求则两个字段均省略，不默认给现有包打开自启。
 
@@ -66,6 +66,7 @@ documentUuid:
 | frameworkVersionRange | 明确保留元数据，ModuleDiscoveryService 不求值 | 不宣称可以阻止不兼容 Contracts 装载；通过协调框架与包版本发布，本次不新增版本解释器 |
 | revitVersions | ModuleDiscoveryService 的真实 2020 过滤 | 保留，启动候选使用相同有效过滤 |
 | repositories.enabled / visibility、WPF Visibility、安装状态、运行时快照 | 来源开关/权限语义、界面控件、安装和运行时均有当前消费者 | 保留，禁止全局按名字清除 State/Visible/Enabled |
+| 包项目旧 Contracts 引用路径 | 只读核查 `PlugHub_Packages/src/PlugHub.ProjectAutoSave/PlugHub.ProjectAutoSave.csproj` 等仍指向 `../../../revittool/src/PlugHub.Contracts/PlugHub.Contracts.csproj`；包根 props 未重定向该引用 | 交包 agent 核查并改指当前框架工作区或匹配 Contracts 产物，防止误用旧契约；框架任务不跨仓改写包项目 |
 | runtime-cache、待执行安装/清理、稳定 feature ID、包相对路径 | 命令影子复制与包操作仍使用 | 保留并复用；不将缓存目录当成已安装包，不直接从源 DLL 初始化 |
 
 ## 插件包开发 agent 的验收与交付
@@ -76,4 +77,36 @@ documentUuid:
 4. 将编译/清单检查与 Revit 实机检查分开记录；实机需验证启动时机、无文档启动、单包失败不影响其他包、刷新不重复注册、关闭注销和重启切换。当前 Linux 环境只能记录静态结果。
 5. 回报修改模块列表、框架/Contracts 目标版本、构建/校验命令和结果，以及未测项；匹配版本联调通过前不发布新旧混装产物。回退同时恢复框架、包 DLL 和清单备份，不只回滚 JSON。
 
-本轮已通过框架基线命令：`dotnet run --project src/PlugHub.StaticValidation/PlugHub.StaticValidation.csproj`，结果 `passed: modules=0, features=0, views=1, presets=0`。它不是新功能或包迁移完成的证据。框架实现后的集成任务负责更新本指南、验证参数往返并登记包 agent 的回报与未完成项。
+## 本机验证与交接产物
+
+框架唯一工作区为 `/home/yilan/codex-project/PlugHub`。本次实现基于 `6442ac9`，代码提交维护在 `codex` 分支（以 Git 提交历史为准）；不赋予发布版本号或混装兼容保证。用于包源码重编译的 Contracts 项目为 `src/PlugHub.Contracts/PlugHub.Contracts.csproj`；初次交接的 net48 DLL 为 `src/PlugHub.Contracts/bin/Debug/net48/PlugHub.Contracts.dll`，SHA256 `fcac865137beb3dae19cd549ebd0d04ebe11a05132f1d265beaec6b215de7003`。上述哈希只标识初次交接构建，重建后需重新核对实际产物。该构建的默认开发版本为 0.0.0，不能仅凭相同版本号辨认新旧契约；包 agent 应指向本工作区项目或核对 DLL 哈希，回报其最终引用与产物哈希。不要从旧 revittool 路径取契约。
+
+| 验证命令 | 本机结果 | 工作区日志 |
+| --- | --- | --- |
+| `dotnet run --project src/PlugHub.StaticValidation/PlugHub.StaticValidation.csproj` | exit 0；modules=0, features=0, views=1, presets=0；内部迁移/配置行为矩阵通过 | `.tmp/startup-implementation/t2-round2-static.log` |
+| `dotnet build src/PlugHub.Tests/PlugHub.Tests.csproj`，再 `mono src/PlugHub.Tests/bin/Debug/net48/PlugHub.Tests.exe` | build 0 warnings/errors；63/63 PASS | `t2-tests-build.log` / `t2-tests.log` |
+| `dotnet build src/PlugHub.RevitStartup.Tests/PlugHub.RevitStartup.Tests.csproj`，再 `mono .tmp/revit-startup-tests/PlugHub.RevitStartup.Tests.exe` | build 0 warnings/errors；4 启动生命周期组通过 | `t2-startup-build.log` / `t2-startup-tests.log` |
+| `dotnet build src/PlugHub.Revit2020/PlugHub.Revit2020.csproj -p:RevitApiReferenceMode=NuGet -p:StagePlugHubOutput=false` | 0 errors；4 条 SDK 原生 DLL 元数据 MSB3246 警告 | `t2-adapter-build.log` |
+
+最终集成任务再次执行规定 StaticValidation、原 63 项 Tests 和 4 组启动行为测试，均 exit 0；最新日志为 `t3-static.log`、`t3-tests.log`、`t3-startup-tests.log`。
+
+日志均位于上述 `.tmp/startup-implementation/`。启动行为矩阵覆盖缺省/false、Order/ID 与同线程、一次尝试、文件/类型/接口/构造/初始化失败、Failed/Cancelled、部分清理、关闭异常、逆序、影子复制和 Runtime→Entry→Ribbon→Refresh 接线；集成用例同时包含旧状态、布局排除和无按钮模块。配置矩阵覆盖 strict boolean、同清单错误隔离、安装/更新/Manager 保存及远程缓存不入候选；包含空 ID 配合非法 autoStart 的诊断回归。
+
+这些检查仅为 Linux/net48 C# 和编译验证，包仓库迁移与 Revit 实机仍待接收方执行；本轮未改插件包业务、图标或发布产物。此前保留的 Runtime 配置隔离修复已单独提交为 `798350d`，原始差异备份在 `.tmp/startup-implementation/baseline.patch`。
+
+交接实体为 PlugHub_Packages Idea `76f94edc-a4ae-42ee-ac77-5f00e6ca5a33`，接收实例 `84a4838b-dc88-424c-8b5b-a5973b66836e`（host=ubuntuserver，cwd=/home/yilan/codex-project/PlugHub_Packages）。已核验该 Idea 的 assignment 与实例目录；2026-11-04 已发送新契约可用通知并定向 @mention 包实例，交接评论 `28f0ae85-76e6-481f-be03-1f1e33436fd2`。通知包含当前项目/产物哈希、旧 revittool 引用问题、9 包清点和重编译要求。外部包迁移/编译/匹配产物和实机联调均未回报完成；这些是发布前待办。
+
+## Windows / Revit 2020 实机验收（待执行）
+
+在可回退的框架/包完整副本上进行，记录框架和 Contracts 的匹配构建、包版本、Revit 2020 版本以及逐包日志。当前 Linux 检查不能替代这些步骤。
+
+1. 关闭所有文档再启动 Revit。使用一个 `autoStart: true` 的事件包与一个未声明包，记录事件注册和框架返回时序；应在框架启动返回前注册，仅声明包执行一次，且不依赖活动文档。
+2. 从 Ribbon 布局中排除事件包的功能，或让其 features 为空；重启仍应初始化。远程仓库同步缓存中尚未安装的同类包不得执行。
+3. 分别使用缺 DLL、错误类型、构造异常、初始化异常和返回 Failed/Cancelled 的测试包；其后的正常包仍应启动，日志应含模块、阶段、结果和耗时，已进入初始化的失败实例尽力清理一次。
+4. 同一会话多次刷新、保存布局、点击功能并安装一个新自启包；首次已启动包不重复注册，新包在下次 Revit 启动前不初始化。
+5. 按 A、B 顺序启动成功包，退出时检查 B、A 顺序注销。让 B 清理抛异常或返回非成功，A 仍须清理；检查初始化失败后的局部资源也被释放。
+6. 在框架 Ribbon 构建失败的可控场景中检查已启动实例均已清理；框架保持原失败报告路径，不遗留事件。
+7. 更新/卸载已启动包时检查当前实例保持到退出、界面提示重启；重启后只使用新安装声明。不得以 net48 热卸载作为验收依据。
+8. 用旧隐藏/禁用 JSON 安装合格包，确认布局中功能恢复可用；用不兼容、重复 ID、未注册或工作区外功能验证原有边界继续生效。保存后旧状态字段消失，其他未管理配置不被批量改写。
+
+回退时关闭 Revit，恢复事先备份的完整框架、匹配旧 Contracts、全部包 DLL/依赖和清单，再重新启动。只回退 JSON 无法修复公开成员删除造成的二进制不匹配。

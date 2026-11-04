@@ -46,17 +46,27 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "enabled", "visible", "features"],
+        "required": ["id", "features"],
+        "allOf": [{
+          "if": { "required": ["autoStart"], "properties": { "autoStart": { "const": true } } },
+          "then": {
+            "required": ["assembly", "startupType"],
+            "properties": {
+              "assembly": { "type": "string", "pattern": "\\S" },
+              "startupType": { "type": "string", "pattern": "\\S" }
+            }
+          }
+        }],
         "properties": {
           "id": {"type": "string"},
           "assembly": {"type": "string"},
+          "autoStart": {"type": "boolean", "default": false},
+          "startupType": {"type": "string"},
           "type": {"type": "string"},
           "name": {"type": "string"},
           "displayName": {"type": "string"},
           "description": {"type": "string"},
           "sourceId": {"type": "string"},
-          "enabled": {"type": "boolean"},
-          "visible": {"type": "boolean"},
           "order": {"type": "integer"},
           "tags": {"type": "array", "items": {"type": "string"}},
           "dependsOn": {"type": "array", "items": {"type": "string"}},
@@ -64,7 +74,7 @@
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["id", "name", "category", "group", "order", "defaultState"],
+              "required": ["id", "name", "category", "group", "order"],
               "properties": {
                 "id": {"type": "string"},
                 "name": {"type": "string"},
@@ -74,7 +84,6 @@
                 "group": {"type": "string"},
                 "tags": {"type": "array", "items": {"type": "string"}},
                 "order": {"type": "integer"},
-                "defaultState": {"enum": ["Visible", "Disabled", "Hidden"]},
                 "buttonSize": {"enum": ["large", "small"]},
                 "iconPath": {"type": "string"},
                 "commandKey": {"type": "string"},
