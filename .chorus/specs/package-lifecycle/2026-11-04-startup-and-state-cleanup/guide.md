@@ -10,7 +10,7 @@ documentUuid:
 
 2026-11-04：用户已确认迁移规则；框架提案尚待批准，下面的新参数和删除项是目标契约，当前源码尚未实现。此文交给 PlugHub_Packages 开发 agent，先清点并准备迁移，待框架新 Contracts 和实现可用后再重编译、验证及协调发布。不要直接改正在使用的安装包，也不要假设新功能已发布。
 
-框架工作区 `/home/yilan/plughub`；插件包源码只读核查位置 `/home/yilan/codex-project/PlugHub_Packages`。本轮未修改包仓库。框架原成果目录 `/home/yilan/codex-project/PlugHub` 保留；本轮工作树有从原工作区带入的既有未提交源码变更，不属于本提案的实现。
+框架唯一工作区与成果目录为 `/home/yilan/codex-project/PlugHub`；插件包源码只读核查位置 `/home/yilan/codex-project/PlugHub_Packages`。本轮未修改包仓库。2026-11-04 按用户指示将本次方案迁回框架工作区并修改 AGENTS.md；该目录原有未提交源码变更保留，不属于本提案的实现。插件包 agent 后续从本指南的新位置读取框架契约和交接内容。
 
 ## 必须迁移的旧状态
 
