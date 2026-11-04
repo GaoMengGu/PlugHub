@@ -13,7 +13,6 @@ namespace PlugHub.Contracts.Features
         public string Group { get; set; } = string.Empty;
         public IReadOnlyList<string> Tags { get; set; } = new List<string>();
         public int Order { get; set; }
-        public FeatureState DefaultState { get; set; } = FeatureState.Visible;
         public string CommandKey { get; set; } = string.Empty;
         public string CommandAssembly { get; set; } = string.Empty;
         public string CommandType { get; set; } = string.Empty;
@@ -21,5 +20,4 @@ namespace PlugHub.Contracts.Features
         public string IconPath { get; set; } = string.Empty;
     }
 
-    public enum FeatureState { Visible, Disabled, Hidden }
 }

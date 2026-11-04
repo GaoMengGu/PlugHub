@@ -19,6 +19,7 @@ namespace PlugHub.Framework.Discovery
 
             var diagnostics = new List<DiagnosticMessage>();
             var descriptors = new List<ModuleDescriptor>();
+            var configurations = new List<ModuleConfiguration>();
 
             foreach (var module in (modulesConfiguration.Modules ?? new List<ModuleConfiguration>()).OrderBy(module => module.Order).ThenBy(module => module.Id, StringComparer.OrdinalIgnoreCase))
             {
@@ -30,14 +31,11 @@ namespace PlugHub.Framework.Discovery
 
                 var descriptor = ToDescriptor(baseDirectory, module);
                 descriptors.Add(descriptor);
+                configurations.Add(module);
 
-                if (!module.Enabled || !module.Visible)
-                {
-                    diagnostics.Add(BuildDiagnostic(module.Id, DiagnosticSeverity.Info, "RT-MODULE-SKIP", "Module is disabled or hidden and was not discovered."));
-                }
             }
 
-            return new ModuleDiscoveryResult(descriptors, diagnostics);
+            return new ModuleDiscoveryResult(descriptors, diagnostics, configurations);
         }
 
         private static bool IsCompatibleWithRuntime(ModuleConfiguration module, out string reason)
@@ -66,7 +64,6 @@ namespace PlugHub.Framework.Discovery
                 Id = module.Id,
                 Name = DisplayNameResolver.Resolve(module.DisplayName, module.Name, string.Empty, module.Id),
                 Description = module.Description,
-                State = module.Enabled ? (module.Visible ? ModuleState.Enabled : ModuleState.Hidden) : ModuleState.Disabled,
                 Order = module.Order,
                 Tags = new List<string>(module.Tags ?? new List<string>()),
                 Features = (module.Features ?? new List<FeatureConfiguration>()).Select(feature => new PlugHub.Contracts.Features.FeatureDescriptor
@@ -80,7 +77,6 @@ namespace PlugHub.Framework.Discovery
                     Group = feature.Group,
                     Tags = MergeTags(module.Tags ?? new List<string>(), feature.Tags),
                     Order = feature.Order,
-                    DefaultState = ParseFeatureState(feature.DefaultState),
                     CommandKey = feature.CommandKey,
                     CommandAssembly = ResolveFeatureCommandAssembly(baseDirectory, module, feature.CommandAssembly),
                     CommandType = feature.CommandType,
@@ -120,11 +116,6 @@ namespace PlugHub.Framework.Discovery
             };
         }
 
-        private static FeatureState ParseFeatureState(string value)
-        {
-            return Enum.TryParse(value, true, out FeatureState state) ? state : FeatureState.Visible;
-        }
-
         private static string FirstNonEmpty(params string[] values)
         {
             return values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
@@ -143,13 +134,15 @@ namespace PlugHub.Framework.Discovery
 
     public sealed class ModuleDiscoveryResult
     {
-        public ModuleDiscoveryResult(IReadOnlyList<ModuleDescriptor> modules, IReadOnlyList<DiagnosticMessage> diagnostics)
+        public ModuleDiscoveryResult(IReadOnlyList<ModuleDescriptor> modules, IReadOnlyList<DiagnosticMessage> diagnostics, IReadOnlyList<ModuleConfiguration> configurations)
         {
             Modules = modules ?? new List<ModuleDescriptor>();
             Diagnostics = diagnostics ?? new List<DiagnosticMessage>();
+            Configurations = configurations ?? new List<ModuleConfiguration>();
         }
 
         public IReadOnlyList<ModuleDescriptor> Modules { get; }
         public IReadOnlyList<DiagnosticMessage> Diagnostics { get; }
+        public IReadOnlyList<ModuleConfiguration> Configurations { get; }
     }
 }

@@ -88,11 +88,6 @@ namespace PlugHub.Framework.Composition
             var includeCategories = view.IncludeCategories ?? new List<string>();
             var groups = view.Groups ?? new List<ViewGroupConfiguration>();
 
-            if (feature.DefaultState != FeatureState.Visible)
-            {
-                return ProjectedFeature.Hidden(feature.Id, "feature is not visible by default");
-            }
-
             if (excludeTags.Any(tag => Contains(feature.Tags, tag)))
             {
                 return ProjectedFeature.Hidden(feature.Id, "feature excluded by tag");
@@ -130,7 +125,6 @@ namespace PlugHub.Framework.Composition
                 GroupOrder = group.Order,
                 Category = feature.Category,
                 DisplayOrder = feature.Order,
-                IsEnabled = true,
                 Tags = (feature.Tags ?? new List<string>()).ToList(),
                 Description = feature.Description,
                 CommandKey = feature.CommandKey,
@@ -196,7 +190,6 @@ namespace PlugHub.Framework.Composition
         public int GroupOrder { get; set; }
         public string Category { get; set; } = string.Empty;
         public int DisplayOrder { get; set; }
-        public bool IsEnabled { get; set; }
         public IReadOnlyList<string> Tags { get; set; } = new List<string>();
         public string Description { get; set; } = string.Empty;
         public string CommandKey { get; set; } = string.Empty;

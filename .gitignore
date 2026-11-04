@@ -4,6 +4,10 @@ dist/
 build/validation-report.*
 .vs/
 .tmp/
+.chorus/
+.codex/
+.agents/
+AGENTS.md
 .superpowers/
 .worktrees/
 docs/

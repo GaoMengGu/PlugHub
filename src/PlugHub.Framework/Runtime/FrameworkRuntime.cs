@@ -60,17 +60,16 @@ namespace PlugHub.Framework.Runtime
 
             var configuration = _configurationLoader.Load(effectiveConfigDirectory);
             var sourceResult = _moduleSourceResolver.Resolve(baseDirectory, configuration.Modules);
-            configuration.Modules = sourceResult.Modules;
             diagnostics.AddRange(sourceResult.Diagnostics);
 
             var view = _configurationLoader.GetDefaultView(configuration);
             var preset = _configurationLoader.GetPresetForView(configuration, view);
-            var effectiveModules = _configurationLoader.ApplyPreset(configuration.Modules, preset);
+            var effectiveModules = _configurationLoader.ApplyPreset(sourceResult.Modules, preset);
             var runtimeConfiguration = new FrameworkRuntimeConfiguration(configuration, view, preset, effectiveModules);
             var discoveryResult = _moduleDiscovery.Discover(baseDirectory, runtimeConfiguration.EffectiveModules);
             diagnostics.AddRange(discoveryResult.Diagnostics);
 
-            RegisterModules(runtimeConfiguration, discoveryResult.Modules, featureRegistry);
+            var startupModules = RegisterModules(runtimeConfiguration, discoveryResult, featureRegistry);
 
             var allFeatures = featureRegistry.All();
             var composition = _composer.ComposeDetailed(allFeatures, runtimeConfiguration.ActiveView);
@@ -85,7 +84,7 @@ namespace PlugHub.Framework.Runtime
                 runtimeConfiguration,
                 allFeatures,
                 composition,
-                diagnostics.Messages);
+                diagnostics.Messages, startupModules);
 
             FrameworkRuntimeState.SetCurrent(baseDirectory, effectiveConfigDirectory, snapshot);
             LogRuntimeSnapshot(baseDirectory, logger, snapshot);
@@ -120,15 +119,18 @@ namespace PlugHub.Framework.Runtime
             }
         }
 
-        private void RegisterModules(
+        private IReadOnlyList<ModuleConfiguration> RegisterModules(
             FrameworkRuntimeConfiguration runtimeConfiguration,
-            IReadOnlyList<ModuleDescriptor> modules,
+            ModuleDiscoveryResult discovery,
             FeatureRegistry featureRegistry)
         {
-            foreach (var module in modules)
+            var accepted = new List<ModuleConfiguration>();
+            for (var index = 0; index < discovery.Modules.Count; index++)
             {
-                featureRegistry.Register(module, runtimeConfiguration.Configuration.Modules.ConflictPolicy);
+                if (featureRegistry.Register(discovery.Modules[index], runtimeConfiguration.Configuration.Modules.ConflictPolicy))
+                    accepted.Add(discovery.Configurations[index]);
             }
+            return accepted.AsReadOnly();
         }
     }
 
@@ -138,17 +140,20 @@ namespace PlugHub.Framework.Runtime
             FrameworkRuntimeConfiguration configuration,
             IReadOnlyList<FeatureDescriptor> features,
             FeatureViewCompositionResult composition,
-            IReadOnlyList<DiagnosticMessage> diagnostics)
+            IReadOnlyList<DiagnosticMessage> diagnostics,
+            IReadOnlyList<ModuleConfiguration>? startupModules = null)
         {
             Configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
             Features = features ?? new List<FeatureDescriptor>();
             Composition = composition ?? throw new ArgumentNullException(nameof(composition));
             Diagnostics = diagnostics ?? new List<DiagnosticMessage>();
+            StartupModules = startupModules ?? new List<ModuleConfiguration>();
         }
 
         public FrameworkRuntimeConfiguration Configuration { get; }
         public IReadOnlyList<FeatureDescriptor> Features { get; }
         public FeatureViewCompositionResult Composition { get; }
         public IReadOnlyList<DiagnosticMessage> Diagnostics { get; }
+        public IReadOnlyList<ModuleConfiguration> StartupModules { get; }
     }
 }

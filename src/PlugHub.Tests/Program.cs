@@ -38,6 +38,7 @@ namespace PlugHub.Tests
                 new TestCase("settings configuration store rejects manifest path escape", SettingsConfigurationStoreRejectsManifestPathEscape),
                 new TestCase("settings configuration store rejects unowned save paths", SettingsConfigurationStoreRejectsUnownedSavePaths),
                 new TestCase("settings configuration store creates its missing sources manifest", SettingsConfigurationStoreCreatesItsMissingSourcesManifest),
+                new TestCase("framework runtime keeps persisted configuration separate from resolved packages", FrameworkRuntimeKeepsPersistedConfigurationSeparateFromResolvedPackages),
                 new TestCase("settings metrics count unique modules features and enabled repositories", SettingsMetricsCountUniqueModulesFeaturesAndEnabledRepositories),
                 new TestCase("repository display name uses custom name before fallback", RepositoryDisplayNameUsesCustomNameBeforeFallback),
                 new TestCase("repository display name uses owner repository url fallback", RepositoryDisplayNameUsesOwnerRepositoryUrlFallback),
@@ -72,7 +73,7 @@ namespace PlugHub.Tests
                 new TestCase("framework update checks GitHub test prereleases for TV builds", FrameworkUpdateChecksGitHubTestPrereleasesForTvBuilds),
                 new TestCase("framework update treats test channel tags as comparable versions", FrameworkUpdateTreatsTestChannelTagsAsComparableVersions),
                 new TestCase("ribbon designer mapper hydrates configured feature icons", RibbonDesignerMapperHydratesConfiguredFeatureIcons),
-                new TestCase("ribbon layout editor merges panels and restores visible features", RibbonLayoutEditorMergesPanelsAndRestoresVisibleFeatures),
+                new TestCase("ribbon layout editor merges panels and restores installed features", RibbonLayoutEditorMergesPanelsAndRestoresInstalledFeatures),
                 new TestCase("ribbon layout editor removes uninstalled features from every persisted workspace", RibbonLayoutEditorRemovesUninstalledFeaturesFromEveryPersistedWorkspace),
                 new TestCase("ribbon layout editor normalizes stacks before save", RibbonLayoutEditorNormalizesStacksBeforeSave),
                 new TestCase("ribbon layout editor rejects invalid layouts", RibbonLayoutEditorRejectsInvalidLayouts),
@@ -154,8 +155,6 @@ namespace PlugHub.Tests
                         Type = "Legacy.Type",
                         SourceId = "legacy-source",
                         ResolvedBaseDirectory = @"C:\legacy",
-                        Enabled = false,
-                        Visible = false,
                         Order = 99,
                         DisplayName = "Module One",
                         Category = "Review",
@@ -170,7 +169,6 @@ namespace PlugHub.Tests
                                 CommandAssembly = "bin/LegacyCommand.dll",
                                 CommandKey = "legacy-command-key",
                                 ButtonSize = "small",
-                                DefaultState = "Hidden",
                                 Category = "Old Category",
                                 Group = "Old Group",
                                 Order = 10,
@@ -258,12 +256,11 @@ namespace PlugHub.Tests
                 Require(runtime.ActivePreset != null && runtime.ActivePreset.Id == "model-preset", "view-specific preset must be selected.");
                 Require(runtime.EffectiveModules.PackageDirectories.SequenceEqual(new[] { "packages" }), "missing packageDirectories must default to packages.");
                 Require(runtime.EffectiveModules.Modules.First(module => module.Id == "module.visible").Order == 5, "preset must override module order.");
-                Require(!runtime.EffectiveModules.Modules.First(module => module.Id == "module.hidden").Visible, "preset must hide module.");
+                Require(runtime.EffectiveModules.Modules.Any(module => module.Id == "module.hidden"), "legacy preset visibility must not remove installed modules.");
 
-                Require(descriptors.Count == 1, "hidden modules must not produce feature descriptors.");
+                Require(descriptors.Count == 2, "legacy hidden modules must still produce feature descriptors.");
                 var descriptor = descriptors[0];
                 Require(descriptor.Id == "feature.visible", "visible feature descriptor must be returned.");
-                Require(descriptor.DefaultState == FeatureState.Hidden, "feature defaultState must be parsed.");
                 Require(descriptor.CommandAssembly == "bin/visible.dll", "feature commandAssembly must fall back to module assembly.");
                 Require(descriptor.Category == "Model", "feature category must fall back to module category.");
                 Require(descriptor.Tags.SequenceEqual(new[] { "module-tag", "feature-tag" }), "module and feature tags must merge in order.");
@@ -518,7 +515,7 @@ namespace PlugHub.Tests
             Require(SettingsMetrics.RepositoryDisplayName(new PackageRepositoryConfiguration
             {
                 Provider = "local",
-                Repository = "/home/yilan/plughub/local-packages"
+                Repository = "/example/plughub/local-packages"
             }) == "local-packages", "local folder fallback must use the folder name, not a path fragment pair.");
         }
 
@@ -618,6 +615,8 @@ namespace PlugHub.Tests
                             Id = "module.a",
                             Version = "1.0.0",
                             Assembly = "bin/A.dll",
+                            AutoStart = true,
+                            StartupType = "Vendor.ModuleA.Startup",
                             Features = new List<FeatureConfiguration>
                             {
                                 new FeatureConfiguration
@@ -667,6 +666,8 @@ namespace PlugHub.Tests
 
                 var installedManifest = File.ReadAllText(Path.Combine(stagingDirectory, "packages.json"));
                 RequireContains(installedManifest, "module.a");
+                RequireContains(installedManifest, "\"autoStart\":true");
+                RequireContains(installedManifest, "Vendor.ModuleA.Startup");
                 RequireDoesNotContain(installedManifest, "module.b");
                 RequireDoesNotContain(installedManifest, "\"indexVersion\"");
             }
@@ -1146,6 +1147,50 @@ namespace PlugHub.Tests
             }
         }
 
+        private static void FrameworkRuntimeKeepsPersistedConfigurationSeparateFromResolvedPackages()
+        {
+            using (var temp = TempDirectory.Create())
+            {
+                var configDirectory = Path.Combine(temp.Path, "config");
+                WriteText(
+                    Path.Combine(configDirectory, "sources.json"),
+                    "{\"schemaVersion\":\"1.0\",\"packageDirectories\":[\"packages\"],\"modules\":[]}");
+                WriteText(
+                    Path.Combine(configDirectory, "views.json"),
+                    "{\"schemaVersion\":\"1.0\",\"defaultView\":\"default\",\"views\":[{\"id\":\"default\",\"ribbon\":{\"panels\":[{\"id\":\"tools\",\"name\":\"Tools\",\"items\":[{\"type\":\"pushButton\",\"featureId\":\"module.keep.feature\"}]}]}}]}");
+                var packageDirectory = Path.Combine(temp.Path, "packages", "module.keep");
+                WritePackageManifest(Path.Combine(packageDirectory, "packages.json"), "module.keep");
+                var snapshot = new FrameworkRuntime().Load(temp.Path, configDirectory, false);
+                var store = new SettingsConfigurationStore(configDirectory);
+
+                Require(snapshot.Configuration.Configuration.Modules.Modules.Count == 0,
+                    "runtime snapshot must preserve sources.json as the editable configuration baseline.");
+                Require(snapshot.Configuration.EffectiveModules.Modules.Select(module => module.Id).SequenceEqual(new[] { "module.keep" }),
+                    "runtime effective modules must still include packages resolved from disk.");
+
+                Directory.Delete(packageDirectory, true);
+                var editor = new RibbonLayoutEditor();
+                editor.RemoveFeatures(snapshot.Configuration.Configuration.Views, new[] { "module.keep.feature" });
+                var modules = store.LoadModuleDocuments(snapshot.Configuration.Configuration)
+                    .SelectMany(document => document.Modules.Modules)
+                    .ToList();
+                var featureRows = modules
+                    .SelectMany(module => (module.Features ?? new List<FeatureConfiguration>()).Select(feature => new RibbonDesignerFeatureRow
+                    {
+                        ModuleId = module.Id,
+                        FeatureId = feature.Id,
+                        DisplayName = feature.DisplayName,
+                    }))
+                    .ToList();
+                var tabs = editor.Load(snapshot.Configuration.ActiveView.Ribbon, featureRows);
+
+                Require(modules.Count == 0,
+                    "Manager reload after uninstall must not resurrect a package retained only in runtime effective modules.");
+                Require(!tabs.SelectMany(tab => tab.Children).SelectMany(panel => panel.Children).Any(item => item.FeatureId == "module.keep.feature"),
+                    "uninstalled feature must not be re-added to the Manager default panel.");
+            }
+        }
+
         private static void RepositoryArchiveSyncFlattensProviderWrapperForDeepPaths()
         {
             using (var temp = TempDirectory.Create())
@@ -1609,7 +1654,7 @@ namespace PlugHub.Tests
             Require(result.SlotToFeatureId.All(pair => result.FeatureIdToSlot[pair.Value] == pair.Key), "slot mappings must remain bidirectionally consistent.");
         }
 
-        private static void RibbonLayoutEditorMergesPanelsAndRestoresVisibleFeatures()
+        private static void RibbonLayoutEditorMergesPanelsAndRestoresInstalledFeatures()
         {
             var ribbon = new RibbonConfiguration
             {
@@ -2093,7 +2138,6 @@ namespace PlugHub.Tests
                 GroupName = "Group",
                 GroupOrder = 1,
                 DisplayOrder = order,
-                IsEnabled = true,
                 ButtonSize = "large",
                 IconPath = "icons/" + id + ".png"
             };
@@ -2129,7 +2173,6 @@ namespace PlugHub.Tests
                 GroupDisplayText = groupName,
                 ButtonSize = "large",
                 Order = order,
-                Visible = true
             };
         }
 

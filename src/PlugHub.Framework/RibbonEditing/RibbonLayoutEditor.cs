@@ -14,7 +14,7 @@ namespace PlugHub.Framework.RibbonEditing
         public List<RibbonDesignerNodeRow> Load(RibbonConfiguration ribbon, IEnumerable<RibbonDesignerFeatureRow> features)
         {
             ribbon = ribbon ?? new RibbonConfiguration();
-            var featureRows = VisibleFeatures(features);
+            var featureRows = AvailableFeatures(features);
             var normalizedRibbon = new RibbonConfiguration
             {
                 TabName = ribbon.TabName,
@@ -30,9 +30,9 @@ namespace PlugHub.Framework.RibbonEditing
         public void Synchronize(IList<RibbonDesignerNodeRow> tabs, IEnumerable<RibbonDesignerFeatureRow> features)
         {
             if (tabs == null) throw new ArgumentNullException(nameof(tabs));
-            var featureRows = VisibleFeatures(features);
+            var featureRows = AvailableFeatures(features);
             RemoveUnavailableFeatures(tabs, new HashSet<string>(featureRows.Select(feature => feature.FeatureId), StringComparer.OrdinalIgnoreCase));
-            EnsureAllVisibleFeatures(tabs, featureRows);
+            EnsureAllAvailableFeatures(tabs, featureRows);
             NormalizeChildSizes(tabs);
         }
 
@@ -43,7 +43,7 @@ namespace PlugHub.Framework.RibbonEditing
             Synchronize(tabs, features);
             NormalizeStacks(tabs);
             Validate(tabs);
-            return _mapper.ToPanels(tabs, VisibleFeatures(features));
+            return _mapper.ToPanels(tabs, AvailableFeatures(features));
         }
 
         public bool RemoveContainer(IList<RibbonDesignerNodeRow> tabs, RibbonDesignerNodeRow container)
@@ -146,10 +146,10 @@ namespace PlugHub.Framework.RibbonEditing
             return parent != null && RibbonDesignerMapper.IsType(parent, RibbonDesignerNodeRow.Panel) ? "large" : "small";
         }
 
-        private static List<RibbonDesignerFeatureRow> VisibleFeatures(IEnumerable<RibbonDesignerFeatureRow> features)
+        private static List<RibbonDesignerFeatureRow> AvailableFeatures(IEnumerable<RibbonDesignerFeatureRow> features)
         {
             return (features ?? new List<RibbonDesignerFeatureRow>())
-                .Where(feature => feature != null && feature.Visible && !string.IsNullOrWhiteSpace(feature.FeatureId))
+                .Where(feature => feature != null && !string.IsNullOrWhiteSpace(feature.FeatureId))
                 .GroupBy(feature => feature.FeatureId, StringComparer.OrdinalIgnoreCase)
                 .Select(group => group.First())
                 .ToList();
@@ -293,7 +293,7 @@ namespace PlugHub.Framework.RibbonEditing
                     || RibbonDesignerMapper.IsType(row, RibbonDesignerNodeRow.Stack));
         }
 
-        private static void EnsureAllVisibleFeatures(IList<RibbonDesignerNodeRow> tabs, IEnumerable<RibbonDesignerFeatureRow> features)
+        private static void EnsureAllAvailableFeatures(IList<RibbonDesignerNodeRow> tabs, IEnumerable<RibbonDesignerFeatureRow> features)
         {
             var placedFeatureIds = new HashSet<string>(
                 Flatten(tabs).Where(row => !string.IsNullOrWhiteSpace(row.FeatureId)).Select(row => row.FeatureId),

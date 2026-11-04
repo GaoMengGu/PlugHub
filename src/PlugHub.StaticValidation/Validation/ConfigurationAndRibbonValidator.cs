@@ -24,6 +24,8 @@ namespace PlugHub.StaticValidation.Validation
             ValidateViewCompositionExamples();
             ValidateComposerShape();
             ValidateCoreContracts();
+            new LegacyStateMigrationValidator(_source).Validate();
+            new PackageStartupConfigurationValidator(_source).Validate();
             ValidateContractsMultiTargetReadiness();
             ValidateModulesManifestSchemaAndCompatibility();
             ValidateRibbonLayoutConfigurationModels();
@@ -64,7 +66,7 @@ namespace PlugHub.StaticValidation.Validation
             var seenFeatureIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var module in AllModules())
             {
-                foreach (var requiredKey in new[] { "id", "enabled", "visible", "features" })
+                foreach (var requiredKey in new[] { "id", "features" })
                 {
                     Require(module.ContainsKey(requiredKey), $"module is missing {requiredKey}.");
                 }
@@ -73,7 +75,6 @@ namespace PlugHub.StaticValidation.Validation
                 {
                     var featureId = StringValue(feature, "id");
                     Require(seenFeatureIds.Add(featureId), "duplicate feature id: " + featureId);
-                    Require(new[] { "Visible", "Disabled", "Hidden" }.Contains(StringValue(feature, "defaultState")), "invalid defaultState for " + featureId);
                     Require(feature.ContainsKey("displayName"), "feature is missing displayName: " + featureId);
                     Require(feature.ContainsKey("iconPath"), "feature is missing iconPath: " + featureId);
                 }
@@ -119,7 +120,7 @@ namespace PlugHub.StaticValidation.Validation
         private void ValidateCoreContracts()
         {
             var contractText = _source.ReadAllCSharp("src/PlugHub.Contracts");
-            foreach (var token in new[] { "interface IPlugHubModule", "class ModuleDescriptor", "class FeatureDescriptor", "CommandAssembly", "CommandType", "enum ModuleState", "enum FeatureState", "class DiagnosticMessage", "enum DiagnosticSeverity" })
+            foreach (var token in new[] { "interface IPlugHubModule", "class ModuleDescriptor", "class FeatureDescriptor", "CommandAssembly", "CommandType", "class DiagnosticMessage", "enum DiagnosticSeverity" })
             {
                 Require(contractText.Contains(token), "missing contract token: " + token);
             }
@@ -148,6 +149,8 @@ namespace PlugHub.StaticValidation.Validation
                         "\"version\"",
                         "\"author\"",
                         "\"assembly\"",
+                        "\"autoStart\"",
+                        "\"startupType\"",
                         "\"category\"",
                         "\"displayName\"",
                         "\"description\"",
@@ -177,7 +180,7 @@ namespace PlugHub.StaticValidation.Validation
             var packageDefaults = _source.ReadText("src/PlugHub.Framework/Configuration/PackageManifestDefaults.cs");
             Require(sourceResolver.Contains("DefaultPackageManifestName = \"packages.json\""), "module source resolver must use packages.json as the only default module manifest.");
             Require(sourceResolver.Contains("AdjacentPackageManifestPattern = \"*.packages.json\""), "module source resolver must scan adjacent *.packages.json manifests.");
-            Require(packageDefaults.Contains("ContainsExactKey") && packageDefaults.Contains("module.Enabled = true") && packageDefaults.Contains("module.Visible = true"), "package manifest defaults must treat omitted lowercase enabled/visible as enabled and visible.");
+            Require(packageDefaults.Contains("NormalizeRuntimeFields") && packageDefaults.Contains("ContainsExactKey"), "package manifest defaults must preserve feature runtime defaults without module state.");
             Require(sourceResolver.Contains("PushRootCompatibilityToModules") && sourceResolver.Contains("module.RevitVersions = new List<string>(modules.RevitVersions)") && sourceResolver.Contains("module.FrameworkVersionRange = modules.FrameworkVersionRange"), "module source resolver must push root compatibility fields down to modules.");
 
             var configurationLoader = _source.ReadText("src/PlugHub.Framework/Configuration/FrameworkConfigurationLoader.cs");
@@ -398,8 +401,6 @@ namespace PlugHub.StaticValidation.Validation
                                 Category = "view",
                                 SourceId = "runtime-source",
                                 ResolvedBaseDirectory = "runtime-base",
-                                Enabled = false,
-                                Visible = false,
                                 Order = 42,
                                 Tags = new List<string> { "view", "writer" },
                                 DependsOn = new List<string> { "old-module" },
@@ -415,7 +416,6 @@ namespace PlugHub.StaticValidation.Validation
                                         Group = "runtime-group",
                                         Tags = new List<string> { "feature-tag" },
                                         Order = 10,
-                                        DefaultState = "Hidden",
                                         CommandKey = "legacy-key",
                                         CommandAssembly = "Other.dll",
                                         CommandType = "Demo.WriterCommand",
@@ -763,7 +763,6 @@ namespace PlugHub.StaticValidation.Validation
         private List<string> FeatureIdsForView(List<Dictionary<string, object>> features, Dictionary<string, object> view)
         {
             return features
-                .Where(feature => StringValue(feature, "defaultState") == "Visible")
                 .Where(feature => !SequenceValue(view, "excludeTags").Intersect(SequenceValue(feature, "tags")).Any())
                 .Where(feature => !SequenceValue(view, "excludeCategories").Contains(StringValue(feature, "category")))
                 .Where(feature => MatchesViewInclude(feature, view))

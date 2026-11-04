@@ -7,4 +7,5 @@
   <Project Path="src/PlugHub.Installer/PlugHub.Installer.csproj" />
   <Project Path="src/PlugHub.Tests/PlugHub.Tests.csproj" />
   <Project Path="src/PlugHub.StaticValidation/PlugHub.StaticValidation.csproj" />
+  <Project Path="src/PlugHub.RevitStartup.Tests/PlugHub.RevitStartup.Tests.csproj" />
 </Solution>

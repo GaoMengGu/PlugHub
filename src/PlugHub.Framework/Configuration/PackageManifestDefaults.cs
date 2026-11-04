@@ -2,12 +2,51 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Web.Script.Serialization;
 
 namespace PlugHub.Framework.Configuration
 {
     public static class PackageManifestDefaults
     {
-        public static void NormalizeModuleState(Dictionary<string, object> root, ModulesConfiguration modules)
+        public static ModulesConfiguration ReadModules(Dictionary<string, object> root)
+        {
+            var errors = new List<string>();
+            var rawModules = ArrayValue(root, "modules").ToList();
+            var sanitizedModules = new List<object>();
+            foreach (var value in rawModules)
+            {
+                if (!(value is Dictionary<string, object> rawModule))
+                    throw new InvalidOperationException("Each module must be an object.");
+                var module = new Dictionary<string, object>(rawModule);
+                var error = string.Empty;
+                foreach (var key in module.Keys.ToList())
+                {
+                    if (string.Equals(key, "autoStart", StringComparison.OrdinalIgnoreCase) && !(module[key] is bool))
+                    {
+                        error = "autoStart must be a JSON boolean.";
+                        module.Remove(key);
+                    }
+                    if (string.Equals(key, "startupType", StringComparison.OrdinalIgnoreCase) && !(module[key] is string))
+                    {
+                        error = "startupType must be a JSON string.";
+                        module.Remove(key);
+                    }
+                }
+                sanitizedModules.Add(module);
+                errors.Add(error);
+            }
+
+            var sanitizedRoot = new Dictionary<string, object>(root);
+            var modulesKey = root.Keys.FirstOrDefault(key => string.Equals(key, "modules", StringComparison.OrdinalIgnoreCase)) ?? "modules";
+            sanitizedRoot[modulesKey] = sanitizedModules;
+            var serializer = new JavaScriptSerializer();
+            var modules = serializer.Deserialize<ModulesConfiguration>(serializer.Serialize(sanitizedRoot));
+            for (var index = 0; index < modules.Modules.Count; index++)
+                modules.Modules[index].StartupConfigurationError = errors[index];
+            return modules;
+        }
+
+        public static void NormalizeRuntimeFields(Dictionary<string, object> root, ModulesConfiguration modules)
         {
             if (root == null || modules == null) return;
 
@@ -23,16 +62,6 @@ namespace PlugHub.Framework.Configuration
                 if (!moduleObjects.TryGetValue(module.Id ?? string.Empty, out var moduleObject))
                 {
                     continue;
-                }
-
-                if (!ContainsExactKey(moduleObject, "enabled"))
-                {
-                    module.Enabled = true;
-                }
-
-                if (!ContainsExactKey(moduleObject, "visible"))
-                {
-                    module.Visible = true;
                 }
 
                 NormalizeFeatureRuntimeFields(moduleObject, module);
@@ -73,11 +102,6 @@ namespace PlugHub.Framework.Configuration
                 if (!ContainsExactKey(featureObject, "order"))
                 {
                     feature.Order = 0;
-                }
-
-                if (!ContainsExactKey(featureObject, "defaultState"))
-                {
-                    feature.DefaultState = "Visible";
                 }
 
                 if (!ContainsExactKey(featureObject, "commandKey"))

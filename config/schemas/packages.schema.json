@@ -15,11 +15,23 @@
       "items": {
         "type": "object",
         "required": ["id", "version", "assembly", "features"],
+        "allOf": [{
+          "if": { "required": ["autoStart"], "properties": { "autoStart": { "const": true } } },
+          "then": {
+            "required": ["assembly", "startupType"],
+            "properties": {
+              "assembly": { "type": "string", "pattern": "\\S" },
+              "startupType": { "type": "string", "pattern": "\\S" }
+            }
+          }
+        }],
         "properties": {
           "id": { "type": "string" },
           "version": { "type": "string" },
           "author": { "type": "string" },
           "assembly": { "type": "string" },
+          "autoStart": { "type": "boolean", "default": false },
+          "startupType": { "type": "string" },
           "displayName": { "type": "string" },
           "description": { "type": "string" },
           "category": { "type": "string" },

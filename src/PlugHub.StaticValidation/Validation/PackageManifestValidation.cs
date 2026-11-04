@@ -23,6 +23,19 @@ namespace PlugHub.StaticValidation.Validation
             {
                 yield return Error(path, "PH-PACKAGE-MODULES", "Packages manifest must declare at least one module.", "Add one module entry.");
             }
+
+            foreach (var module in (modules ?? new System.Collections.ArrayList()).Cast<object>().OfType<Dictionary<string, object>>())
+            {
+                var id = module.TryGetValue("id", out var moduleId) ? moduleId?.ToString() ?? "<unknown>" : "<unknown>";
+                if (module.TryGetValue("autoStart", out var autoStart) && !(autoStart is bool))
+                    yield return Error(path, "PH-PACKAGE-STARTUP", id + ": autoStart must be a JSON boolean.", "Use true or false without quotes.");
+                if (module.TryGetValue("startupType", out var startupType) && !(startupType is string))
+                    yield return Error(path, "PH-PACKAGE-STARTUP", id + ": startupType must be a JSON string.", "Use the public startup type's full name.");
+                if (autoStart is bool enabled && enabled
+                    && (!module.TryGetValue("assembly", out var assembly) || !(assembly is string assemblyName) || string.IsNullOrWhiteSpace(assemblyName)
+                        || !(startupType is string typeName) || string.IsNullOrWhiteSpace(typeName)))
+                    yield return Error(path, "PH-PACKAGE-STARTUP", id + ": autoStart requires non-empty assembly and startupType.", "Declare both fields for this module.");
+            }
         }
 
         private static ValidationIssue Error(string file, string code, string message, string suggestion)

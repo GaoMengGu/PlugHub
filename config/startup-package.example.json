@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "1.0",
+  "modules": [
+    {
+      "id": "Example.EventPackage",
+      "version": "1.0.0",
+      "assembly": "dist/Example.EventPackage.dll",
+      "autoStart": true,
+      "startupType": "Example.EventPackage.Startup",
+      "features": []
+    }
+  ]
+}
