@@ -151,7 +151,6 @@ namespace PlugHub.StaticValidation
             var required = new[]
             {
                 "README.md",
-                "AGENTS.md",
                 "build/Directory.Build.props",
                 ".github/workflows/release.yml",
                 ".github/workflows/sync-gitee.yml",
@@ -544,7 +543,7 @@ namespace PlugHub.StaticValidation
             var directory = AppDomain.CurrentDomain.BaseDirectory;
             while (!string.IsNullOrWhiteSpace(directory))
             {
-                if (File.Exists(Path.Combine(directory, "AGENTS.md")) && Directory.Exists(Path.Combine(directory, "src")))
+                if (File.Exists(Path.Combine(directory, "PlugHub.sln")) && Directory.Exists(Path.Combine(directory, "src")))
                 {
                     return directory!;
                 }

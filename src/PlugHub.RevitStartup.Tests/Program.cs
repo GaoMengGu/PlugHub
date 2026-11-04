@@ -160,7 +160,7 @@ namespace PlugHub.RevitStartup.Tests
         private static string RepositoryRoot()
         {
             var directory = new DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
-            while (directory != null && !File.Exists(Path.Combine(directory.FullName, "AGENTS.md"))) directory = directory.Parent;
+            while (directory != null && !File.Exists(Path.Combine(directory.FullName, "PlugHub.sln"))) directory = directory.Parent;
             return directory?.FullName ?? throw new InvalidOperationException("PlugHub repository root not found.");
         }
 

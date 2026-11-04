@@ -515,7 +515,7 @@ namespace PlugHub.Tests
             Require(SettingsMetrics.RepositoryDisplayName(new PackageRepositoryConfiguration
             {
                 Provider = "local",
-                Repository = "/home/yilan/plughub/local-packages"
+                Repository = "/example/plughub/local-packages"
             }) == "local-packages", "local folder fallback must use the folder name, not a path fragment pair.");
         }
 
