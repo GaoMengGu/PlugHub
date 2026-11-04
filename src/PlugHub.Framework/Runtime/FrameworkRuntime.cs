@@ -60,12 +60,11 @@ namespace PlugHub.Framework.Runtime
 
             var configuration = _configurationLoader.Load(effectiveConfigDirectory);
             var sourceResult = _moduleSourceResolver.Resolve(baseDirectory, configuration.Modules);
-            configuration.Modules = sourceResult.Modules;
             diagnostics.AddRange(sourceResult.Diagnostics);
 
             var view = _configurationLoader.GetDefaultView(configuration);
             var preset = _configurationLoader.GetPresetForView(configuration, view);
-            var effectiveModules = _configurationLoader.ApplyPreset(configuration.Modules, preset);
+            var effectiveModules = _configurationLoader.ApplyPreset(sourceResult.Modules, preset);
             var runtimeConfiguration = new FrameworkRuntimeConfiguration(configuration, view, preset, effectiveModules);
             var discoveryResult = _moduleDiscovery.Discover(baseDirectory, runtimeConfiguration.EffectiveModules);
             diagnostics.AddRange(discoveryResult.Diagnostics);

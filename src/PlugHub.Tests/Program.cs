@@ -38,6 +38,7 @@ namespace PlugHub.Tests
                 new TestCase("settings configuration store rejects manifest path escape", SettingsConfigurationStoreRejectsManifestPathEscape),
                 new TestCase("settings configuration store rejects unowned save paths", SettingsConfigurationStoreRejectsUnownedSavePaths),
                 new TestCase("settings configuration store creates its missing sources manifest", SettingsConfigurationStoreCreatesItsMissingSourcesManifest),
+                new TestCase("framework runtime keeps persisted configuration separate from resolved packages", FrameworkRuntimeKeepsPersistedConfigurationSeparateFromResolvedPackages),
                 new TestCase("settings metrics count unique modules features and enabled repositories", SettingsMetricsCountUniqueModulesFeaturesAndEnabledRepositories),
                 new TestCase("repository display name uses custom name before fallback", RepositoryDisplayNameUsesCustomNameBeforeFallback),
                 new TestCase("repository display name uses owner repository url fallback", RepositoryDisplayNameUsesOwnerRepositoryUrlFallback),
@@ -1143,6 +1144,51 @@ namespace PlugHub.Tests
                 Require(documents.Any(document => SamePath(document.Path, Path.Combine(configDirectory, "sources.json"))),
                     "the store must own its canonical sources.json document even before the file exists.");
                 RequireFileExists(Path.Combine(configDirectory, "sources.json"));
+            }
+        }
+
+        private static void FrameworkRuntimeKeepsPersistedConfigurationSeparateFromResolvedPackages()
+        {
+            using (var temp = TempDirectory.Create())
+            {
+                var configDirectory = Path.Combine(temp.Path, "config");
+                WriteText(
+                    Path.Combine(configDirectory, "sources.json"),
+                    "{\"schemaVersion\":\"1.0\",\"packageDirectories\":[\"packages\"],\"modules\":[]}");
+                WriteText(
+                    Path.Combine(configDirectory, "views.json"),
+                    "{\"schemaVersion\":\"1.0\",\"defaultView\":\"default\",\"views\":[{\"id\":\"default\",\"ribbon\":{\"panels\":[{\"id\":\"tools\",\"name\":\"Tools\",\"items\":[{\"type\":\"pushButton\",\"featureId\":\"module.keep.feature\"}]}]}}]}");
+                var packageDirectory = Path.Combine(temp.Path, "packages", "module.keep");
+                WritePackageManifest(Path.Combine(packageDirectory, "packages.json"), "module.keep");
+                var snapshot = new FrameworkRuntime().Load(temp.Path, configDirectory, false);
+                var store = new SettingsConfigurationStore(configDirectory);
+
+                Require(snapshot.Configuration.Configuration.Modules.Modules.Count == 0,
+                    "runtime snapshot must preserve sources.json as the editable configuration baseline.");
+                Require(snapshot.Configuration.EffectiveModules.Modules.Select(module => module.Id).SequenceEqual(new[] { "module.keep" }),
+                    "runtime effective modules must still include packages resolved from disk.");
+
+                Directory.Delete(packageDirectory, true);
+                var editor = new RibbonLayoutEditor();
+                editor.RemoveFeatures(snapshot.Configuration.Configuration.Views, new[] { "module.keep.feature" });
+                var modules = store.LoadModuleDocuments(snapshot.Configuration.Configuration)
+                    .SelectMany(document => document.Modules.Modules)
+                    .ToList();
+                var featureRows = modules
+                    .SelectMany(module => (module.Features ?? new List<FeatureConfiguration>()).Select(feature => new RibbonDesignerFeatureRow
+                    {
+                        ModuleId = module.Id,
+                        FeatureId = feature.Id,
+                        DisplayName = feature.DisplayName,
+                        Visible = true
+                    }))
+                    .ToList();
+                var tabs = editor.Load(snapshot.Configuration.ActiveView.Ribbon, featureRows);
+
+                Require(modules.Count == 0,
+                    "Manager reload after uninstall must not resurrect a package retained only in runtime effective modules.");
+                Require(!tabs.SelectMany(tab => tab.Children).SelectMany(panel => panel.Children).Any(item => item.FeatureId == "module.keep.feature"),
+                    "uninstalled feature must not be re-added to the Manager default panel.");
             }
         }
 

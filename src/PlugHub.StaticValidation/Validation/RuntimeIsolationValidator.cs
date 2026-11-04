@@ -202,6 +202,7 @@ namespace PlugHub.StaticValidation.Validation
         private void ValidateFrameworkRuntimeLoadIsolation()
         {
             var runtimeText = _source.ReadText("src/PlugHub.Framework/Runtime/FrameworkRuntime.cs");
+            Require(runtimeText.Contains("ApplyPreset(sourceResult.Modules, preset)") && !runtimeText.Contains("configuration.Modules = sourceResult.Modules"), "FrameworkRuntime must keep persisted sources.json modules separate from packages resolved for EffectiveModules.");
             Require(!runtimeText.Contains("private readonly FeatureRegistry _featureRegistry"), "FrameworkRuntime.Load must not reuse a FeatureRegistry across loads.");
             Require(!runtimeText.Contains("private readonly DiagnosticsSink _diagnostics"), "FrameworkRuntime.Load must not reuse a DiagnosticsSink across loads.");
             Require(runtimeText.Contains("var diagnostics = new DiagnosticsSink()") && runtimeText.Contains("var featureRegistry = new FeatureRegistry()"), "FrameworkRuntime.Load must create fresh load-scoped diagnostics and feature registry instances.");
